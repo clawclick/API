@@ -99,7 +99,7 @@ export async function buildSwapTx(params: SolanaSwapParams): Promise<UnsignedSol
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        computeUnitPriceMicroLamports: "auto",
+        computeUnitPriceMicroLamports: "1000",
         swapResponse: quote,
         txVersion: "V0",
         wallet: walletAddress,

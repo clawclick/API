@@ -65,7 +65,7 @@ type JupiterSwapResponse = {
 export async function getSwapQuote(params: SolanaSwapParams): Promise<JupiterQuoteResponse> {
   const { tokenIn, tokenOut, amountIn, slippageBps } = params;
   return requestJson<JupiterQuoteResponse>(
-    `https://quote-api.jup.ag/v6/quote?inputMint=${tokenIn}&outputMint=${tokenOut}&amount=${amountIn}&slippageBps=${slippageBps}`,
+    `https://lite-api.jup.ag/swap/v1/quote?inputMint=${tokenIn}&outputMint=${tokenOut}&amount=${amountIn}&slippageBps=${slippageBps}`,
   );
 }
 
@@ -81,7 +81,7 @@ export async function buildSwapTx(params: SolanaSwapParams): Promise<UnsignedSol
   }
 
   const txResp = await requestJson<JupiterSwapResponse>(
-    "https://quote-api.jup.ag/v6/swap",
+    "https://lite-api.jup.ag/swap/v1/swap",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -67,7 +67,7 @@ async function getAmountsOut(amountIn: bigint, routes: Array<{ from: string; to:
   // We call a simpler single-route pattern via eth_call.
   // For Aerodrome V2 router: getAmountsOut(uint256, Route[])
   // Route = (address from, address to, bool stable, address factory)
-  // selector: 0x99209ee1
+  // selector: 0x5509a1ac
   const factory = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da"; // Aerodrome pool factory
   const amountWord = encodeUint256(amountIn);
   const offsetWord = encodeUint256(64n);
@@ -82,7 +82,7 @@ async function getAmountsOut(amountIn: bigint, routes: Array<{ from: string; to:
     .join("");
 
   const data = buildCalldata(
-    selector("99209ee1"),
+    selector("5509a1ac"),
     amountWord,
     offsetWord,
     lengthWord,
@@ -114,11 +114,11 @@ async function getAmountsOut(amountIn: bigint, routes: Array<{ from: string; to:
  *
  * swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin,
  *   Route[] routes, address to, uint256 deadline)
- * selector: 0x8af416f6
+ * selector: 0xcac88ea9
  *
  * swapExactETHForTokens(uint256 amountOutMin, Route[] routes,
  *   address to, uint256 deadline)
- * selector: 0xb6f9de95 (payable)
+ * selector: 0x903638a4 (payable)
  */
 export async function buildSwapTx(params: SwapParams, stable = false): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
@@ -141,7 +141,7 @@ export async function buildSwapTx(params: SwapParams, stable = false): Promise<U
 
   if (nativeIn) {
     const calldata = buildCalldata(
-      selector("b6f9de95"),
+      selector("903638a4"),
       encodeUint256(amountOutMin),
       encodeUint256(160n),               // offset to routes
       padAddress(walletAddress),
@@ -159,7 +159,7 @@ export async function buildSwapTx(params: SwapParams, stable = false): Promise<U
   }
 
   const calldata = buildCalldata(
-    selector("8af416f6"),
+    selector("cac88ea9"),
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),
     encodeUint256(192n),               // offset to routes
