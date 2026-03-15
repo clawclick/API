@@ -133,3 +133,84 @@ export async function getWalletPnlBreakdown(walletAddress: string, chain: Suppor
     { headers: getHeaders() },
   );
 }
+
+type MoralisTokenOwner = {
+  owner_address?: string;
+  owner_address_label?: string | null;
+  balance?: string;
+  balance_formatted?: string;
+  usd_value?: string;
+  is_contract?: boolean;
+  percentage_relative_to_total_supply?: number;
+  entity?: string | null;
+  entity_logo?: string | null;
+};
+
+type MoralisTokenOwnersResponse = {
+  result?: MoralisTokenOwner[];
+  page?: number;
+  page_size?: number;
+  cursor?: string;
+  total_supply?: string;
+};
+
+/** GET /erc20/{token_address}/owners – top ERC20 holders with labels/entity data. */
+export async function getTokenOwners(tokenAddress: string, chain: SupportedChain, limit = 10): Promise<MoralisTokenOwnersResponse> {
+  return requestJson<MoralisTokenOwnersResponse>(
+    `https://deep-index.moralis.io/api/v2.2/erc20/${tokenAddress}/owners?chain=${chain}&order=DESC&limit=${limit}`,
+    { headers: getHeaders() },
+  );
+}
+
+type MoralisHolderBucket = {
+  supply?: string;
+  supplyPercent?: string;
+};
+
+type MoralisHolderChange = {
+  change?: string;
+  changePercent?: string;
+};
+
+type MoralisTokenHolderStats = {
+  totalHolders?: number;
+  holderSupply?: {
+    top10?: MoralisHolderBucket;
+    top25?: MoralisHolderBucket;
+    top50?: MoralisHolderBucket;
+    top100?: MoralisHolderBucket;
+    top250?: MoralisHolderBucket;
+    top500?: MoralisHolderBucket;
+  };
+  holderChange?: {
+    "5min"?: MoralisHolderChange;
+    "1h"?: MoralisHolderChange;
+    "6h"?: MoralisHolderChange;
+    "24h"?: MoralisHolderChange;
+    "3d"?: MoralisHolderChange;
+    "7d"?: MoralisHolderChange;
+    "30d"?: MoralisHolderChange;
+  };
+  holdersByAcquisition?: {
+    swap?: string;
+    transfer?: string;
+    airdrop?: string;
+  };
+  holderDistribution?: {
+    whales?: string;
+    sharks?: string;
+    dolphins?: string;
+    fish?: string;
+    octopus?: string;
+    crabs?: string;
+    shrimps?: string;
+  };
+};
+
+/** GET /erc20/{tokenAddress}/holders – aggregated holder metrics and distribution buckets. */
+export async function getTokenHolderStats(tokenAddress: string, chain: SupportedChain): Promise<MoralisTokenHolderStats> {
+  return requestJson<MoralisTokenHolderStats>(
+    `https://deep-index.moralis.io/api/v2.2/erc20/${tokenAddress}/holders?chain=${chain}`,
+    { headers: getHeaders() },
+  );
+}

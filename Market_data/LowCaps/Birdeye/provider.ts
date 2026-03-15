@@ -127,3 +127,32 @@ export async function getTopTraders(tokenAddress: string, timeFrame = "24h", sor
     { headers: getHeaders() },
   );
 }
+
+type BirdeyeHolderDistributionHolder = {
+  wallet?: string;
+  holding?: string;
+  percent_of_supply?: number;
+};
+
+type BirdeyeHolderDistributionResponse = {
+  success?: boolean;
+  data?: {
+    token_address?: string;
+    mode?: string;
+    summary?: {
+      wallet_count?: number;
+      total_holding?: string;
+      percent_of_supply?: number;
+    };
+    holders?: BirdeyeHolderDistributionHolder[];
+  };
+};
+
+/** GET /holder/v1/distribution – top holder concentration or supply-range distribution for Solana tokens. */
+export async function getHolderDistribution(tokenAddress: string, topN = 10): Promise<BirdeyeHolderDistributionResponse> {
+  const limit = Math.min(Math.max(topN, 1), 50);
+  return requestJson<BirdeyeHolderDistributionResponse>(
+    `https://public-api.birdeye.so/holder/v1/distribution?token_address=${tokenAddress}&address_type=wallet&mode=top&top_n=${topN}&include_list=true&offset=0&limit=${limit}`,
+    { headers: getHeaders() },
+  );
+}

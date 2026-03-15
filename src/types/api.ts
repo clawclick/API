@@ -188,14 +188,60 @@ export type HolderAnalysisResponse = {
   status: "live" | "partial";
   chain: string;
   tokenAddress: string;
-  totalHolders: number | null;
-  analyzedHolders: number | null;
-  successfulSellers: number | null;
-  failedSellers: number | null;
-  siphonedWallets: number | null;
-  averageTax: number | null;
-  highestTax: number | null;
-  averageGas: number | null;
+  cached: boolean;
+  summary: {
+    totalHolders: number | null;
+    analyzedHolders: number | null;
+    top5Percent: number | null;
+    top10Percent: number | null;
+    largestHolderPercent: number | null;
+    holdersOver1Pct: number | null;
+    holdersOver5Pct: number | null;
+  };
+  topHolders: Array<{
+    address: string;
+    label: string | null;
+    entity: string | null;
+    isContract: boolean | null;
+    balance: number | null;
+    balanceFormatted: number | null;
+    percentOfSupply: number | null;
+  }>;
+  holders: {
+    total: number | null;
+    analyzed: number | null;
+    lpHolders: number | null;
+  };
+  distribution: {
+    top25Percent: number | null;
+    top50Percent: number | null;
+    top100Percent: number | null;
+    whales: number | null;
+    sharks: number | null;
+    dolphins: number | null;
+    fish: number | null;
+    octopus: number | null;
+    crabs: number | null;
+    shrimps: number | null;
+  };
+  holderChange: {
+    change5mPct: number | null;
+    change1hPct: number | null;
+    change6hPct: number | null;
+    change24hPct: number | null;
+    change3dPct: number | null;
+    change7dPct: number | null;
+    change30dPct: number | null;
+  };
+  concentration: {
+    top10HolderPercent: number | null;
+    top10UserPercent: number | null;
+  };
+  supply: {
+    totalSupply: number | null;
+    lpTotalSupply: number | null;
+  };
+  signals: string[];
   providers: ProviderStatus[];
 };
 

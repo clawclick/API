@@ -1,6 +1,12 @@
 import { isConfigured } from "#config/env";
 import { getHistoricalPrices as getAlchemyHistory, isAlchemyConfigured } from "#providers/market/alchemy";
-import { getTokenOverview as getBirdeyeOverview, getOhlcv as getBirdeyeOhlcv, isBirdeyeConfigured } from "#providers/market/birdeye";
+import {
+  getHolderDistribution as getBirdeyeHolderDistribution,
+  getOhlcv as getBirdeyeOhlcv,
+  getTokenOverview as getBirdeyeOverview,
+  getTokenSecurity as getBirdeyeTokenSecurity,
+  isBirdeyeConfigured
+} from "#providers/market/birdeye";
 import { getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
 import { getTokenPairs } from "#providers/market/dexScreener";
 import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPools, getOhlcv as getGeckoTerminalOhlcv } from "#providers/market/geckoTerminal";
@@ -9,6 +15,7 @@ import { getHoneypotCheck } from "#providers/risk/honeypot";
 import { searchMarkets } from "#providers/sentiment/polymarket";
 import { isRedditConfigured, searchPosts } from "#providers/sentiment/reddit";
 import { isXConfigured, searchRecentPosts } from "#providers/sentiment/x";
+import { getTokenHolderStats as getMoralisTokenHolderStats, getTokenOwners as getMoralisTokenOwners, isMoralisConfigured } from "#providers/walletTracking/moralis";
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
 import type { FudSearchQuery, PriceHistoryQuery, TokenQuery } from "#routes/helpers";
 import type {
@@ -23,12 +30,6 @@ import type {
   TokenPriceHistoryResponse,
   TokenPricePoint
 } from "#types/api";
-
-type RiskBundle = {
-  honeypot: Awaited<ReturnType<typeof getHoneypotCheck>>;
-  goPlus: Awaited<ReturnType<typeof getTokenSecurity>>;
-  providers: ProviderStatus[];
-};
 
 function parseNumber(value: number | string | undefined | null): number | null {
   if (typeof value === "number") {
@@ -60,6 +61,81 @@ function firstNumber(...values: Array<number | string | undefined | null>): numb
   }
 
   return null;
+}
+
+function normalizeRatioPercent(value: number | string | undefined | null): number | null {
+  const parsed = parseNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+
+  return parsed >= 0 && parsed <= 1 ? parsed * 100 : parsed;
+}
+
+function sumPercentOfSupply<T>(items: T[], limit: number, getPercent: (item: T) => number | null): number | null {
+  const percents = items.slice(0, limit).map(getPercent).filter((value): value is number => value !== null);
+  if (percents.length === 0) {
+    return null;
+  }
+
+  return percents.reduce((sum, value) => sum + value, 0);
+}
+
+function countPercentThreshold<T>(items: T[], threshold: number, getPercent: (item: T) => number | null): number | null {
+  const percents = items.map(getPercent).filter((value): value is number => value !== null);
+  if (percents.length === 0) {
+    return null;
+  }
+
+  return percents.filter((value) => value >= threshold).length;
+}
+
+function buildHolderSignals(input: {
+  top5Percent: number | null;
+  top10Percent: number | null;
+  largestHolderPercent: number | null;
+  holdersOver1Pct: number | null;
+  holdersOver5Pct: number | null;
+  ownerPercent: number | null;
+  creatorPercent: number | null;
+  ownerCanChangeBalance: boolean | null;
+  failedSellers: number | null;
+  siphonedWallets: number | null;
+}): string[] {
+  const signals: string[] = [];
+
+  if (input.top10Percent !== null && input.top10Percent >= 50) {
+    signals.push(`Top 10 holders control ${input.top10Percent.toFixed(2)}% of supply.`);
+  }
+  if (input.top5Percent !== null && input.top5Percent >= 35) {
+    signals.push(`Top 5 holders control ${input.top5Percent.toFixed(2)}% of supply.`);
+  }
+  if (input.largestHolderPercent !== null && input.largestHolderPercent >= 10) {
+    signals.push(`Largest holder controls ${input.largestHolderPercent.toFixed(2)}% of supply.`);
+  }
+  if (input.holdersOver5Pct !== null && input.holdersOver5Pct >= 2) {
+    signals.push(`${input.holdersOver5Pct} wallets each hold at least 5% of supply.`);
+  }
+  if (input.holdersOver1Pct !== null && input.holdersOver1Pct >= 5) {
+    signals.push(`${input.holdersOver1Pct} wallets each hold at least 1% of supply.`);
+  }
+  if (input.ownerPercent !== null && input.ownerPercent >= 5) {
+    signals.push(`Owner wallet still controls ${input.ownerPercent.toFixed(2)}% of supply.`);
+  }
+  if (input.creatorPercent !== null && input.creatorPercent >= 5) {
+    signals.push(`Creator wallet still controls ${input.creatorPercent.toFixed(2)}% of supply.`);
+  }
+  if (input.ownerCanChangeBalance === true) {
+    signals.push("Owner can change balance, which is a major distribution red flag.");
+  }
+  if (input.failedSellers !== null && input.failedSellers > 0) {
+    signals.push(`${input.failedSellers} sampled holders failed to sell.`);
+  }
+  if (input.siphonedWallets !== null && input.siphonedWallets > 0) {
+    signals.push(`${input.siphonedWallets} sampled wallets were flagged as siphoned.`);
+  }
+
+  return signals;
 }
 
 function addStatus(statuses: ProviderStatus[], provider: string, status: ProviderStatus["status"], detail?: string): void {
@@ -197,13 +273,22 @@ function buildFudQuery(query: FudSearchQuery): string {
 type CachedEntry<T> = { data: T; fetchedAt: number };
 const honeypotCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getHoneypotCheck>>>>();
 const goPlusCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getTokenSecurity>>>>();
+const moralisOwnersCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getMoralisTokenOwners>>>>();
+const moralisHolderStatsCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getMoralisTokenHolderStats>>>>();
+const birdeyeSecurityCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeTokenSecurity>>>>();
+const birdeyeHolderDistributionCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeHolderDistribution>>>>();
 
 const RISK_TTL_MS = 3 * 60 * 60 * 1000;          // 3 hours
 const RISK_TTL_YOUNG_MS = 60 * 60 * 1000;         // 1 hour (token < 6h old)
 const YOUNG_TOKEN_THRESHOLD_MS = 6 * 60 * 60 * 1000;
+const HOLDER_TTL_MS = 2 * 60 * 60 * 1000;         // 2 hours
 
 function riskCacheKey(chain: string, tokenAddress: string): string {
   return `${chain}:${tokenAddress.toLowerCase()}`;
+}
+
+function holderCacheKey(chain: string, tokenAddress: string, suffix: string): string {
+  return `${chain}:${tokenAddress.toLowerCase()}:${suffix}`;
 }
 
 function isCacheValid<T>(entry: CachedEntry<T> | undefined, ttlMs: number): boolean {
@@ -252,11 +337,84 @@ function estimateTokenAgeTtl(honeypot: Awaited<ReturnType<typeof getHoneypotChec
   return RISK_TTL_MS;
 }
 
-async function getRiskBundle(chain: SupportedChain, tokenAddress: string): Promise<RiskBundle> {
-  const providers: ProviderStatus[] = [];
-  const honeypot = await getCachedHoneypot(providers, chain, tokenAddress, RISK_TTL_MS);
-  const goPlus = await getCachedGoPlus(providers, chain, tokenAddress, RISK_TTL_MS);
-  return { honeypot, goPlus, providers };
+async function getCachedMoralisOwners(
+  providers: ProviderStatus[],
+  chain: SupportedChain,
+  tokenAddress: string,
+  limit: number,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof getMoralisTokenOwners>> | null> {
+  const key = holderCacheKey(chain, tokenAddress, `moralisOwners:${limit}`);
+  const cached = moralisOwnersCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "moralisOwners", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "moralisOwners", isEvmChain(chain) && isMoralisConfigured(), () => getMoralisTokenOwners(tokenAddress, chain, limit));
+  if (result !== null) {
+    moralisOwnersCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+async function getCachedMoralisHolderStats(
+  providers: ProviderStatus[],
+  chain: SupportedChain,
+  tokenAddress: string,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof getMoralisTokenHolderStats>> | null> {
+  const key = holderCacheKey(chain, tokenAddress, "moralisHolderStats");
+  const cached = moralisHolderStatsCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "moralisHolderStats", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "moralisHolderStats", isEvmChain(chain) && isMoralisConfigured(), () => getMoralisTokenHolderStats(tokenAddress, chain));
+  if (result !== null) {
+    moralisHolderStatsCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+async function getCachedBirdeyeSecurity(
+  providers: ProviderStatus[],
+  tokenAddress: string,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof getBirdeyeTokenSecurity>> | null> {
+  const key = holderCacheKey("sol", tokenAddress, "birdeyeSecurity");
+  const cached = birdeyeSecurityCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "birdeyeSecurity", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "birdeyeSecurity", isBirdeyeConfigured(), () => getBirdeyeTokenSecurity(tokenAddress));
+  if (result !== null) {
+    birdeyeSecurityCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+async function getCachedBirdeyeHolderDistribution(
+  providers: ProviderStatus[],
+  tokenAddress: string,
+  topN: number,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof getBirdeyeHolderDistribution>> | null> {
+  const key = holderCacheKey("sol", tokenAddress, `birdeyeHolderDistribution:${topN}`);
+  const cached = birdeyeHolderDistributionCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "birdeyeHolderDistribution", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "birdeyeHolderDistribution", isBirdeyeConfigured(), () => getBirdeyeHolderDistribution(tokenAddress, topN));
+  if (result !== null) {
+    birdeyeHolderDistributionCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
 }
 
 export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfoResponse> {
@@ -522,23 +680,136 @@ export async function getFullAudit(query: TokenQuery): Promise<FullAuditResponse
 
 export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalysisResponse> {
   const chain = normalizeChain(query.chain);
-  const risk = await getRiskBundle(chain, query.tokenAddress);
-  const analysis = risk.honeypot?.holderAnalysis;
+  const providers: ProviderStatus[] = [];
+
+  const moralisOwnersCached = moralisOwnersCache.get(holderCacheKey(chain, query.tokenAddress, "moralisOwners:10"));
+  const moralisStatsCached = moralisHolderStatsCache.get(holderCacheKey(chain, query.tokenAddress, "moralisHolderStats"));
+  const birdeyeSecurityCached = birdeyeSecurityCache.get(holderCacheKey("sol", query.tokenAddress, "birdeyeSecurity"));
+  const birdeyeDistributionCached = birdeyeHolderDistributionCache.get(holderCacheKey("sol", query.tokenAddress, "birdeyeHolderDistribution:10"));
+
+  const moralisOwners = isEvmChain(chain)
+    ? await getCachedMoralisOwners(providers, chain, query.tokenAddress, 10, HOLDER_TTL_MS)
+    : null;
+  const moralisHolderStats = isEvmChain(chain)
+    ? await getCachedMoralisHolderStats(providers, chain, query.tokenAddress, HOLDER_TTL_MS)
+    : null;
+  const birdeyeSecurity = chain === "sol"
+    ? await getCachedBirdeyeSecurity(providers, query.tokenAddress, HOLDER_TTL_MS)
+    : null;
+  const birdeyeDistribution = chain === "sol"
+    ? await getCachedBirdeyeHolderDistribution(providers, query.tokenAddress, 10, HOLDER_TTL_MS)
+    : null;
+
+  const topHolders = chain === "sol"
+    ? (birdeyeDistribution?.data?.holders ?? []).flatMap((holder) => {
+        if (!holder.wallet) {
+          return [];
+        }
+
+        return [{
+          address: holder.wallet,
+          label: null,
+          entity: null,
+          isContract: null,
+          balance: firstNumber(holder.holding),
+          balanceFormatted: firstNumber(holder.holding),
+          percentOfSupply: firstNumber(holder.percent_of_supply)
+        }];
+      })
+    : (moralisOwners?.result ?? []).flatMap((owner) => {
+        if (!owner.owner_address) {
+          return [];
+        }
+
+        return [{
+          address: owner.owner_address,
+          label: owner.owner_address_label ?? null,
+          entity: owner.entity ?? null,
+          isContract: owner.is_contract ?? null,
+          balance: firstNumber(owner.balance),
+          balanceFormatted: firstNumber(owner.balance_formatted),
+          percentOfSupply: firstNumber(owner.percentage_relative_to_total_supply)
+        }];
+      });
+
+  const top5Percent = sumPercentOfSupply(topHolders, 5, (holder) => holder.percentOfSupply);
+  const top10Percent = sumPercentOfSupply(topHolders, 10, (holder) => holder.percentOfSupply)
+    ?? firstNumber(birdeyeSecurity?.data?.top10HolderPercent)
+    ?? normalizeRatioPercent(moralisHolderStats?.holderSupply?.top10?.supplyPercent);
+  const largestHolderPercent = topHolders[0]?.percentOfSupply ?? null;
+  const holdersOver1Pct = countPercentThreshold(topHolders, 1, (holder) => holder.percentOfSupply);
+  const holdersOver5Pct = countPercentThreshold(topHolders, 5, (holder) => holder.percentOfSupply);
+
+  const signals = buildHolderSignals({
+    top5Percent,
+    top10Percent,
+    largestHolderPercent,
+    holdersOver1Pct,
+    holdersOver5Pct,
+    ownerPercent: null,
+    creatorPercent: null,
+    ownerCanChangeBalance: null,
+    failedSellers: null,
+    siphonedWallets: null,
+  });
+
+  const fromCache = chain === "sol"
+    ? isCacheValid(birdeyeSecurityCached, HOLDER_TTL_MS) && isCacheValid(birdeyeDistributionCached, HOLDER_TTL_MS)
+    : isCacheValid(moralisOwnersCached, HOLDER_TTL_MS)
+      && isCacheValid(moralisStatsCached, HOLDER_TTL_MS);
 
   return {
     endpoint: "holderAnalysis",
-    status: summarizeStatus(risk.providers),
+    status: summarizeStatus(providers),
     chain,
     tokenAddress: query.tokenAddress,
-    totalHolders: firstNumber(risk.honeypot?.token?.totalHolders, risk.goPlus?.holder_count),
-    analyzedHolders: firstNumber(analysis?.holders),
-    successfulSellers: firstNumber(analysis?.successful),
-    failedSellers: firstNumber(analysis?.failed),
-    siphonedWallets: firstNumber(analysis?.siphoned),
-    averageTax: firstNumber(analysis?.averageTax),
-    highestTax: firstNumber(analysis?.highestTax),
-    averageGas: firstNumber(analysis?.averageGas),
-    providers: risk.providers
+    cached: fromCache,
+    summary: {
+      totalHolders: firstNumber(moralisHolderStats?.totalHolders, birdeyeDistribution?.data?.summary?.wallet_count),
+      analyzedHolders: topHolders.length,
+      top5Percent,
+      top10Percent,
+      largestHolderPercent,
+      holdersOver1Pct,
+      holdersOver5Pct,
+    },
+    topHolders,
+    holders: {
+      total: firstNumber(moralisHolderStats?.totalHolders, birdeyeDistribution?.data?.summary?.wallet_count),
+      analyzed: topHolders.length,
+      lpHolders: null
+    },
+    distribution: {
+      top25Percent: normalizeRatioPercent(moralisHolderStats?.holderSupply?.top25?.supplyPercent),
+      top50Percent: normalizeRatioPercent(moralisHolderStats?.holderSupply?.top50?.supplyPercent),
+      top100Percent: normalizeRatioPercent(moralisHolderStats?.holderSupply?.top100?.supplyPercent),
+      whales: firstNumber(moralisHolderStats?.holderDistribution?.whales),
+      sharks: firstNumber(moralisHolderStats?.holderDistribution?.sharks),
+      dolphins: firstNumber(moralisHolderStats?.holderDistribution?.dolphins),
+      fish: firstNumber(moralisHolderStats?.holderDistribution?.fish),
+      octopus: firstNumber(moralisHolderStats?.holderDistribution?.octopus),
+      crabs: firstNumber(moralisHolderStats?.holderDistribution?.crabs),
+      shrimps: firstNumber(moralisHolderStats?.holderDistribution?.shrimps)
+    },
+    holderChange: {
+      change5mPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["5min"]?.changePercent),
+      change1hPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["1h"]?.changePercent),
+      change6hPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["6h"]?.changePercent),
+      change24hPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["24h"]?.changePercent),
+      change3dPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["3d"]?.changePercent),
+      change7dPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["7d"]?.changePercent),
+      change30dPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["30d"]?.changePercent)
+    },
+    concentration: {
+      top10HolderPercent: firstNumber(birdeyeSecurity?.data?.top10HolderPercent, top10Percent),
+      top10UserPercent: firstNumber(birdeyeSecurity?.data?.top10UserPercent)
+    },
+    supply: {
+      totalSupply: firstNumber(birdeyeSecurity?.data?.totalSupply, moralisOwners?.total_supply),
+      lpTotalSupply: null
+    },
+    signals,
+    providers
   };
 }
 
