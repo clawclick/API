@@ -47,6 +47,8 @@ export function toDexScreenerChain(chain: SupportedChain): string | null {
       return "base";
     case "bsc":
       return "bsc";
+    case "sol":
+      return "solana";
     default:
       return null;
   }
@@ -75,5 +77,18 @@ export function toCoinGeckoPlatform(chain: SupportedChain): string | null {
       return "binance-smart-chain";
     default:
       return null;
+  }
+}
+
+export function toAlchemyNetwork(chain: SupportedChain): string {
+  switch (chain) {
+    case "eth":
+      return "eth-mainnet";
+    case "base":
+      return "base-mainnet";
+    case "bsc":
+      return "bnb-mainnet";
+    case "sol":
+      return "solana-mainnet";
   }
 }

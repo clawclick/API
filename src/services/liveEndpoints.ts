@@ -1,8 +1,9 @@
 import { isConfigured } from "#config/env";
-import { getTokenOverview as getBirdeyeOverview, getTokenHistory as getBirdeyeHistory, isBirdeyeConfigured } from "#providers/market/birdeye";
+import { getHistoricalPrices as getAlchemyHistory, isAlchemyConfigured } from "#providers/market/alchemy";
+import { getTokenOverview as getBirdeyeOverview, getOhlcv as getBirdeyeOhlcv, isBirdeyeConfigured } from "#providers/market/birdeye";
 import { getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
 import { getTokenPairs } from "#providers/market/dexScreener";
-import { getToken as getGeckoTerminalToken } from "#providers/market/geckoTerminal";
+import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPools, getOhlcv as getGeckoTerminalOhlcv } from "#providers/market/geckoTerminal";
 import { getTokenSecurity } from "#providers/risk/goPlus";
 import { getHoneypotCheck } from "#providers/risk/honeypot";
 import { searchMarkets } from "#providers/sentiment/polymarket";
@@ -63,6 +64,19 @@ function firstNumber(...values: Array<number | string | undefined | null>): numb
 
 function addStatus(statuses: ProviderStatus[], provider: string, status: ProviderStatus["status"], detail?: string): void {
   statuses.push({ provider, status, detail });
+}
+
+function formatDexLabel(dexId: string | undefined, labels: string[] | undefined): string | null {
+  if (!dexId) return null;
+  const version = labels?.find((l) => /^v\d/i.test(l));
+  return version ? `${dexId}_${version.toLowerCase()}` : dexId;
+}
+
+// In-memory cache: token → pool address (survives until server restart)
+const poolAddressCache = new Map<string, string>();
+
+function poolCacheKey(chain: string, tokenAddress: string): string {
+  return `${chain}:${tokenAddress.toLowerCase()}`;
 }
 
 async function runProvider<T>(statuses: ProviderStatus[], provider: string, shouldRun: boolean, task: () => Promise<T>): Promise<T | null> {
@@ -128,6 +142,48 @@ function getBirdeyeHistoryType(limit: string): string {
   return "ALL";
 }
 
+function getGeckoTerminalOhlcvParams(interval: string, limit: string): { timeframe: string; aggregate: number; candleLimit: number } {
+  const days = getHistoryDays(limit);
+
+  // Map user interval to GeckoTerminal timeframe + aggregate
+  let timeframe = "day";
+  let aggregate = 1;
+  const iv = interval.trim().toLowerCase();
+  if (iv === "1m" || iv === "5m" || iv === "15m") {
+    timeframe = "minute";
+    aggregate = Number(iv.replace("m", ""));
+  } else if (iv === "1h" || iv === "4h" || iv === "12h") {
+    timeframe = "hour";
+    aggregate = Number(iv.replace("h", ""));
+  } else {
+    timeframe = "day";
+    aggregate = 1;
+  }
+
+  // Calculate how many candles we need
+  const hoursInRange = days * 24;
+  let candleLimit: number;
+  if (timeframe === "minute") {
+    candleLimit = Math.min(Math.ceil((hoursInRange * 60) / aggregate), 1000);
+  } else if (timeframe === "hour") {
+    candleLimit = Math.min(Math.ceil(hoursInRange / aggregate), 1000);
+  } else {
+    candleLimit = Math.min(days, 1000);
+  }
+
+  return { timeframe, aggregate, candleLimit };
+}
+
+function getBirdeyeOhlcvType(interval: string): string {
+  const iv = interval.trim().toLowerCase();
+  if (iv === "1m") return "1m";
+  if (iv === "5m") return "5m";
+  if (iv === "15m") return "15m";
+  if (iv === "1h") return "1H";
+  if (iv === "4h") return "4H";
+  return "1D";
+}
+
 function buildFudQuery(query: FudSearchQuery): string {
   const parts = [query.tokenName, query.symbol];
   if (query.tokenAddress) {
@@ -149,52 +205,125 @@ export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfo
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
 
-  const dexPairs = await runProvider(providers, "dexScreener", isEvmChain(chain), () => getTokenPairs(chain, query.tokenAddress));
-  const geckoTerminal = await runProvider(providers, "geckoTerminal", isEvmChain(chain), () => getGeckoTerminalToken(chain, query.tokenAddress));
-  const coinGecko = await runProvider(providers, "coinGecko", isEvmChain(chain), () => getTokenPrice(chain, query.tokenAddress));
-  const birdeye = await runProvider(providers, "birdeye", chain === "sol" && isBirdeyeConfigured(), () => getBirdeyeOverview(query.tokenAddress));
-
+  // Primary: DexScreener (free, all chains, has everything we need)
+  const dexPairs = await runProvider(providers, "dexScreener", true, () => getTokenPairs(chain, query.tokenAddress));
   const topDexPair = dexPairs?.[0];
-  const geckoAttributes = geckoTerminal?.data?.attributes;
-  const birdeyeData = birdeye?.data;
 
-  return {
+  // Check if primary gave us the key fields
+  const hasPrimary = topDexPair?.priceUsd != null;
+
+  // Fallback: only call if DexScreener failed or errored
+  let geckoAttributes: Record<string, any> | undefined;
+  let birdeyeData: Record<string, any> | undefined;
+  let coinGecko: Awaited<ReturnType<typeof getTokenPrice>> | null = null;
+
+  if (!hasPrimary && isEvmChain(chain)) {
+    const gt = await runProvider(providers, "geckoTerminal", true, () => getGeckoTerminalToken(chain, query.tokenAddress));
+    geckoAttributes = gt?.data?.attributes;
+    if (!geckoAttributes?.price_usd) {
+      coinGecko = await runProvider(providers, "coinGecko", true, () => getTokenPrice(chain, query.tokenAddress));
+    }
+  } else if (!hasPrimary && chain === "sol" && isBirdeyeConfigured()) {
+    const be = await runProvider(providers, "birdeye", true, () => getBirdeyeOverview(query.tokenAddress));
+    birdeyeData = be?.data;
+  }
+
+  const result: TokenPoolInfoResponse = {
     endpoint: "tokenPoolInfo",
     status: summarizeStatus(providers),
     chain,
     tokenAddress: query.tokenAddress,
-    name: birdeyeData?.name ?? topDexPair?.baseToken?.name ?? geckoAttributes?.name ?? null,
-    symbol: birdeyeData?.symbol ?? topDexPair?.baseToken?.symbol ?? geckoAttributes?.symbol ?? null,
-    priceUsd: firstNumber(birdeyeData?.price, topDexPair?.priceUsd, geckoAttributes?.price_usd, coinGecko?.usd),
-    marketCapUsd: firstNumber(birdeyeData?.marketCap, topDexPair?.marketCap, geckoAttributes?.market_cap_usd, coinGecko?.usd_market_cap),
-    fdvUsd: firstNumber(birdeyeData?.fdv, topDexPair?.fdv, geckoAttributes?.fdv_usd),
-    liquidityUsd: firstNumber(birdeyeData?.liquidity, topDexPair?.liquidity?.usd, geckoAttributes?.total_reserve_in_usd),
-    volume24hUsd: firstNumber(birdeyeData?.v24hUSD, topDexPair?.volume?.h24, geckoAttributes?.volume_usd?.h24, coinGecko?.usd_24h_vol),
-    priceChange24hPct: firstNumber(birdeyeData?.priceChange24hPercent, topDexPair?.priceChange?.h24, coinGecko?.usd_24h_change),
+    name: topDexPair?.baseToken?.name ?? birdeyeData?.name ?? geckoAttributes?.name ?? null,
+    symbol: topDexPair?.baseToken?.symbol ?? birdeyeData?.symbol ?? geckoAttributes?.symbol ?? null,
+    priceUsd: firstNumber(topDexPair?.priceUsd, birdeyeData?.price, geckoAttributes?.price_usd, coinGecko?.usd),
+    marketCapUsd: firstNumber(topDexPair?.marketCap, birdeyeData?.marketCap, geckoAttributes?.market_cap_usd, coinGecko?.usd_market_cap),
+    fdvUsd: firstNumber(topDexPair?.fdv, birdeyeData?.fdv, geckoAttributes?.fdv_usd),
+    liquidityUsd: firstNumber(topDexPair?.liquidity?.usd, birdeyeData?.liquidity, geckoAttributes?.total_reserve_in_usd),
+    volume24hUsd: firstNumber(topDexPair?.volume?.h24, birdeyeData?.v24hUSD, geckoAttributes?.volume_usd?.h24, coinGecko?.usd_24h_vol),
+    priceChange24hPct: firstNumber(topDexPair?.priceChange?.h24, birdeyeData?.priceChange24hPercent, coinGecko?.usd_24h_change),
     pairAddress: topDexPair?.pairAddress ?? null,
-    dex: topDexPair?.dexId ?? null,
-    imageUrl: geckoAttributes?.image_url ?? null,
+    dex: formatDexLabel(topDexPair?.dexId, topDexPair?.labels),
     providers
   };
+
+  // Cache the pair address for future OHLCV lookups
+  if (topDexPair?.pairAddress) {
+    poolAddressCache.set(poolCacheKey(chain, query.tokenAddress), topDexPair.pairAddress);
+  }
+
+  return result;
 }
 
 export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<TokenPriceHistoryResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
   const days = getHistoryDays(query.limit);
+  let points: TokenPricePoint[] = [];
 
-  const coinGeckoHistory = await runProvider(providers, "coinGecko", isEvmChain(chain), () => getTokenMarketChart(chain, query.tokenAddress, days));
-  const birdeyeHistory = await runProvider(providers, "birdeye", chain === "sol" && isBirdeyeConfigured(), () => getBirdeyeHistory(query.tokenAddress, getBirdeyeHistoryType(query.limit)));
+  // ── EVM: GeckoTerminal OHLCV (primary) ──
+  if (isEvmChain(chain)) {
+    const cacheKey = poolCacheKey(chain, query.tokenAddress);
+    let poolAddress = poolAddressCache.get(cacheKey);
 
-  const points: TokenPricePoint[] = (coinGeckoHistory?.prices?.map(([timestamp, price]) => ({ timestamp, priceUsd: price }))
-    ?? birdeyeHistory?.data?.items?.flatMap((item) => {
-      if (item.unixTime === undefined || item.value === undefined) {
-        return [];
+    if (!poolAddress) {
+      const pools = await runProvider(providers, "geckoTerminal", true, () => getGeckoTerminalTopPools(chain, query.tokenAddress));
+      poolAddress = pools?.data?.[0]?.attributes?.address ?? undefined;
+      if (poolAddress) poolAddressCache.set(cacheKey, poolAddress);
+    }
+
+    if (poolAddress) {
+      const { timeframe, aggregate, candleLimit } = getGeckoTerminalOhlcvParams(query.interval, query.limit);
+      const ohlcv = await runProvider(providers, "geckoTerminalOhlcv", true, () => getGeckoTerminalOhlcv(chain, poolAddress, timeframe, aggregate, candleLimit));
+      const candles = ohlcv?.data?.attributes?.ohlcv_list;
+      if (candles?.length) {
+        points = candles.map(([ts, o, h, l, c, v]) => ({
+          timestamp: ts * 1000,
+          priceUsd: c,
+          open: o,
+          high: h,
+          low: l,
+          close: c,
+          volume: v
+        }));
       }
+    }
+  }
 
-      return [{ timestamp: item.unixTime * 1000, priceUsd: item.value }];
-    })
-    ?? []);
+  // ── SOL: Birdeye OHLCV (primary) ──
+  if (chain === "sol" && isBirdeyeConfigured() && points.length === 0) {
+    const now = Math.floor(Date.now() / 1000);
+    const from = now - days * 86400;
+    const beOhlcv = await runProvider(providers, "birdeye", true, () => getBirdeyeOhlcv(query.tokenAddress, getBirdeyeOhlcvType(query.interval), from, now));
+    const items = beOhlcv?.data?.items;
+    if (items?.length) {
+      points = items.flatMap((item) => {
+        if (item.unixTime === undefined || item.c === undefined) return [];
+        return [{
+          timestamp: item.unixTime * 1000,
+          priceUsd: item.c,
+          open: item.o,
+          high: item.h,
+          low: item.l,
+          close: item.c,
+          volume: item.v
+        }];
+      });
+    }
+  }
+
+  // ── Fallback: Alchemy (all chains, prices only) ──
+  if (points.length === 0 && isAlchemyConfigured()) {
+    const endTime = new Date().toISOString();
+    const startTime = new Date(Date.now() - days * 86400_000).toISOString();
+    const alchemyInterval = query.interval.trim().toLowerCase().endsWith("h") ? "1h" : "1d";
+    const alchemy = await runProvider(providers, "alchemy", true, () => getAlchemyHistory(chain, query.tokenAddress, startTime, endTime, alchemyInterval));
+    if (alchemy?.data?.length) {
+      points = alchemy.data.map((p) => ({
+        timestamp: new Date(p.timestamp).getTime(),
+        priceUsd: Number(p.value)
+      }));
+    }
+  }
 
   return {
     endpoint: "tokenPriceHistory",

@@ -31,6 +31,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "dexScreener", label: "DEX Screener", category: "marketData", folder: "Market_data/LowCaps/DEX_Screener", env: [], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview"] },
   { id: "dextools", label: "DEXTools", category: "marketData", folder: "Market_data/LowCaps/Dextoools", env: ["DEXTOOLS_API_KEY"], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "geckoTerminal", label: "GeckoTerminal", category: "marketData", folder: "Market_data/LowCaps/GeckoTerminal", env: [], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview"] },
+  { id: "alchemy", label: "Alchemy", category: "marketData", folder: "Market_data/MidCapsAndMajors/Alchemy", env: ["ALCHEMY_API_KEY"], endpoints: ["tokenPriceHistory"] },
   { id: "coinGecko", label: "CoinGecko", category: "marketData", folder: "Market_data/MidCapsAndMajors/CoinGecko", env: ["COINGECKO_PRO_API_KEY"], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview"] },
   { id: "coinMarketCap", label: "CoinMarketCap", category: "marketData", folder: "Market_data/MidCapsAndMajors/Coinmarketcap", env: ["CMC_API_KEY"], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "newPairsDexScreener", label: "DexScreener New Pairs", category: "newPairs", folder: "New_pairs/Dexscreener_new_pairs", env: [], endpoints: ["marketOverview"] },

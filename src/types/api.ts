@@ -92,13 +92,17 @@ export type TokenPoolInfoResponse = {
   priceChange24hPct: number | null;
   pairAddress: string | null;
   dex: string | null;
-  imageUrl: string | null;
   providers: ProviderStatus[];
 };
 
 export type TokenPricePoint = {
   timestamp: number;
   priceUsd: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
 };
 
 export type TokenPriceHistoryResponse = {

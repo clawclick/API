@@ -18,6 +18,7 @@
 
     "#providers/shared/chains": "./src/lib/chains.ts",
 
+    "#providers/market/alchemy": "./Market_data/MidCapsAndMajors/Alchemy/provider.ts",
     "#providers/market/coinGecko": "./Market_data/MidCapsAndMajors/CoinGecko/provider.ts",
     "#providers/market/coinMarketCap": "./Market_data/MidCapsAndMajors/Coinmarketcap/provider.ts",
     "#providers/market/birdeye": "./Market_data/LowCaps/Birdeye/provider.ts",
