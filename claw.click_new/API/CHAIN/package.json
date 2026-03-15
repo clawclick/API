@@ -1,0 +1,18 @@
+{
+  "name": "claw-click-api-modules",
+  "version": "1.0.0",
+  "description": "Individual API modules for multi-chain trading infrastructure",
+  "type": "module",
+  "main": "ETH/index.js",
+  "scripts": {
+    "test": "node test.js",
+    "test-eth": "node test-eth.js"
+  },
+  "dependencies": {
+    "ethers": "^6.10.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
