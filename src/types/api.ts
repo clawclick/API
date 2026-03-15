@@ -126,6 +126,7 @@ export type IsScamResponse = {
   risk: string | null;
   riskLevel: number | null;
   warnings: string[];
+  cached: boolean;
   providers: ProviderStatus[];
 };
 
@@ -134,25 +135,50 @@ export type FullAuditResponse = {
   status: "live" | "partial";
   chain: string;
   tokenAddress: string;
+  cached: boolean;
   summary: {
     isScam: boolean | null;
     risk: string | null;
     riskLevel: number | null;
+    warnings: string[];
   };
-  honeypot: {
-    isHoneypot: boolean | null;
+  taxes: {
     buyTax: number | null;
     sellTax: number | null;
     transferTax: number | null;
-    openSource: boolean | null;
-    hasProxyCalls: boolean | null;
   };
-  goPlus: {
+  contract: {
+    openSource: boolean | null;
+    isProxy: boolean | null;
+    hasProxyCalls: boolean | null;
+    isMintable: boolean | null;
+    canTakeBackOwnership: boolean | null;
+    hiddenOwner: boolean | null;
+    selfDestruct: boolean | null;
+    externalCall: boolean | null;
+    ownerAddress: string | null;
+    creatorAddress: string | null;
+  };
+  trading: {
     cannotBuy: boolean | null;
     cannotSellAll: boolean | null;
-    isProxy: boolean | null;
-    isMintable: boolean | null;
+    isAntiWhale: boolean | null;
+    tradingCooldown: boolean | null;
+    transferPausable: boolean | null;
+    personalSlippageModifiable: boolean | null;
+    isBlacklisted: boolean | null;
+    isWhitelisted: boolean | null;
+  };
+  holders: {
     holderCount: number | null;
+    lpHolderCount: number | null;
+    ownerPercent: number | null;
+    creatorPercent: number | null;
+    totalHolders: number | null;
+  };
+  simulation: {
+    buyGas: string | null;
+    sellGas: string | null;
   };
   providers: ProviderStatus[];
 };

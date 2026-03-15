@@ -193,11 +193,69 @@ function buildFudQuery(query: FudSearchQuery): string {
   return parts.filter(Boolean).join(" OR ");
 }
 
+// ── TTL caches for risk data ──
+type CachedEntry<T> = { data: T; fetchedAt: number };
+const honeypotCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getHoneypotCheck>>>>();
+const goPlusCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getTokenSecurity>>>>();
+
+const RISK_TTL_MS = 3 * 60 * 60 * 1000;          // 3 hours
+const RISK_TTL_YOUNG_MS = 60 * 60 * 1000;         // 1 hour (token < 6h old)
+const YOUNG_TOKEN_THRESHOLD_MS = 6 * 60 * 60 * 1000;
+
+function riskCacheKey(chain: string, tokenAddress: string): string {
+  return `${chain}:${tokenAddress.toLowerCase()}`;
+}
+
+function isCacheValid<T>(entry: CachedEntry<T> | undefined, ttlMs: number): boolean {
+  if (!entry) return false;
+  return Date.now() - entry.fetchedAt < ttlMs;
+}
+
+async function getCachedHoneypot(
+  providers: ProviderStatus[],
+  chain: SupportedChain,
+  tokenAddress: string,
+  ttlMs: number
+): Promise<Awaited<ReturnType<typeof getHoneypotCheck>>> {
+  const key = riskCacheKey(chain, tokenAddress);
+  const cached = honeypotCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "honeypot", "ok", "cached");
+    return cached!.data;
+  }
+  const result = await runProvider(providers, "honeypot", isEvmChain(chain), () => getHoneypotCheck(chain, tokenAddress));
+  if (result !== null) honeypotCache.set(key, { data: result, fetchedAt: Date.now() });
+  return result;
+}
+
+async function getCachedGoPlus(
+  providers: ProviderStatus[],
+  chain: SupportedChain,
+  tokenAddress: string,
+  ttlMs: number
+): Promise<Awaited<ReturnType<typeof getTokenSecurity>>> {
+  const key = riskCacheKey(chain, tokenAddress);
+  const cached = goPlusCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "goPlus", "ok", "cached");
+    return cached!.data;
+  }
+  const result = await runProvider(providers, "goPlus", isEvmChain(chain), () => getTokenSecurity(chain, tokenAddress));
+  if (result !== null) goPlusCache.set(key, { data: result, fetchedAt: Date.now() });
+  return result;
+}
+
+function estimateTokenAgeTtl(honeypot: Awaited<ReturnType<typeof getHoneypotCheck>>): number {
+  // If honeypot.is reports very few holders, it's likely a young token
+  const holders = honeypot?.token?.totalHolders;
+  if (holders !== undefined && holders < 200) return RISK_TTL_YOUNG_MS;
+  return RISK_TTL_MS;
+}
+
 async function getRiskBundle(chain: SupportedChain, tokenAddress: string): Promise<RiskBundle> {
   const providers: ProviderStatus[] = [];
-  const honeypot = await runProvider(providers, "honeypot", isEvmChain(chain), () => getHoneypotCheck(chain, tokenAddress));
-  const goPlus = await runProvider(providers, "goPlus", isEvmChain(chain), () => getTokenSecurity(chain, tokenAddress));
-
+  const honeypot = await getCachedHoneypot(providers, chain, tokenAddress, RISK_TTL_MS);
+  const goPlus = await getCachedGoPlus(providers, chain, tokenAddress, RISK_TTL_MS);
   return { honeypot, goPlus, providers };
 }
 
@@ -340,67 +398,125 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
 
 export async function getIsScam(query: TokenQuery): Promise<IsScamResponse> {
   const chain = normalizeChain(query.chain);
-  const risk = await getRiskBundle(chain, query.tokenAddress);
+  const providers: ProviderStatus[] = [];
+
+  // Check cache first
+  const key = riskCacheKey(chain, query.tokenAddress);
+  const cached = honeypotCache.get(key);
+  const fromCache = isCacheValid(cached, RISK_TTL_MS);
+
+  const honeypot = await getCachedHoneypot(providers, chain, query.tokenAddress, RISK_TTL_MS);
 
   const warnings = [
-    risk.honeypot?.honeypotResult?.honeypotReason,
-    ...(risk.honeypot?.summary?.flags?.map((flag) => flag.description ?? flag.flag ?? "") ?? []),
-    parseBooleanFlag(risk.goPlus?.cannot_buy) ? "Token may block buys." : null,
-    parseBooleanFlag(risk.goPlus?.cannot_sell_all) ? "Token may prevent full sells." : null
+    honeypot?.honeypotResult?.honeypotReason,
+    ...(honeypot?.summary?.flags?.map((flag) => flag.description ?? flag.flag ?? "") ?? [])
   ].filter((value): value is string => Boolean(value));
 
-  const riskLevel = firstNumber(risk.honeypot?.summary?.riskLevel);
-  const isScam = risk.honeypot?.honeypotResult?.isHoneypot
-    ?? (parseBooleanFlag(risk.goPlus?.cannot_buy) === true || parseBooleanFlag(risk.goPlus?.cannot_sell_all) === true)
+  const riskLevel = firstNumber(honeypot?.summary?.riskLevel);
+  const isScam = honeypot?.honeypotResult?.isHoneypot
     ?? (riskLevel !== null ? riskLevel >= 60 : null);
 
   return {
     endpoint: "isScam",
-    status: summarizeStatus(risk.providers),
+    status: summarizeStatus(providers),
     chain,
     tokenAddress: query.tokenAddress,
     isScam,
-    risk: risk.honeypot?.summary?.risk ?? null,
+    risk: honeypot?.summary?.risk ?? null,
     riskLevel,
     warnings,
-    providers: risk.providers
+    cached: fromCache,
+    providers
   };
 }
 
 export async function getFullAudit(query: TokenQuery): Promise<FullAuditResponse> {
   const chain = normalizeChain(query.chain);
-  const risk = await getRiskBundle(chain, query.tokenAddress);
-  const riskLevel = firstNumber(risk.honeypot?.summary?.riskLevel);
-  const isScam = risk.honeypot?.honeypotResult?.isHoneypot
-    ?? (parseBooleanFlag(risk.goPlus?.cannot_buy) === true || parseBooleanFlag(risk.goPlus?.cannot_sell_all) === true)
-    ?? (riskLevel !== null ? riskLevel >= 60 : null);
+  const providers: ProviderStatus[] = [];
+
+  // Check caches before fetching
+  const key = riskCacheKey(chain, query.tokenAddress);
+  const hpCached = honeypotCache.get(key);
+  const gpCached = goPlusCache.get(key);
+
+  // Fetch honeypot first to determine TTL
+  const honeypot = await getCachedHoneypot(providers, chain, query.tokenAddress, RISK_TTL_MS);
+  const ttl = estimateTokenAgeTtl(honeypot);
+  const goPlus = await getCachedGoPlus(providers, chain, query.tokenAddress, ttl);
+
+  const fromCache = isCacheValid(hpCached, ttl) && isCacheValid(gpCached, ttl);
+
+  // Build warnings from both providers
+  const warnings = [
+    honeypot?.honeypotResult?.honeypotReason,
+    ...(honeypot?.summary?.flags?.map((flag) => flag.description ?? flag.flag ?? "") ?? []),
+    parseBooleanFlag(goPlus?.cannot_buy) ? "Token may block buys." : null,
+    parseBooleanFlag(goPlus?.cannot_sell_all) ? "Token may prevent full sells." : null,
+    parseBooleanFlag(goPlus?.is_honeypot) ? "GoPlus flagged as honeypot." : null,
+    parseBooleanFlag(goPlus?.hidden_owner) ? "Contract has a hidden owner." : null,
+    parseBooleanFlag(goPlus?.selfdestruct) ? "Contract can self-destruct." : null,
+    parseBooleanFlag(goPlus?.external_call) ? "Contract makes external calls." : null,
+    parseBooleanFlag(goPlus?.can_take_back_ownership) ? "Ownership can be reclaimed." : null,
+    parseBooleanFlag(goPlus?.transfer_pausable) ? "Transfers can be paused." : null,
+    parseBooleanFlag(goPlus?.trading_cooldown) ? "Trading cooldown enabled." : null
+  ].filter((value): value is string => Boolean(value));
+
+  const riskLevel = firstNumber(honeypot?.summary?.riskLevel);
+  const isScam = (honeypot?.honeypotResult?.isHoneypot
+    ?? (parseBooleanFlag(goPlus?.cannot_buy) === true || parseBooleanFlag(goPlus?.cannot_sell_all) === true || parseBooleanFlag(goPlus?.is_honeypot) === true))
+    || (riskLevel !== null ? riskLevel >= 60 : null);
 
   return {
     endpoint: "fullAudit",
-    status: summarizeStatus(risk.providers),
+    status: summarizeStatus(providers),
     chain,
     tokenAddress: query.tokenAddress,
+    cached: fromCache,
     summary: {
       isScam,
-      risk: risk.honeypot?.summary?.risk ?? null,
-      riskLevel
+      risk: honeypot?.summary?.risk ?? null,
+      riskLevel,
+      warnings
     },
-    honeypot: {
-      isHoneypot: risk.honeypot?.honeypotResult?.isHoneypot ?? null,
-      buyTax: firstNumber(risk.honeypot?.simulationResult?.buyTax),
-      sellTax: firstNumber(risk.honeypot?.simulationResult?.sellTax),
-      transferTax: firstNumber(risk.honeypot?.simulationResult?.transferTax),
-      openSource: risk.honeypot?.contractCode?.openSource ?? null,
-      hasProxyCalls: risk.honeypot?.contractCode?.hasProxyCalls ?? null
+    taxes: {
+      buyTax: firstNumber(honeypot?.simulationResult?.buyTax, goPlus?.buy_tax),
+      sellTax: firstNumber(honeypot?.simulationResult?.sellTax, goPlus?.sell_tax),
+      transferTax: firstNumber(honeypot?.simulationResult?.transferTax)
     },
-    goPlus: {
-      cannotBuy: parseBooleanFlag(risk.goPlus?.cannot_buy),
-      cannotSellAll: parseBooleanFlag(risk.goPlus?.cannot_sell_all),
-      isProxy: parseBooleanFlag(risk.goPlus?.is_proxy),
-      isMintable: parseBooleanFlag(risk.goPlus?.is_mintable),
-      holderCount: firstNumber(risk.goPlus?.holder_count)
+    contract: {
+      openSource: honeypot?.contractCode?.openSource ?? parseBooleanFlag(goPlus?.is_open_source),
+      isProxy: parseBooleanFlag(goPlus?.is_proxy),
+      hasProxyCalls: honeypot?.contractCode?.hasProxyCalls ?? null,
+      isMintable: parseBooleanFlag(goPlus?.is_mintable),
+      canTakeBackOwnership: parseBooleanFlag(goPlus?.can_take_back_ownership),
+      hiddenOwner: parseBooleanFlag(goPlus?.hidden_owner),
+      selfDestruct: parseBooleanFlag(goPlus?.selfdestruct),
+      externalCall: parseBooleanFlag(goPlus?.external_call),
+      ownerAddress: goPlus?.owner_address ?? null,
+      creatorAddress: goPlus?.creator_address ?? null
     },
-    providers: risk.providers
+    trading: {
+      cannotBuy: parseBooleanFlag(goPlus?.cannot_buy),
+      cannotSellAll: parseBooleanFlag(goPlus?.cannot_sell_all),
+      isAntiWhale: parseBooleanFlag(goPlus?.is_anti_whale),
+      tradingCooldown: parseBooleanFlag(goPlus?.trading_cooldown),
+      transferPausable: parseBooleanFlag(goPlus?.transfer_pausable),
+      personalSlippageModifiable: parseBooleanFlag(goPlus?.personal_slippage_modifiable),
+      isBlacklisted: parseBooleanFlag(goPlus?.is_blacklisted),
+      isWhitelisted: parseBooleanFlag(goPlus?.is_whitelisted)
+    },
+    holders: {
+      holderCount: firstNumber(goPlus?.holder_count),
+      lpHolderCount: firstNumber(goPlus?.lp_holder_count),
+      ownerPercent: firstNumber(goPlus?.owner_percent),
+      creatorPercent: firstNumber(goPlus?.creator_percent),
+      totalHolders: firstNumber(honeypot?.token?.totalHolders, goPlus?.holder_count)
+    },
+    simulation: {
+      buyGas: honeypot?.simulationResult?.buyGas?.toString() ?? null,
+      sellGas: honeypot?.simulationResult?.sellGas?.toString() ?? null
+    },
+    providers
   };
 }
 
