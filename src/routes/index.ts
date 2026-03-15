@@ -10,7 +10,8 @@ import {
 } from "#services/liveEndpoints";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
-import { fudSearchSchema, parseQuery, priceHistorySchema, tokenQuerySchema, walletReviewSchema } from "#routes/helpers";
+import { getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
+import { fudSearchSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, walletReviewSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -25,4 +26,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/fudSearch", async (request) => getFudSearch(parseQuery(fudSearchSchema, request.query)));
   app.get("/marketOverview", async (request) => getMarketOverview(parseQuery(tokenQuerySchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
+
+  // ── DEX swap routes ──
+  app.get("/swap", async (request) => getSwapTx(parseQuery(swapSchema, request.query)));
+  app.get("/swapQuote", async (request) => getSwapQuote(parseQuery(swapQuoteSchema, request.query)));
+  app.get("/swapDexes", async (request) => getSwapDexes(parseQuery(swapDexesSchema, request.query).chain));
 }

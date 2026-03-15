@@ -32,6 +32,34 @@ export type PriceHistoryQuery = z.output<typeof priceHistorySchema>;
 export type FudSearchQuery = z.output<typeof fudSearchSchema>;
 export type WalletReviewQuery = z.output<typeof walletReviewSchema>;
 
+export const swapSchema = z.object({
+  chain: z.string().min(1),
+  dex: z.string().min(1),
+  walletAddress: z.string().min(1),
+  tokenIn: z.string().min(1),
+  tokenOut: z.string().min(1),
+  amountIn: z.string().min(1),
+  slippageBps: z.coerce.number().int().min(1).max(5000).default(50),
+  deadline: z.coerce.number().int().optional(),
+});
+
+export const swapQuoteSchema = z.object({
+  chain: z.string().min(1),
+  dex: z.string().min(1),
+  tokenIn: z.string().min(1),
+  tokenOut: z.string().min(1),
+  amountIn: z.string().min(1),
+  slippageBps: z.coerce.number().int().min(1).max(5000).default(50),
+});
+
+export const swapDexesSchema = z.object({
+  chain: z.string().min(1),
+});
+
+export type SwapQuery = z.output<typeof swapSchema>;
+export type SwapQuoteQuery = z.output<typeof swapQuoteSchema>;
+export type SwapDexesQuery = z.output<typeof swapDexesSchema>;
+
 export function parseQuery<TSchema extends z.ZodTypeAny>(schema: TSchema, query: unknown): z.output<TSchema> {
   return schema.parse(query);
 }

@@ -206,3 +206,41 @@ export type MarketOverviewResponse = {
     url: string | null;
   }>;
 };
+
+export type SwapTxResponse = {
+  endpoint: "swap";
+  status: "live" | "partial";
+  chain: string;
+  dex: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  slippageBps: number;
+  tx: {
+    to: string;
+    data: string;
+    value: string;
+    chainId: number;
+    from: string;
+    gasLimit?: string;
+  } | {
+    serializedTx: string;
+    chainId: "solana";
+    from: string;
+  } | null;
+  providers: ProviderStatus[];
+};
+
+export type SwapQuoteResponse = {
+  endpoint: "swapQuote";
+  status: "live" | "partial";
+  chain: string;
+  dex: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  slippageBps: number;
+  amountOut: string | null;
+  amountOutMin: string | null;
+  providers: ProviderStatus[];
+};
