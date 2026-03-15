@@ -252,6 +252,7 @@ export type SocialMention = {
   author: string | null;
   createdAt: string | null;
   url: string | null;
+  matchedTerms?: string[];
   metrics?: Record<string, number | null>;
 };
 

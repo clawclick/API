@@ -13,7 +13,6 @@ import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPo
 import { getTokenSecurity } from "#providers/risk/goPlus";
 import { getHoneypotCheck } from "#providers/risk/honeypot";
 import { searchMarkets } from "#providers/sentiment/polymarket";
-import { isRedditConfigured, searchPosts } from "#providers/sentiment/reddit";
 import { isXConfigured, searchRecentPosts } from "#providers/sentiment/x";
 import { getTokenHolderStats as getMoralisTokenHolderStats, getTokenOwners as getMoralisTokenOwners, isMoralisConfigured } from "#providers/walletTracking/moralis";
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
@@ -260,13 +259,83 @@ function getBirdeyeOhlcvType(interval: string): string {
   return "1D";
 }
 
-function buildFudQuery(query: FudSearchQuery): string {
-  const parts = [query.tokenName, query.symbol];
-  if (query.tokenAddress) {
-    parts.push(query.tokenAddress);
+const HIGH_SIGNAL_FUD_TERMS = [
+  "scam",
+  "scam token",
+  "rug",
+  "rug pull",
+  "rugpull",
+  "honeypot",
+  "exit scam",
+  "cannot sell",
+  "unable to sell",
+  "sell failed",
+  "liquidity removed",
+  "liquidity pulled",
+  "lp removed",
+  "dev dumped",
+  "team dumped",
+  "wallets drained",
+  "drained",
+  "stolen funds",
+  "fraud",
+  "exploit",
+  "malicious contract",
+  "backdoor",
+  "blacklisted",
+  "warning",
+  "red flag",
+  "pump and dump",
+  "fake holders",
+  "fake volume",
+  "wash trading",
+  "soft rug",
+  "suspicious",
+  "sketchy",
+  "unsafe",
+  "stay away",
+  "avoid"
+];
+const FUD_SEARCH_TTL_MS = 15 * 60 * 1000;        // 15 minutes
+
+function buildTokenIdentifiers(query: FudSearchQuery): string[] {
+  const identifiers = new Set<string>();
+
+  if (query.tokenName?.trim()) {
+    identifiers.add(`"${query.tokenName.trim()}"`);
   }
 
-  return parts.filter(Boolean).join(" OR ");
+  if (query.symbol?.trim()) {
+    const symbol = query.symbol.trim();
+    identifiers.add(`"${symbol}"`);
+    identifiers.add(`"$${symbol}"`);
+  }
+
+  if (query.tokenAddress?.trim()) {
+    identifiers.add(`"${query.tokenAddress.trim()}"`);
+  }
+
+  return [...identifiers];
+}
+
+function buildFudFetchQuery(query: FudSearchQuery): string {
+  const identifiers = buildTokenIdentifiers(query);
+  const tokenClause = identifiers.length > 1 ? `(${identifiers.join(" OR ")})` : identifiers[0] ?? "";
+
+  return `${tokenClause} lang:en`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findMatchedFudTerms(text: string | undefined): string[] {
+  if (!text) {
+    return [];
+  }
+
+  const lowerText = text.toLowerCase();
+  return HIGH_SIGNAL_FUD_TERMS.filter((term) => new RegExp(`(^|[^a-z])${escapeRegExp(term)}([^a-z]|$)`, "i").test(lowerText));
 }
 
 // ── TTL caches for risk data ──
@@ -277,6 +346,7 @@ const moralisOwnersCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof
 const moralisHolderStatsCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getMoralisTokenHolderStats>>>>();
 const birdeyeSecurityCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeTokenSecurity>>>>();
 const birdeyeHolderDistributionCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeHolderDistribution>>>>();
+const xSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchRecentPosts>>>>();
 
 const RISK_TTL_MS = 3 * 60 * 60 * 1000;          // 3 hours
 const RISK_TTL_YOUNG_MS = 60 * 60 * 1000;         // 1 hour (token < 6h old)
@@ -413,6 +483,26 @@ async function getCachedBirdeyeHolderDistribution(
   const result = await runProvider(providers, "birdeyeHolderDistribution", isBirdeyeConfigured(), () => getBirdeyeHolderDistribution(tokenAddress, topN));
   if (result !== null) {
     birdeyeHolderDistributionCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+async function getCachedXSearch(
+  providers: ProviderStatus[],
+  query: string,
+  maxResults: number,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof searchRecentPosts>> | null> {
+  const key = `x:${query}:${maxResults}`;
+  const cached = xSearchCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "x", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "x", isXConfigured(), () => searchRecentPosts(query, maxResults));
+  if (result !== null) {
+    xSearchCache.set(key, { data: result, fetchedAt: Date.now() });
   }
   return result;
 }
@@ -816,49 +906,34 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
 export async function getFudSearch(query: FudSearchQuery): Promise<FudSearchResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
-  const searchQuery = buildFudQuery(query);
+  const searchQuery = buildFudFetchQuery(query);
 
-  const xResponse = await runProvider(providers, "x", isXConfigured(), () => searchRecentPosts(searchQuery));
-  const redditResponse = await runProvider(providers, "reddit", isRedditConfigured(), () => searchPosts(searchQuery));
+  const xResponse = await getCachedXSearch(providers, searchQuery, 100, FUD_SEARCH_TTL_MS);
 
   const userMap = new Map((xResponse?.includes?.users ?? []).map((user) => [user.id, user]));
 
-  const xMentions: SocialMention[] = (xResponse?.data ?? []).map((post) => {
+  const xMentions: SocialMention[] = (xResponse?.data ?? []).flatMap((post) => {
+    const matchedTerms = findMatchedFudTerms(post.text);
+    if (matchedTerms.length === 0) {
+      return [];
+    }
+
     const user = post.author_id ? userMap.get(post.author_id) : undefined;
 
-    return {
+    return [{
       source: "x",
       id: post.id,
       title: post.text ?? "",
       author: user?.username ?? user?.name ?? null,
       createdAt: post.created_at ?? null,
       url: user?.username ? `https://x.com/${user.username}/status/${post.id}` : null,
+      matchedTerms,
       metrics: {
         likes: post.public_metrics?.like_count ?? null,
         replies: post.public_metrics?.reply_count ?? null,
         reposts: post.public_metrics?.retweet_count ?? null,
         impressions: post.public_metrics?.impression_count ?? null,
         followers: user?.public_metrics?.followers_count ?? null
-      }
-    };
-  });
-
-  const redditMentions: SocialMention[] = (redditResponse?.data?.children ?? []).flatMap((child) => {
-    const post = child.data;
-    if (!post?.id) {
-      return [];
-    }
-
-    return [{
-      source: "reddit",
-      id: post.id,
-      title: [post.title, post.selftext].filter(Boolean).join("\n\n"),
-      author: post.author ?? null,
-      createdAt: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
-      url: post.permalink ? `https://reddit.com${post.permalink}` : null,
-      metrics: {
-        score: post.score ?? null,
-        comments: post.num_comments ?? null
       }
     }];
   });
@@ -868,7 +943,7 @@ export async function getFudSearch(query: FudSearchQuery): Promise<FudSearchResp
     status: summarizeStatus(providers),
     chain,
     query: searchQuery,
-    mentions: [...xMentions, ...redditMentions],
+    mentions: xMentions,
     providers
   };
 }
@@ -880,7 +955,7 @@ export async function getMarketOverview(query: TokenQuery): Promise<MarketOvervi
   const [pool, risk, social, polymarketMarkets] = await Promise.all([
     getTokenPoolInfo(query),
     getIsScam(query),
-    query.tokenName && query.symbol
+    query.tokenName || query.symbol
       ? getFudSearch({
           chain,
           tokenAddress: query.tokenAddress,

@@ -16,8 +16,10 @@ export const priceHistorySchema = tokenQuerySchema.extend({
 export const fudSearchSchema = z.object({
   chain: z.string().min(1).default("eth"),
   tokenAddress: z.string().optional(),
-  symbol: z.string().min(1),
-  tokenName: z.string().min(1)
+  symbol: z.string().optional(),
+  tokenName: z.string().optional()
+}).refine((value) => Boolean(value.symbol || value.tokenName), {
+  message: "Provide tokenName or symbol."
 });
 
 export const walletReviewSchema = z.object({

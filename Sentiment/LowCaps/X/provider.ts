@@ -31,10 +31,10 @@ export function isXConfigured(): boolean {
   return isConfigured(getOptionalEnv("X_BEARER_TOKEN"));
 }
 
-export async function searchRecentPosts(query: string): Promise<XSearchResponse> {
+export async function searchRecentPosts(query: string, maxResults = 25): Promise<XSearchResponse> {
   const params = new URLSearchParams({
     query,
-    max_results: "10",
+    max_results: String(Math.min(Math.max(maxResults, 10), 100)),
     "tweet.fields": "created_at,public_metrics,author_id",
     expansions: "author_id",
     "user.fields": "username,name,public_metrics,verified"
