@@ -1,0 +1,79 @@
+{
+  "name": "super-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/server.ts",
+    "check": "tsc --noEmit"
+  },
+  "imports": {
+    "#config/*": "./src/config/*.ts",
+    "#lib/*": "./src/lib/*.ts",
+    "#routes/*": "./src/routes/*.ts",
+    "#services/*": "./src/services/*.ts",
+    "#types/*": "./src/types/*.ts",
+
+    "#providers/shared/chains": "./src/lib/chains.ts",
+
+    "#providers/market/coinGecko": "./Market_data/MidCapsAndMajors/CoinGecko/provider.ts",
+    "#providers/market/coinMarketCap": "./Market_data/MidCapsAndMajors/Coinmarketcap/provider.ts",
+    "#providers/market/birdeye": "./Market_data/LowCaps/Birdeye/provider.ts",
+    "#providers/market/dexScreener": "./Market_data/LowCaps/DEX_Screener/provider.ts",
+    "#providers/market/geckoTerminal": "./Market_data/LowCaps/GeckoTerminal/provider.ts",
+    "#providers/market/dexTools": "./Market_data/LowCaps/Dextoools/provider.ts",
+
+    "#providers/defi/defiLlama": "./Market_data/DeFi/DefiLlama/provider.ts",
+    "#providers/defi/duneAnalytics": "./Market_data/DeFi/DuneAnalytics/provider.ts",
+
+    "#providers/risk/goPlus": "./Risk/GoPlus/provider.ts",
+    "#providers/risk/honeypot": "./Risk/Honeypot_is/provider.ts",
+    "#providers/risk/bubblemaps": "./Risk/Bubblemaps/provider.ts",
+    "#providers/risk/quickIntel": "./Risk/Quick_Intel/provider.ts",
+
+    "#providers/sentiment/polymarket": "./Sentiment/Majors/Polymarket/provider.ts",
+    "#providers/sentiment/lunarCrush": "./Sentiment/Majors/LunarCrush/provider.ts",
+    "#providers/sentiment/reddit": "./Sentiment/Majors/Reddit_API/provider.ts",
+    "#providers/sentiment/santiment": "./Sentiment/Majors/Santiment/provider.ts",
+    "#providers/sentiment/x": "./Sentiment/LowCaps/X/provider.ts",
+    "#providers/sentiment/telegram": "./Sentiment/LowCaps/Telegram_groups/provider.ts",
+
+    "#providers/walletTracking/arkham": "./Alpha_Wallet_tracking/Arkham/provider.ts",
+    "#providers/walletTracking/debank": "./Alpha_Wallet_tracking/Debank/provider.ts",
+    "#providers/walletTracking/moralis": "./Alpha_Wallet_tracking/Moralis/provider.ts",
+    "#providers/walletTracking/nansen": "./Alpha_Wallet_tracking/Nansen/provider.ts",
+
+    "#providers/newPairs/pumpFun": "./New_pairs/Pump_fun_feed/provider.ts",
+    "#providers/newPairs/dexScreenerNewPairs": "./New_pairs/Dexscreener_new_pairs/provider.ts",
+    "#providers/newPairs/raydiumNewPools": "./New_pairs/Raydium_new_pool_events/provider.ts",
+    "#providers/newPairs/uniswapPairCreation": "./New_pairs/Uniswap_pair_creation_events/provider.ts",
+
+    "#providers/dex/aerodrome": "./DEX/Chain/BASE/AERODOME_V2/provider.ts",
+    "#providers/dex/baseUniswapV2": "./DEX/Chain/BASE/UNISWAP_V2/provider.ts",
+    "#providers/dex/baseUniswapV3": "./DEX/Chain/BASE/UNISWAP_V3/provider.ts",
+    "#providers/dex/baseUniswapV4": "./DEX/Chain/BASE/UNISWAP_V4/provider.ts",
+    "#providers/dex/ethUniswapV2": "./DEX/Chain/ETH/UNISWAP_V2/provider.ts",
+    "#providers/dex/ethUniswapV3": "./DEX/Chain/ETH/UNISWAP_V3/provider.ts",
+    "#providers/dex/ethUniswapV4": "./DEX/Chain/ETH/UNISWAP_V4/provider.ts",
+    "#providers/dex/pancakeswapV2": "./DEX/Chain/BSC/PANCAKESWAP_V2/provider.ts",
+    "#providers/dex/pancakeswapV3": "./DEX/Chain/BSC/PANCAKESWAP_V3/provider.ts",
+    "#providers/dex/raydium": "./DEX/Chain/SOL/RADYUM/provider.ts",
+    "#providers/dex/meteora": "./DEX/Chain/SOL/METEORA/provider.ts",
+    "#providers/dex/pumpDex": "./DEX/Chain/SOL/PUMPDEX/provider.ts",
+
+    "#providers/onchain/rpc": "./DEX/Chain/RPC/provider.ts",
+    "#providers/onchain/etherscan": "./DEX/Chain/GAS_FEED/provider.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
