@@ -265,23 +265,49 @@ export type FudSearchResponse = {
   providers: ProviderStatus[];
 };
 
+export type PredictionMarketSummary = {
+  id: string;
+  question: string;
+  category: string | null;
+  endDate: string | null;
+  volume: number | null;
+  liquidity: number | null;
+  url: string | null;
+};
+
+export type MarketOverviewDriver = {
+  source: string;
+  id: string;
+  title: string;
+  author: string | null;
+  createdAt: string | null;
+  url: string | null;
+  impactScore: number;
+  metrics?: Record<string, number | null>;
+};
+
 export type MarketOverviewResponse = {
   endpoint: "marketOverview";
   status: "live" | "partial";
-  chain: string;
-  tokenAddress: string;
-  pool: TokenPoolInfoResponse;
-  risk: IsScamResponse;
+  mode: "token" | "major";
+  chain: string | null;
+  tokenAddress: string | null;
+  asset: string | null;
+  cached: boolean;
+  overallScore: number | null;
+  sentimentLabel: string | null;
+  summary: string[];
+  topDrivers: MarketOverviewDriver[];
+  pool: TokenPoolInfoResponse | null;
+  risk: IsScamResponse | null;
   social: FudSearchResponse | null;
-  predictionMarkets: Array<{
-    id: string;
-    question: string;
-    category: string | null;
-    endDate: string | null;
-    volume: number | null;
-    liquidity: number | null;
-    url: string | null;
-  }>;
+  sources: {
+    xMentions: SocialMention[];
+    redditMentions: SocialMention[];
+    polymarketMarkets: PredictionMarketSummary[];
+  };
+  predictionMarkets: PredictionMarketSummary[];
+  providers: ProviderStatus[];
 };
 
 export type SwapTxResponse = {

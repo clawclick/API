@@ -7,6 +7,12 @@ import {
   isDebankConfigured
 } from "#providers/walletTracking/debank";
 import {
+  getWalletCurrentNetWorth as getBirdeyeWalletCurrentNetWorth,
+  getWalletPnlSummary as getBirdeyeWalletPnlSummary,
+  getWalletTxList as getBirdeyeWalletTxList,
+  isBirdeyeConfigured,
+} from "#providers/market/birdeye";
+import {
   getWalletProfitabilitySummary,
   getWalletTokenBalances,
   isMoralisConfigured
@@ -23,6 +29,17 @@ function parseNumber(value: number | string | undefined | null): number | null {
   if (typeof value === "string") {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function firstNumber(...values: Array<number | string | undefined | null>): number | null {
+  for (const value of values) {
+    const parsed = parseNumber(value);
+    if (parsed !== null) {
+      return parsed;
+    }
   }
 
   return null;
@@ -53,17 +70,21 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
 
-  const [debankTotalBalance, debankProtocols, debankTokens, debankHistory, debankApprovals, moralisProfitability, moralisTokens] = await Promise.all([
+  const [debankTotalBalance, debankProtocols, debankTokens, debankHistory, debankApprovals, moralisProfitability, moralisTokens, birdeyeNetWorth, birdeyePnlSummary, birdeyeTxList] = await Promise.all([
     runProvider(providers, "debank", isDebankConfigured() && isEvmChain(chain), () => getTotalBalance(query.walletAddress)),
     runProvider(providers, "debankProtocols", isDebankConfigured() && isEvmChain(chain), () => getSimpleProtocolList(query.walletAddress, chain)),
     runProvider(providers, "debankTokens", isDebankConfigured() && isEvmChain(chain), () => getTokenList(query.walletAddress, chain)),
     runProvider(providers, "debankHistory", isDebankConfigured() && isEvmChain(chain), () => getHistoryList(query.walletAddress, chain, query.pageCount)),
     runProvider(providers, "debankApprovals", isDebankConfigured() && isEvmChain(chain), () => getTokenAuthorizedList(query.walletAddress, chain)),
     runProvider(providers, "moralisProfitability", isMoralisConfigured() && isEvmChain(chain), () => getWalletProfitabilitySummary(query.walletAddress, chain, query.days)),
-    runProvider(providers, "moralisBalances", isMoralisConfigured() && isEvmChain(chain), () => getWalletTokenBalances(query.walletAddress, chain))
+    runProvider(providers, "moralisBalances", isMoralisConfigured() && isEvmChain(chain), () => getWalletTokenBalances(query.walletAddress, chain)),
+    runProvider(providers, "birdeyeNetWorth", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletCurrentNetWorth(query.walletAddress, 20)),
+    runProvider(providers, "birdeyePnl", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletPnlSummary(query.walletAddress, `${query.days}d`)),
+    runProvider(providers, "birdeyeTxList", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletTxList(query.walletAddress, query.pageCount))
   ]);
 
   const moralisTokenList = Array.isArray(moralisTokens) ? moralisTokens : [];
+  const birdeyeTokenList = birdeyeNetWorth?.data?.items ?? [];
 
   const topHoldings: WalletHolding[] = (debankTokens ?? []).map((token) => ({
     tokenAddress: token.id ?? null,
@@ -95,6 +116,20 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     })).sort((left, right) => (right.valueUsd ?? 0) - (left.valueUsd ?? 0)).slice(0, 10));
   }
 
+  if (topHoldings.length === 0) {
+    topHoldings.push(...birdeyeTokenList.map((token) => ({
+      tokenAddress: token.address ?? null,
+      chain,
+      symbol: token.symbol ?? null,
+      name: token.name ?? null,
+      amount: parseNumber(token.amount),
+      priceUsd: parseNumber(token.price),
+      valueUsd: parseNumber(token.value),
+      logoUrl: token.logo_uri ?? null,
+      source: "birdeye"
+    })).sort((left, right) => (right.valueUsd ?? 0) - (left.valueUsd ?? 0)).slice(0, 10));
+  }
+
   const topProtocols: WalletProtocol[] = (debankProtocols ?? []).map((protocol) => ({
     id: protocol.id ?? "unknown",
     chain: protocol.chain ?? chain,
@@ -123,6 +158,26 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     }];
   });
 
+  if (recentActivity.length === 0) {
+    recentActivity.push(...(birdeyeTxList?.data?.solana ?? []).flatMap((item) => {
+      if (!item.txHash) {
+        return [];
+      }
+
+      return [{
+        txHash: item.txHash,
+        category: item.mainAction ?? "unknown",
+        chain,
+        timestamp: item.blockTime ? Date.parse(item.blockTime) : null,
+        gasUsd: parseNumber(item.fee),
+        projectId: null,
+        cexId: null,
+        sendCount: item.mainAction === "send" ? 1 : 0,
+        receiveCount: item.mainAction === "receive" ? 1 : 0
+      }];
+    }));
+  }
+
   const riskyApprovals: WalletApproval[] = (debankApprovals ?? []).map((approval) => ({
     tokenId: approval.id ?? "unknown",
     symbol: approval.symbol ?? approval.name ?? null,
@@ -140,6 +195,19 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     return (sum ?? 0) + approval.exposureUsd;
   }, 0);
   const realizedProfitPct = parseNumber(moralisProfitability?.total_realized_profit_percentage);
+  const birdeyeRealizedProfitPct = parseNumber(birdeyePnlSummary?.data?.summary?.pnl?.realized_profit_percent);
+  const totalNetWorthUsd = firstNumber(debankTotalBalance?.total_usd_value, birdeyeNetWorth?.data?.total_value);
+  const finalRealizedProfitPct = realizedProfitPct ?? birdeyeRealizedProfitPct;
+  const birdeyeTradeVolumeUsd = (() => {
+    const invested = parseNumber(birdeyePnlSummary?.data?.summary?.cashflow_usd?.total_invested) ?? 0;
+    const sold = parseNumber(birdeyePnlSummary?.data?.summary?.cashflow_usd?.total_sold) ?? 0;
+    const total = invested + sold;
+    return total > 0 ? total : null;
+  })();
+  const activeChains = new Set((debankTotalBalance?.chain_list ?? []).flatMap((chainBalance) => chainBalance.id ? [chainBalance.id] : []));
+  if (chain === "sol" && totalNetWorthUsd !== null) {
+    activeChains.add("sol");
+  }
 
   return {
     endpoint: "walletReview",
@@ -148,18 +216,18 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     walletAddress: query.walletAddress,
     days: query.days,
     summary: {
-      totalNetWorthUsd: parseNumber(debankTotalBalance?.total_usd_value),
-      chainNetWorthUsd: parseNumber(chainNetWorthUsd),
-      realizedProfitUsd: parseNumber(moralisProfitability?.total_realized_profit_usd),
-      realizedProfitPct,
-      totalTradeVolumeUsd: parseNumber(moralisProfitability?.total_trade_volume),
-      totalTrades: moralisProfitability?.total_count_of_trades ?? null,
-      totalBuys: moralisProfitability?.total_buys ?? null,
-      totalSells: moralisProfitability?.total_sells ?? null,
-      profitable: realizedProfitPct !== null ? realizedProfitPct > 0 : null,
+      totalNetWorthUsd,
+      chainNetWorthUsd: firstNumber(chainNetWorthUsd, birdeyeNetWorth?.data?.total_value),
+      realizedProfitUsd: firstNumber(moralisProfitability?.total_realized_profit_usd, birdeyePnlSummary?.data?.summary?.pnl?.realized_profit_usd),
+      realizedProfitPct: finalRealizedProfitPct,
+      totalTradeVolumeUsd: firstNumber(moralisProfitability?.total_trade_volume, birdeyeTradeVolumeUsd),
+      totalTrades: moralisProfitability?.total_count_of_trades ?? birdeyePnlSummary?.data?.summary?.counts?.total_trade ?? null,
+      totalBuys: moralisProfitability?.total_buys ?? birdeyePnlSummary?.data?.summary?.counts?.total_buy ?? null,
+      totalSells: moralisProfitability?.total_sells ?? birdeyePnlSummary?.data?.summary?.counts?.total_sell ?? null,
+      profitable: finalRealizedProfitPct !== null ? finalRealizedProfitPct > 0 : null,
       tokenCount: topHoldings.length,
       protocolCount: topProtocols.length,
-      activeChains: (debankTotalBalance?.chain_list ?? []).flatMap((chainBalance) => chainBalance.id ? [chainBalance.id] : []),
+      activeChains: [...activeChains],
       approvalExposureUsd,
       recentTransfers: recentActivity.filter((item) => item.category === "send" || item.category === "receive").length,
       recentApprovals: recentActivity.filter((item) => item.category === "approve").length,

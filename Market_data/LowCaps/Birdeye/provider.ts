@@ -156,3 +156,97 @@ export async function getHolderDistribution(tokenAddress: string, topN = 10): Pr
     { headers: getHeaders() },
   );
 }
+
+type BirdeyeWalletCurrentNetWorthItem = {
+  address?: string;
+  decimals?: number;
+  price?: number;
+  balance?: string;
+  amount?: number;
+  network?: string;
+  name?: string;
+  symbol?: string;
+  logo_uri?: string;
+  value?: string;
+};
+
+type BirdeyeWalletCurrentNetWorthResponse = {
+  success?: boolean;
+  data?: {
+    wallet?: string;
+    currency?: string;
+    total_value?: string;
+    current_timestamp?: string;
+    items?: BirdeyeWalletCurrentNetWorthItem[];
+  };
+  pagination?: {
+    limit?: number;
+    offset?: number;
+    total?: number;
+  };
+};
+
+type BirdeyeWalletPnlSummaryResponse = {
+  success?: boolean;
+  data?: {
+    summary?: {
+      unique_tokens?: number;
+      counts?: {
+        total_buy?: number;
+        total_sell?: number;
+        total_trade?: number;
+        total_win?: number;
+        total_loss?: number;
+        win_rate?: number;
+      };
+      cashflow_usd?: {
+        total_invested?: number;
+        total_sold?: number;
+      };
+      pnl?: {
+        realized_profit_usd?: number;
+        realized_profit_percent?: number;
+        unrealized_usd?: number;
+        total_usd?: number;
+        avg_profit_per_trade_usd?: number;
+      };
+    };
+  };
+};
+
+type BirdeyeWalletTxItem = {
+  txHash?: string;
+  blockTime?: string;
+  mainAction?: string;
+  fee?: number;
+};
+
+type BirdeyeWalletTxListResponse = {
+  success?: boolean;
+  data?: {
+    solana?: BirdeyeWalletTxItem[];
+  };
+};
+
+export async function getWalletCurrentNetWorth(walletAddress: string, limit = 20): Promise<BirdeyeWalletCurrentNetWorthResponse> {
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  return requestJson<BirdeyeWalletCurrentNetWorthResponse>(
+    `https://public-api.birdeye.so/wallet/v2/current-net-worth?wallet=${walletAddress}&sort_by=value&sort_type=desc&limit=${safeLimit}&offset=0`,
+    { headers: getHeaders() },
+  );
+}
+
+export async function getWalletPnlSummary(walletAddress: string, duration = "30d"): Promise<BirdeyeWalletPnlSummaryResponse> {
+  return requestJson<BirdeyeWalletPnlSummaryResponse>(
+    `https://public-api.birdeye.so/wallet/v2/pnl/summary?wallet=${walletAddress}&duration=${duration}`,
+    { headers: getHeaders() },
+  );
+}
+
+export async function getWalletTxList(walletAddress: string, limit = 20): Promise<BirdeyeWalletTxListResponse> {
+  const safeLimit = Math.min(Math.max(limit, 1), 100);
+  return requestJson<BirdeyeWalletTxListResponse>(
+    `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${walletAddress}&limit=${safeLimit}&ui_amount_mode=scaled`,
+    { headers: getHeaders() },
+  );
+}

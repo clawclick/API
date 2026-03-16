@@ -52,8 +52,8 @@ type RaydiumQuoteResponse = {
     swapType?: string;
     inputMint?: string;
     outputMint?: string;
-    inAmount?: string;
-    outAmount?: string;
+    inputAmount?: string;
+    outputAmount?: string;
     otherAmountThreshold?: string;
     slippageBps?: number;
     priceImpactPct?: number;
@@ -129,7 +129,7 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string }> {
   const q = await getSwapQuote({ walletAddress: "", tokenIn, tokenOut, amountIn, slippageBps });
   return {
-    amountOut: q.data?.outAmount ?? "0",
+    amountOut: q.data?.outputAmount ?? "0",
     amountOutMin: q.data?.otherAmountThreshold ?? "0",
   };
 }

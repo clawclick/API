@@ -8,6 +8,17 @@ export const tokenQuerySchema = z.object({
   tokenName: z.string().optional()
 });
 
+export const marketOverviewSchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  tokenAddress: z.string().optional(),
+  poolAddress: z.string().optional(),
+  symbol: z.string().optional(),
+  tokenName: z.string().optional(),
+  asset: z.string().optional()
+}).refine((value) => Boolean(value.asset || value.tokenAddress), {
+  message: "Provide asset for majors sentiment or tokenAddress for token market overview."
+});
+
 export const priceHistorySchema = tokenQuerySchema.extend({
   limit: z.string().default("3m"),
   interval: z.string().default("1d")
@@ -30,6 +41,7 @@ export const walletReviewSchema = z.object({
 });
 
 export type TokenQuery = z.output<typeof tokenQuerySchema>;
+export type MarketOverviewQuery = z.output<typeof marketOverviewSchema>;
 export type PriceHistoryQuery = z.output<typeof priceHistorySchema>;
 export type FudSearchQuery = z.output<typeof fudSearchSchema>;
 export type WalletReviewQuery = z.output<typeof walletReviewSchema>;

@@ -13,16 +13,19 @@ import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPo
 import { getTokenSecurity } from "#providers/risk/goPlus";
 import { getHoneypotCheck } from "#providers/risk/honeypot";
 import { searchMarkets } from "#providers/sentiment/polymarket";
+import { isRedditConfigured, searchPosts } from "#providers/sentiment/reddit";
 import { isXConfigured, searchRecentPosts } from "#providers/sentiment/x";
 import { getTokenHolderStats as getMoralisTokenHolderStats, getTokenOwners as getMoralisTokenOwners, isMoralisConfigured } from "#providers/walletTracking/moralis";
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
-import type { FudSearchQuery, PriceHistoryQuery, TokenQuery } from "#routes/helpers";
+import type { FudSearchQuery, MarketOverviewQuery, PriceHistoryQuery, TokenQuery } from "#routes/helpers";
 import type {
   FullAuditResponse,
   FudSearchResponse,
   HolderAnalysisResponse,
   IsScamResponse,
+  MarketOverviewDriver,
   MarketOverviewResponse,
+  PredictionMarketSummary,
   ProviderStatus,
   SocialMention,
   TokenPoolInfoResponse,
@@ -297,6 +300,62 @@ const HIGH_SIGNAL_FUD_TERMS = [
   "avoid"
 ];
 const FUD_SEARCH_TTL_MS = 15 * 60 * 1000;        // 15 minutes
+const MARKET_OVERVIEW_TTL_MS = 15 * 60 * 1000;   // 15 minutes
+
+const MAJOR_ASSETS = {
+  btc: {
+    asset: "btc",
+    label: "Bitcoin",
+    aliases: ["btc", "bitcoin", "$btc"]
+  },
+  eth: {
+    asset: "eth",
+    label: "Ethereum",
+    aliases: ["eth", "ethereum", "$eth"]
+  },
+  sol: {
+    asset: "sol",
+    label: "Solana",
+    aliases: ["sol", "solana", "$sol"]
+  },
+  bnb: {
+    asset: "bnb",
+    label: "BNB",
+    aliases: ["bnb", "binance coin", "binance", "$bnb", "bsc"]
+  }
+} as const;
+
+const POSITIVE_SENTIMENT_TERMS = [
+  "bullish",
+  "breakout",
+  "rally",
+  "higher",
+  "up only",
+  "strength",
+  "outperform",
+  "accumulation",
+  "approval",
+  "adoption",
+  "all time high",
+  "ath"
+];
+
+const NEGATIVE_SENTIMENT_TERMS = [
+  "bearish",
+  "breakdown",
+  "crash",
+  "lower",
+  "selloff",
+  "weakness",
+  "recession",
+  "rejected",
+  "lawsuit",
+  "exploit",
+  "dump",
+  "panic"
+];
+
+type MajorAsset = keyof typeof MAJOR_ASSETS;
 
 function buildTokenIdentifiers(query: FudSearchQuery): string[] {
   const identifiers = new Set<string>();
@@ -347,6 +406,9 @@ const moralisHolderStatsCache = new Map<string, CachedEntry<Awaited<ReturnType<t
 const birdeyeSecurityCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeTokenSecurity>>>>();
 const birdeyeHolderDistributionCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof getBirdeyeHolderDistribution>>>>();
 const xSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchRecentPosts>>>>();
+const redditSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchPosts>>>>();
+const polymarketSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchMarkets>>>>();
+const marketOverviewCache = new Map<string, CachedEntry<MarketOverviewResponse>>();
 
 const RISK_TTL_MS = 3 * 60 * 60 * 1000;          // 3 hours
 const RISK_TTL_YOUNG_MS = 60 * 60 * 1000;         // 1 hour (token < 6h old)
@@ -505,6 +567,230 @@ async function getCachedXSearch(
     xSearchCache.set(key, { data: result, fetchedAt: Date.now() });
   }
   return result;
+}
+
+async function getCachedRedditSearch(
+  providers: ProviderStatus[],
+  query: string,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof searchPosts>> | null> {
+  const key = `reddit:${query}`;
+  const cached = redditSearchCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "reddit", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "reddit", isRedditConfigured(), () => searchPosts(query));
+  if (result !== null) {
+    redditSearchCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+async function getCachedPolymarketSearch(
+  providers: ProviderStatus[],
+  query: string,
+  ttlMs: number,
+): Promise<Awaited<ReturnType<typeof searchMarkets>> | null> {
+  const key = `polymarket:${query}`;
+  const cached = polymarketSearchCache.get(key);
+  if (isCacheValid(cached, ttlMs)) {
+    addStatus(providers, "polymarket", "ok", "cached");
+    return cached!.data;
+  }
+
+  const result = await runProvider(providers, "polymarket", true, () => searchMarkets(query));
+  if (result !== null) {
+    polymarketSearchCache.set(key, { data: result, fetchedAt: Date.now() });
+  }
+  return result;
+}
+
+function normalizeMajorAsset(asset: string | undefined): MajorAsset | null {
+  const value = asset?.trim().toLowerCase();
+  if (!value) {
+    return null;
+  }
+
+  if (value === "bitcoin" || value === "btc") return "btc";
+  if (value === "ethereum" || value === "eth") return "eth";
+  if (value === "solana" || value === "sol") return "sol";
+  if (value === "bnb" || value === "binance" || value === "binance coin" || value === "bsc" || value === "binance-smart-chain") return "bnb";
+  return null;
+}
+
+function buildMajorXQuery(asset: MajorAsset): string {
+  const aliases = MAJOR_ASSETS[asset].aliases.map((alias) => `"${alias}"`);
+  return `(${aliases.join(" OR ")}) lang:en -is:retweet`;
+}
+
+function buildMajorRedditQuery(asset: MajorAsset): string {
+  const aliases = MAJOR_ASSETS[asset].aliases.filter((alias) => !alias.startsWith("$")).map((alias) => `"${alias}"`);
+  return aliases.join(" OR ");
+}
+
+function scoreTextSentiment(text: string | undefined): number {
+  if (!text) {
+    return 0;
+  }
+
+  const lowerText = text.toLowerCase();
+  const positive = POSITIVE_SENTIMENT_TERMS.reduce((count, term) => count + (lowerText.includes(term) ? 1 : 0), 0);
+  const negative = NEGATIVE_SENTIMENT_TERMS.reduce((count, term) => count + (lowerText.includes(term) ? 1 : 0), 0);
+  if (positive === 0 && negative === 0) {
+    return 0;
+  }
+
+  return Math.max(-1, Math.min(1, (positive - negative) / Math.max(positive + negative, 1)));
+}
+
+function logWeight(value: number): number {
+  return value > 0 ? Math.log10(value + 1) : 0;
+}
+
+function buildPredictionMarketSummary(market: Awaited<ReturnType<typeof searchMarkets>>[number]): PredictionMarketSummary {
+  return {
+    id: market.id,
+    question: market.question ?? "",
+    category: market.category ?? null,
+    endDate: market.endDate ?? null,
+    volume: parseNumber(market.volume),
+    liquidity: parseNumber(market.liquidity),
+    url: market.slug ? `https://polymarket.com/event/${market.slug}` : null
+  };
+}
+
+function sentimentLabel(score: number | null): string | null {
+  if (score === null) {
+    return null;
+  }
+  if (score >= 7.5) return "bullish";
+  if (score >= 6) return "positive";
+  if (score > 4) return "mixed";
+  if (score > 2.5) return "negative";
+  return "bearish";
+}
+
+function computeOverallScore(drivers: MarketOverviewDriver[]): number | null {
+  if (drivers.length === 0) {
+    return 5;
+  }
+
+  const totalImpact = drivers.reduce((sum, driver) => sum + driver.impactScore, 0);
+  const avgImpact = totalImpact / drivers.length;
+  const uniqueSources = new Set(drivers.map((driver) => driver.source)).size;
+  const conviction = Math.min(1, drivers.length / 5) * Math.min(1, uniqueSources / 3);
+  const score = 5 + avgImpact * 2.5 * conviction;
+  return Math.max(1, Math.min(10, Number(score.toFixed(1))));
+}
+
+function buildMajorSummary(asset: MajorAsset, score: number | null, drivers: MarketOverviewDriver[], markets: PredictionMarketSummary[]): string[] {
+  const summary: string[] = [];
+  const label = sentimentLabel(score);
+  if (label) {
+    summary.push(`${MAJOR_ASSETS[asset].label} sentiment is currently ${label}.`);
+  }
+
+  if (drivers.length > 0) {
+    summary.push(`${drivers.length} high-signal items were ranked across X, Reddit, and Polymarket.`);
+  }
+
+  if (markets.length > 0) {
+    summary.push(`${markets.length} relevant Polymarket markets were included for macro context.`);
+  }
+
+  return summary;
+}
+
+function buildTopDriverScore(metrics: Record<string, number | null> | undefined, contentScore: number, fallbackWeight = 1): number {
+  if (!metrics) {
+    return Number((contentScore * fallbackWeight).toFixed(3));
+  }
+
+  const raw = Object.values(metrics).reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  const weight = 1 + logWeight(raw);
+  return Number((contentScore * weight).toFixed(3));
+}
+
+function buildMajorXMentions(response: Awaited<ReturnType<typeof searchRecentPosts>> | null): SocialMention[] {
+  const userMap = new Map((response?.includes?.users ?? []).map((user) => [user.id, user]));
+
+  return (response?.data ?? []).map((post) => {
+    const user = post.author_id ? userMap.get(post.author_id) : undefined;
+    return {
+      source: "x",
+      id: post.id,
+      title: post.text ?? "",
+      author: user?.username ?? user?.name ?? null,
+      createdAt: post.created_at ?? null,
+      url: user?.username ? `https://x.com/${user.username}/status/${post.id}` : null,
+      metrics: {
+        likes: post.public_metrics?.like_count ?? null,
+        replies: post.public_metrics?.reply_count ?? null,
+        reposts: post.public_metrics?.retweet_count ?? null,
+        impressions: post.public_metrics?.impression_count ?? null,
+        followers: user?.public_metrics?.followers_count ?? null
+      }
+    };
+  });
+}
+
+function buildMajorRedditMentions(response: Awaited<ReturnType<typeof searchPosts>> | null): SocialMention[] {
+  return (response?.data?.children ?? []).flatMap((child) => {
+    const post = child.data;
+    if (!post?.id || !post.title) {
+      return [];
+    }
+
+    return [{
+      source: "reddit",
+      id: post.id,
+      title: post.selftext ? `${post.title}\n\n${post.selftext}` : post.title,
+      author: post.author ?? null,
+      createdAt: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
+      url: post.permalink ? `https://reddit.com${post.permalink}` : null,
+      metrics: {
+        score: post.score ?? null,
+        comments: post.num_comments ?? null
+      }
+    }];
+  });
+}
+
+function buildMajorDrivers(xMentions: SocialMention[], redditMentions: SocialMention[], markets: PredictionMarketSummary[]): MarketOverviewDriver[] {
+  const xDrivers = xMentions.map((mention) => ({
+    ...mention,
+    impactScore: buildTopDriverScore(mention.metrics, scoreTextSentiment(mention.title), 0.8)
+  }));
+
+  const redditDrivers = redditMentions.map((mention) => ({
+    ...mention,
+    impactScore: buildTopDriverScore(mention.metrics, scoreTextSentiment(mention.title), 1)
+  }));
+
+  const polymarketDrivers = markets.map((market) => {
+    const metrics = {
+      volume: market.volume,
+      liquidity: market.liquidity
+    };
+
+    return {
+      source: "polymarket",
+      id: market.id,
+      title: market.question,
+      author: null,
+      createdAt: market.endDate,
+      url: market.url,
+      metrics,
+      impactScore: buildTopDriverScore(metrics, scoreTextSentiment(market.question), 1.2)
+    };
+  });
+
+  return [...xDrivers, ...redditDrivers, ...polymarketDrivers]
+    .filter((driver) => driver.impactScore !== 0)
+    .sort((left, right) => Math.abs(right.impactScore) - Math.abs(left.impactScore))
+    .slice(0, 10);
 }
 
 export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfoResponse> {
@@ -948,40 +1234,106 @@ export async function getFudSearch(query: FudSearchQuery): Promise<FudSearchResp
   };
 }
 
-export async function getMarketOverview(query: TokenQuery): Promise<MarketOverviewResponse> {
-  const chain = normalizeChain(query.chain);
-  const tokenName = query.tokenName ?? query.symbol ?? query.tokenAddress;
+export async function getMarketOverview(query: MarketOverviewQuery): Promise<MarketOverviewResponse> {
+  const majorAsset = normalizeMajorAsset(query.asset);
 
-  const [pool, risk, social, polymarketMarkets] = await Promise.all([
-    getTokenPoolInfo(query),
-    getIsScam(query),
+  if (majorAsset) {
+    const cachedResponse = marketOverviewCache.get(`major:${majorAsset}`);
+    if (cachedResponse && isCacheValid(cachedResponse, MARKET_OVERVIEW_TTL_MS)) {
+      return {
+        ...cachedResponse.data,
+        cached: true
+      };
+    }
+
+    const providers: ProviderStatus[] = [];
+    const xQuery = buildMajorXQuery(majorAsset);
+    const redditQuery = buildMajorRedditQuery(majorAsset);
+    const polymarketQuery = MAJOR_ASSETS[majorAsset].label;
+
+    const [xResponse, redditResponse, polymarketResponse] = await Promise.all([
+      getCachedXSearch(providers, xQuery, 50, MARKET_OVERVIEW_TTL_MS),
+      getCachedRedditSearch(providers, redditQuery, MARKET_OVERVIEW_TTL_MS),
+      getCachedPolymarketSearch(providers, polymarketQuery, MARKET_OVERVIEW_TTL_MS)
+    ]);
+
+    const xMentions = buildMajorXMentions(xResponse);
+    const redditMentions = buildMajorRedditMentions(redditResponse);
+    const predictionMarkets = (polymarketResponse ?? []).map(buildPredictionMarketSummary);
+    const topDrivers = buildMajorDrivers(xMentions, redditMentions, predictionMarkets);
+    const overallScore = computeOverallScore(topDrivers);
+
+    const response: MarketOverviewResponse = {
+      endpoint: "marketOverview",
+      status: summarizeStatus(providers),
+      mode: "major",
+      chain: null,
+      tokenAddress: null,
+      asset: majorAsset,
+      cached: providers.every((provider) => provider.status !== "ok" || provider.detail === "cached"),
+      overallScore,
+      sentimentLabel: sentimentLabel(overallScore),
+      summary: buildMajorSummary(majorAsset, overallScore, topDrivers, predictionMarkets),
+      topDrivers,
+      pool: null,
+      risk: null,
+      social: null,
+      sources: {
+        xMentions,
+        redditMentions,
+        polymarketMarkets: predictionMarkets
+      },
+      predictionMarkets,
+      providers
+    };
+
+    marketOverviewCache.set(`major:${majorAsset}`, { data: response, fetchedAt: Date.now() });
+    return response;
+  }
+
+  const chain = normalizeChain(query.chain);
+  const tokenQuery: TokenQuery = {
+    chain,
+    tokenAddress: query.tokenAddress ?? "",
+    poolAddress: query.poolAddress,
+    symbol: query.symbol,
+    tokenName: query.tokenName
+  };
+
+  const [pool, risk, social] = await Promise.all([
+    getTokenPoolInfo(tokenQuery),
+    getIsScam(tokenQuery),
     query.tokenName || query.symbol
       ? getFudSearch({
           chain,
-          tokenAddress: query.tokenAddress,
-          tokenName: query.tokenName,
-          symbol: query.symbol
+          tokenAddress: tokenQuery.tokenAddress,
+          tokenName: tokenQuery.tokenName,
+          symbol: tokenQuery.symbol
         })
-      : Promise.resolve(null),
-    runProvider([], "polymarket", true, () => searchMarkets(tokenName))
+      : Promise.resolve(null)
   ]);
 
   return {
     endpoint: "marketOverview",
     status: [pool.status, risk.status, social?.status ?? "partial"].includes("live") ? "live" : "partial",
+    mode: "token",
     chain,
-    tokenAddress: query.tokenAddress,
+    tokenAddress: tokenQuery.tokenAddress,
+    asset: null,
+    cached: false,
+    overallScore: null,
+    sentimentLabel: null,
+    summary: [],
+    topDrivers: [],
     pool,
     risk,
     social,
-    predictionMarkets: (polymarketMarkets ?? []).map((market) => ({
-      id: market.id,
-      question: market.question ?? "",
-      category: market.category ?? null,
-      endDate: market.endDate ?? null,
-      volume: parseNumber(market.volume),
-      liquidity: parseNumber(market.liquidity),
-      url: market.slug ? `https://polymarket.com/event/${market.slug}` : null
-    }))
+    sources: {
+      xMentions: social?.mentions ?? [],
+      redditMentions: [],
+      polymarketMarkets: []
+    },
+    predictionMarkets: [],
+    providers: []
   };
 }
