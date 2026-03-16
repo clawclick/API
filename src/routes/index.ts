@@ -18,6 +18,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/providers", async () => ({ providers: getProviderHealth() }));
 
+  // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));
   app.get("/tokenPriceHistory", async (request) => getTokenPriceHistory(parseQuery(priceHistorySchema, request.query)));
   app.get("/isScam", async (request) => getIsScam(parseQuery(tokenQuerySchema, request.query)));
@@ -27,7 +28,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/marketOverview", async (request) => getMarketOverview(parseQuery(tokenQuerySchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
 
-  // ── DEX swap routes ──
+  // DEX swap routes
   app.get("/swap", async (request) => getSwapTx(parseQuery(swapSchema, request.query)));
   app.get("/swapQuote", async (request) => getSwapQuote(parseQuery(swapQuoteSchema, request.query)));
   app.get("/swapDexes", async (request) => getSwapDexes(parseQuery(swapDexesSchema, request.query).chain));

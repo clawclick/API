@@ -1,4 +1,4 @@
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const signal = init?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
