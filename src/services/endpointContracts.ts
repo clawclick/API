@@ -5,6 +5,7 @@ const descriptions: Record<EndpointName, string> = {
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
   tokenPoolInfo: "Returns market cap, price, liquidity, holder summary, and 24h movement for a token or pool.",
   tokenPriceHistory: "Returns normalized price history for a token using an adjustable timeframe.",
+  detailedTokenStats: "Returns cached bucketed token stats from Codex for volume, price, liquidity, and trader-count changes across short windows.",
   isScam: "Runs the fast scam triage pass using Honeypot and related contract-security signals.",
   fullAudit: "Builds the deeper risk profile using GoPlus, Honeypot, BubbleMaps, Quick Intel, and chain data.",
   holderAnalysis: "Returns holder concentration, top-wallet breakdowns, and cached distribution context.",
@@ -14,13 +15,14 @@ const descriptions: Record<EndpointName, string> = {
   filterWallets: "Discovers wallets by realized PnL, win rate, volume, and swap count across configurable time frames via Codex.",
   tokenWallets: "Lists wallets trading a specific token with PnL, balance, and buy/sell stats via Codex.",
   walletStats: "Returns detailed PnL and trading stats for a wallet across 1d/1w/30d/1y time periods via Codex.",
-  tokenHolders: "Returns top holders of a token with balances, concentration metrics, and first-held timestamps via Codex.",
+  tokenHolders: "Returns raw holder rows for EVM tokens via Sim by Dune, including first-acquired time and whether each wallet has initiated transfers.",
 };
 
 const cacheHints: Record<EndpointName, number> = {
   walletReview: 180,
   tokenPoolInfo: 60,
   tokenPriceHistory: 300,
+  detailedTokenStats: 1800,
   isScam: 120,
   fullAudit: 900,
   holderAnalysis: 21600,

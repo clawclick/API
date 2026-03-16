@@ -29,6 +29,15 @@ export const priceHistorySchema = z.object({
   message: "Provide asset for majors price history or tokenAddress for token price history."
 });
 
+export const detailedTokenStatsSchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  tokenAddress: z.string().min(1),
+  durations: z.string().default("hour1,day1"),
+  bucketCount: z.coerce.number().int().min(1).max(50).default(6),
+  timestamp: z.coerce.number().int().optional(),
+  statsType: z.enum(["FILTERED", "UNFILTERED"]).default("UNFILTERED"),
+});
+
 export const fudSearchSchema = z.object({
   chain: z.string().min(1).default("eth"),
   tokenAddress: z.string().optional(),
@@ -48,6 +57,7 @@ export const walletReviewSchema = z.object({
 export type TokenQuery = z.output<typeof tokenQuerySchema>;
 export type MarketOverviewQuery = z.output<typeof marketOverviewSchema>;
 export type PriceHistoryQuery = z.output<typeof priceHistorySchema>;
+export type DetailedTokenStatsQuery = z.output<typeof detailedTokenStatsSchema>;
 export type FudSearchQuery = z.output<typeof fudSearchSchema>;
 export type WalletReviewQuery = z.output<typeof walletReviewSchema>;
 

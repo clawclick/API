@@ -8,6 +8,15 @@ import {
   getTokenSecurity as getBirdeyeTokenSecurity,
   isBirdeyeConfigured
 } from "#providers/market/birdeye";
+import {
+  CODEX_NETWORK_IDS,
+  codexGetDetailedTokenStats,
+  codexGetTokenBars,
+  codexListPairsForToken,
+  codexTop10HoldersPercent,
+  isCodexConfigured,
+} from "#providers/market/codex";
+import type { CodexDetailedTokenStatsWindow, CodexDetailedValueMetric, CodexStatsType } from "#providers/market/codex";
 import { getCoinMarketChart, getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
 import { getTokenPairs } from "#providers/market/dexScreener";
 import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPools, getOhlcv as getGeckoTerminalOhlcv } from "#providers/market/geckoTerminal";
@@ -18,8 +27,11 @@ import { isRedditConfigured, searchPosts } from "#providers/sentiment/reddit";
 import { isXConfigured, searchRecentPosts } from "#providers/sentiment/x";
 import { getTokenHolderStats as getMoralisTokenHolderStats, getTokenOwners as getMoralisTokenOwners, isMoralisConfigured } from "#providers/walletTracking/moralis";
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
-import type { FudSearchQuery, MarketOverviewQuery, PriceHistoryQuery, TokenQuery } from "#routes/helpers";
+import type { DetailedTokenStatsQuery, FudSearchQuery, MarketOverviewQuery, PriceHistoryQuery, TokenQuery } from "#routes/helpers";
 import type {
+  DetailedTokenStatsMetric,
+  DetailedTokenStatsResponse,
+  DetailedTokenStatsWindow,
   FullAuditResponse,
   FudSearchResponse,
   HolderAnalysisResponse,
@@ -239,6 +251,92 @@ function getBirdeyeOhlcvType(interval: string): string {
   return "1D";
 }
 
+function getCodexResolution(interval: string): string {
+  const iv = interval.trim().toLowerCase();
+  if (iv === "1m") return "1";
+  if (iv === "5m") return "5";
+  if (iv === "15m") return "15";
+  if (iv === "30m") return "30";
+  if (iv === "1h") return "60";
+  if (iv === "4h") return "240";
+  if (iv === "12h") return "720";
+  if (iv === "7d") return "7D";
+  return "1D";
+}
+
+function getIntervalMs(interval: string): number {
+  const iv = interval.trim().toLowerCase();
+  if (iv.endsWith("m")) {
+    return Number(iv.slice(0, -1)) * 60_000;
+  }
+  if (iv.endsWith("h")) {
+    return Number(iv.slice(0, -1)) * 3_600_000;
+  }
+  if (iv.endsWith("d")) {
+    return Number(iv.slice(0, -1)) * 86_400_000;
+  }
+  return 86_400_000;
+}
+
+function getDesiredCandleCount(limit: string, interval: string): number {
+  const days = getHistoryDays(limit);
+  const intervalMs = getIntervalMs(interval);
+  const count = Math.ceil((days * 86_400_000) / intervalMs);
+  return Math.max(1, Math.min(count, 1500));
+}
+
+function parseDetailedMetric(metric: CodexDetailedValueMetric | undefined): DetailedTokenStatsMetric | null {
+  if (!metric) {
+    return null;
+  }
+
+  return {
+    currentValue: parseNumber(metric.currentValue),
+    previousValue: parseNumber(metric.previousValue),
+    change: parseNumber(metric.change),
+  };
+}
+
+function mapDetailedTokenStatsWindow(window: CodexDetailedTokenStatsWindow | undefined): DetailedTokenStatsWindow | null {
+  if (!window) {
+    return null;
+  }
+
+  return {
+    duration: window.duration ?? null,
+    start: window.start ?? null,
+    end: window.end ?? null,
+    statsUsd: {
+      volume: parseDetailedMetric(window.statsUsd?.volume),
+      buyVolume: parseDetailedMetric(window.statsUsd?.buyVolume),
+      sellVolume: parseDetailedMetric(window.statsUsd?.sellVolume),
+      open: parseDetailedMetric(window.statsUsd?.open),
+      highest: parseDetailedMetric(window.statsUsd?.highest),
+      lowest: parseDetailedMetric(window.statsUsd?.lowest),
+      close: parseDetailedMetric(window.statsUsd?.close),
+      liquidity: parseDetailedMetric(window.statsUsd?.liquidity),
+    },
+    statsNonCurrency: {
+      transactions: parseDetailedMetric(window.statsNonCurrency?.transactions),
+      buys: parseDetailedMetric(window.statsNonCurrency?.buys),
+      sells: parseDetailedMetric(window.statsNonCurrency?.sells),
+      traders: parseDetailedMetric(window.statsNonCurrency?.traders),
+      buyers: parseDetailedMetric(window.statsNonCurrency?.buyers),
+      sellers: parseDetailedMetric(window.statsNonCurrency?.sellers),
+    },
+  };
+}
+
+function parseDetailedDurations(value: string): string[] {
+  const allowed = new Set(["min5", "hour1", "hour4", "hour12", "day1"]);
+  const durations = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && allowed.has(item));
+
+  return durations.length > 0 ? durations : ["hour1", "day1"];
+}
+
 const HIGH_SIGNAL_FUD_TERMS = [
   "scam",
   "scam token",
@@ -396,11 +494,14 @@ const xSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searc
 const redditSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchPosts>>>>();
 const polymarketSearchCache = new Map<string, CachedEntry<Awaited<ReturnType<typeof searchMarkets>>>>();
 const marketOverviewCache = new Map<string, CachedEntry<MarketOverviewResponse>>();
+const detailedTokenStatsCache = new Map<string, CachedEntry<DetailedTokenStatsResponse>>();
+const codexTop10HoldersPercentCache = new Map<string, CachedEntry<number | null>>();
 
 const RISK_TTL_MS = 3 * 60 * 60 * 1000;          // 3 hours
 const RISK_TTL_YOUNG_MS = 60 * 60 * 1000;         // 1 hour (token < 6h old)
 const YOUNG_TOKEN_THRESHOLD_MS = 6 * 60 * 60 * 1000;
 const HOLDER_TTL_MS = 2 * 60 * 60 * 1000;         // 2 hours
+const DETAILED_TOKEN_STATS_TTL_MS = 30 * 60 * 1000;
 
 function riskCacheKey(chain: string, tokenAddress: string): string {
   return `${chain}:${tokenAddress.toLowerCase()}`;
@@ -408,6 +509,10 @@ function riskCacheKey(chain: string, tokenAddress: string): string {
 
 function holderCacheKey(chain: string, tokenAddress: string, suffix: string): string {
   return `${chain}:${tokenAddress.toLowerCase()}:${suffix}`;
+}
+
+function detailedTokenStatsCacheKey(query: DetailedTokenStatsQuery): string {
+  return JSON.stringify(query);
 }
 
 function isCacheValid<T>(entry: CachedEntry<T> | undefined, ttlMs: number): boolean {
@@ -792,6 +897,18 @@ export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfo
   // Primary: DexScreener (free, all chains, has everything we need)
   const dexPairs = await runProvider(providers, "dexScreener", true, () => getTokenPairs(chain, query.tokenAddress));
   const topDexPair = dexPairs?.[0];
+  const networkId = CODEX_NETWORK_IDS[chain];
+  let codexPairAddress: string | null = null;
+
+  if (!topDexPair?.pairAddress && isCodexConfigured() && networkId) {
+    const codexPairs = await runProvider(
+      providers,
+      "codex:listPairsForToken",
+      true,
+      () => codexListPairsForToken(query.tokenAddress, networkId, 5),
+    );
+    codexPairAddress = codexPairs?.data?.listPairsForToken?.[0]?.address ?? null;
+  }
 
   // Check if primary gave us the key fields
   const hasPrimary = topDexPair?.priceUsd != null;
@@ -825,14 +942,14 @@ export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfo
     liquidityUsd: firstNumber(topDexPair?.liquidity?.usd, birdeyeData?.liquidity, geckoAttributes?.total_reserve_in_usd),
     volume24hUsd: firstNumber(topDexPair?.volume?.h24, birdeyeData?.v24hUSD, geckoAttributes?.volume_usd?.h24, coinGecko?.usd_24h_vol),
     priceChange24hPct: firstNumber(topDexPair?.priceChange?.h24, birdeyeData?.priceChange24hPercent, coinGecko?.usd_24h_change),
-    pairAddress: topDexPair?.pairAddress ?? null,
+    pairAddress: topDexPair?.pairAddress ?? codexPairAddress,
     dex: formatDexLabel(topDexPair?.dexId, topDexPair?.labels),
     providers
   };
 
   // Cache the pair address for future OHLCV lookups
-  if (topDexPair?.pairAddress) {
-    poolAddressCache.set(poolCacheKey(chain, query.tokenAddress), topDexPair.pairAddress);
+  if (result.pairAddress) {
+    poolAddressCache.set(poolCacheKey(chain, query.tokenAddress), result.pairAddress);
   }
 
   return result;
@@ -925,6 +1042,56 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
     }
   }
 
+  // ── Fallback: Codex token bars (OHLCV) ──
+  if (points.length === 0 && isCodexConfigured()) {
+    const networkId = CODEX_NETWORK_IDS[chain];
+    if (networkId) {
+      const now = Math.floor(Date.now() / 1000);
+      const countback = getDesiredCandleCount(query.limit, query.interval);
+      const codexBars = await runProvider(
+        providers,
+        "codex:getTokenBars",
+        true,
+        () => codexGetTokenBars({
+          symbol: `${tokenAddress}:${networkId}`,
+          from: Math.max(0, now - days * 86400),
+          to: now,
+          resolution: getCodexResolution(query.interval),
+          countback,
+          removeLeadingNullValues: false,
+          removeEmptyBars: false,
+          statsType: "UNFILTERED",
+        }),
+      );
+      const bars = codexBars?.data?.getTokenBars;
+      const closes = bars?.c ?? [];
+      const opens = bars?.o ?? [];
+      const highs = bars?.h ?? [];
+      const lows = bars?.l ?? [];
+      const volumes = bars?.volume ?? [];
+      if (closes.length) {
+        const intervalMs = getIntervalMs(query.interval);
+        const endTimeMs = now * 1000;
+        const startTimeMs = endTimeMs - (closes.length - 1) * intervalMs;
+        points = closes.flatMap((close, index) => {
+          if (close == null) {
+            return [];
+          }
+
+          return [{
+            timestamp: startTimeMs + index * intervalMs,
+            priceUsd: close,
+            open: opens[index] ?? undefined,
+            high: highs[index] ?? undefined,
+            low: lows[index] ?? undefined,
+            close,
+            volume: parseNumber(volumes[index]) ?? undefined,
+          }];
+        });
+      }
+    }
+  }
+
   // ── Fallback: Alchemy (all chains, prices only) ──
   if (points.length === 0 && isAlchemyConfigured()) {
     const endTime = new Date().toISOString();
@@ -950,6 +1117,59 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
     points,
     providers
   };
+}
+
+export async function getDetailedTokenStats(query: DetailedTokenStatsQuery): Promise<DetailedTokenStatsResponse> {
+  const chain = normalizeChain(query.chain);
+  const cacheKey = detailedTokenStatsCacheKey(query);
+  const cached = detailedTokenStatsCache.get(cacheKey);
+  if (cached && isCacheValid(cached, DETAILED_TOKEN_STATS_TTL_MS)) {
+    return { ...cached.data, cached: true };
+  }
+
+  const providers: ProviderStatus[] = [];
+  const networkId = CODEX_NETWORK_IDS[chain];
+  const durations = parseDetailedDurations(query.durations);
+  const result = await runProvider(
+    providers,
+    "codex:getDetailedTokenStats",
+    isCodexConfigured() && !!networkId,
+    () => codexGetDetailedTokenStats(
+      query.tokenAddress,
+      networkId,
+      durations,
+      query.bucketCount,
+      query.statsType as CodexStatsType,
+      query.timestamp,
+    ),
+    networkId ? "CODEX_API_KEY not configured. Get one at https://dashboard.codex.io" : `Unknown network: ${query.chain}`,
+  );
+
+  const stats = result?.data?.getDetailedTokenStats;
+  const response: DetailedTokenStatsResponse = {
+    endpoint: "detailedTokenStats",
+    status: summarizeStatus(providers),
+    chain,
+    tokenAddress: query.tokenAddress,
+    cached: false,
+    bucketCount: query.bucketCount,
+    statsType: (stats?.statsType as "FILTERED" | "UNFILTERED" | undefined) ?? null,
+    lastTransactionAt: stats?.lastTransactionAt ?? null,
+    durations: {
+      min5: mapDetailedTokenStatsWindow(stats?.stats_min5),
+      hour1: mapDetailedTokenStatsWindow(stats?.stats_hour1),
+      hour4: mapDetailedTokenStatsWindow(stats?.stats_hour4),
+      hour12: mapDetailedTokenStatsWindow(stats?.stats_hour12),
+      day1: mapDetailedTokenStatsWindow(stats?.stats_day1),
+    },
+    providers,
+  };
+
+  if (providers.some((provider) => provider.status === "ok")) {
+    detailedTokenStatsCache.set(cacheKey, { data: response, fetchedAt: Date.now() });
+  }
+
+  return response;
 }
 
 export async function getIsScam(query: TokenQuery): Promise<IsScamResponse> {
@@ -1131,9 +1351,30 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
       });
 
   const top5Percent = sumPercentOfSupply(topHolders, 5, (holder) => holder.percentOfSupply);
+  let codexTop10Percent: number | null = null;
+  if (isCodexConfigured()) {
+    const cacheKey = holderCacheKey(chain, query.tokenAddress, "codexTop10HoldersPercent");
+    const cached = codexTop10HoldersPercentCache.get(cacheKey);
+    if (isCacheValid(cached, HOLDER_TTL_MS)) {
+      codexTop10Percent = cached?.data ?? null;
+    } else {
+      const networkId = CODEX_NETWORK_IDS[chain];
+      if (networkId) {
+        const codexTop10 = await runProvider(
+          providers,
+          "codex:top10HoldersPercent",
+          true,
+          () => codexTop10HoldersPercent(query.tokenAddress, networkId),
+        );
+        codexTop10Percent = codexTop10?.data?.top10HoldersPercent ?? null;
+        codexTop10HoldersPercentCache.set(cacheKey, { data: codexTop10Percent, fetchedAt: Date.now() });
+      }
+    }
+  }
   const top10Percent = sumPercentOfSupply(topHolders, 10, (holder) => holder.percentOfSupply)
     ?? firstNumber(birdeyeSecurity?.data?.top10HolderPercent)
-    ?? normalizeRatioPercent(moralisHolderStats?.holderSupply?.top10?.supplyPercent);
+    ?? normalizeRatioPercent(moralisHolderStats?.holderSupply?.top10?.supplyPercent)
+    ?? codexTop10Percent;
   const largestHolderPercent = topHolders[0]?.percentOfSupply ?? null;
   const holdersOver1Pct = countPercentThreshold(topHolders, 1, (holder) => holder.percentOfSupply);
   const holdersOver5Pct = countPercentThreshold(topHolders, 5, (holder) => holder.percentOfSupply);

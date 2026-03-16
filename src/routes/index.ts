@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  getDetailedTokenStats,
   getFullAudit,
   getFudSearch,
   getHolderAnalysis,
@@ -17,9 +18,9 @@ import { getFilteredTokens } from "#services/filterTokens";
 // import { getFilteredWallets } from "#services/filterWallets";
 // import { getTokenWallets } from "#services/tokenWallets";
 // import { getWalletStats } from "#services/walletStats";
-// import { getTokenHolders } from "#services/tokenHolders";
+import { getTokenHolders } from "#services/tokenHolders";
 import { handleClient } from "#services/launchpadStream";
-import { filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema } from "#routes/helpers";
+import { detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -29,6 +30,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));
   app.get("/tokenPriceHistory", async (request) => getTokenPriceHistory(parseQuery(priceHistorySchema, request.query)));
+  app.get("/detailedTokenStats", async (request) => getDetailedTokenStats(parseQuery(detailedTokenStatsSchema, request.query)));
   app.get("/isScam", async (request) => getIsScam(parseQuery(tokenQuerySchema, request.query)));
   app.get("/fullAudit", async (request) => getFullAudit(parseQuery(tokenQuerySchema, request.query)));
   app.get("/holderAnalysis", async (request) => getHolderAnalysis(parseQuery(tokenQuerySchema, request.query)));
@@ -54,7 +56,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // app.get("/filterWallets", async (request) => getFilteredWallets(parseQuery(filterWalletsSchema, request.query)));
   // app.get("/tokenWallets", async (request) => getTokenWallets(parseQuery(tokenWalletsSchema, request.query)));
   // app.get("/walletStats", async (request) => getWalletStats(parseQuery(walletStatsSchema, request.query)));
-  // app.get("/tokenHolders", async (request) => getTokenHolders(parseQuery(tokenHoldersSchema, request.query)));
+  app.get("/tokenHolders", async (request) => getTokenHolders(parseQuery(tokenHoldersSchema, request.query)));
 
   // WebSocket: Codex launchpad event stream
   app.get("/ws/launchpadEvents", { websocket: true }, (socket) => {

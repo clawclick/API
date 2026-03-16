@@ -1,9 +1,11 @@
 import { runProvider, summarizeStatus } from "#lib/runProvider";
 import {
-  codexHolders,
-  isCodexConfigured,
   CODEX_NETWORK_IDS,
+  codexTop10HoldersPercent,
+  isCodexConfigured,
 } from "#providers/market/codex";
+import { getSimTokenHolders, isSimConfigured } from "#providers/defi/duneAnalytics";
+import { isEvmChain, normalizeChain } from "#providers/shared/chains";
 import type { TokenHoldersQuery } from "#routes/helpers";
 import type { TokenHoldersResponse, TokenHolderItem, ProviderStatus } from "#types/api";
 
@@ -27,22 +29,40 @@ export async function getTokenHolders(q: TokenHoldersQuery): Promise<TokenHolder
   }
 
   const statuses: ProviderStatus[] = [];
-  const networkId = CODEX_NETWORK_IDS[q.network.trim()] ?? Number(q.network.trim());
+  const chain = normalizeChain(q.network);
+  const networkId = CODEX_NETWORK_IDS[chain] ?? Number(q.network.trim());
 
   const result = await runProvider(
     statuses,
-    "codex:holders",
-    isCodexConfigured() && !!networkId,
-    () => codexHolders(q.tokenAddress, networkId, q.cursor, q.limit),
-    networkId ? "CODEX_API_KEY not configured. Get one at https://dashboard.codex.io" : `Unknown network: ${q.network}`,
+    "simDune:tokenHolders",
+    isEvmChain(chain) && isSimConfigured() && !!networkId,
+    () => getSimTokenHolders(networkId, q.tokenAddress, q.limit, q.cursor),
+    !isEvmChain(chain)
+      ? "tokenHolders via Sim is only supported on EVM chains."
+      : networkId
+        ? "SIM_API_KEY not configured."
+        : `Unknown network: ${q.network}`,
   );
 
-  const h = result?.data?.holders;
-  const holders: TokenHolderItem[] = (h?.items ?? []).map((item) => ({
-    address: item.address ?? null,
-    balance: item.shiftedBalance ?? null,
-    balanceUsd: item.balanceUsd ?? null,
-    firstHeldTimestamp: item.firstHeldTimestamp ?? null,
+  const top10 = await runProvider(
+    statuses,
+    "codex:top10HoldersPercent",
+    isEvmChain(chain) && isCodexConfigured() && !!networkId,
+    () => codexTop10HoldersPercent(q.tokenAddress, networkId),
+    !isEvmChain(chain)
+      ? "top10HoldersPercent via Codex is only supported on EVM chains in this endpoint."
+      : networkId
+        ? "CODEX_API_KEY not configured. Get one at https://dashboard.codex.io"
+        : `Unknown network: ${q.network}`,
+  );
+
+  const holders: TokenHolderItem[] = (result?.holders ?? []).map((item) => ({
+    address: item.wallet_address ?? null,
+    balance: item.balance ?? null,
+    balanceUsd: null,
+    firstHeldTimestamp: item.first_acquired ? Math.floor(Date.parse(item.first_acquired) / 1000) : null,
+    firstAcquired: item.first_acquired ?? null,
+    hasInitiatedTransfer: item.has_initiated_transfer ?? null,
   }));
 
   const response: TokenHoldersResponse = {
@@ -50,9 +70,10 @@ export async function getTokenHolders(q: TokenHoldersQuery): Promise<TokenHolder
     status: summarizeStatus(statuses),
     cached: false,
     tokenAddress: q.tokenAddress,
-    network: q.network,
-    holderCount: h?.count ?? null,
-    top10HoldersPercent: h?.top10HoldersPercent ?? null,
+    network: chain,
+    holderCount: null,
+    top10HoldersPercent: top10?.data?.top10HoldersPercent ?? null,
+    nextOffset: result?.next_offset ?? null,
     holders,
     providers: statuses,
   };

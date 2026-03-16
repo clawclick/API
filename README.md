@@ -60,6 +60,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/providers` | GET | List all 50+ providers and their config status |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |
 | `/tokenPriceHistory` | GET | Historical OHLCV price data |
+| `/detailedTokenStats` | GET | Bucketed token stats from Codex (cached 30 min) |
 | `/isScam` | GET | Quick scam check with risk score |
 | `/fullAudit` | GET | Deep contract audit (taxes, ownership, trading flags) |
 | `/holderAnalysis` | GET | Holder distribution, concentration, whale tracking |
@@ -71,9 +72,11 @@ npx tsx src/server.ts   # starts on port 3000
 | `/swapDexes` | GET | List available DEXes for a chain |
 | `/trendingTokens` | GET | Currently trending tokens |
 | `/newPairs` | GET | Recently created pairs/pools |
-| `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |\n| `/gasFeed` | GET | Current gas prices (EVM chains) |
+| `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |
+| `/gasFeed` | GET | Current gas prices (EVM chains) |
 | `/tokenSearch` | GET | Search tokens by name/symbol/address |
 | `/filterTokens` | GET | Filter tokens by metrics (Codex, cached 5 min) |
+| `/tokenHolders` | GET | Raw token-holder ledger for EVM tokens (Sim by Dune) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 
 ---
@@ -148,7 +151,7 @@ GET /providers
 
 ### `GET /tokenPoolInfo`
 
-Get token price, market cap, liquidity, volume, and pool info.
+Get token price, market cap, liquidity, volume, and pool info. DexScreener is primary; Codex `listPairsForToken` is used as a backup source for pair discovery when DexScreener does not return a usable pair.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -187,7 +190,7 @@ GET /tokenPoolInfo?chain=eth&tokenAddress=0xA0b86991c6218b36c1d19d4a2e9eb0ce3606
 
 ### `GET /tokenPriceHistory`
 
-Historical OHLCV price data for charting. Supports both token contracts and major assets.
+Historical OHLCV price data for charting. Supports both token contracts and major assets. Primary sources are GeckoTerminal/Birdeye, with Codex `getTokenBars` as an extra OHLCV fallback before Alchemy.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -216,6 +219,57 @@ GET /tokenPriceHistory?asset=bitcoin&limit=30d&interval=1d
   "points": [
     { "timestamp": 1710000000, "priceUsd": 150.5, "open": 150, "high": 152, "low": 149, "close": 150.5, "volume": 1000000 }
   ],
+  "providers": [...]
+}
+```
+
+---
+
+### `GET /detailedTokenStats`
+
+Bucketed token stats from Codex, cached for 30 minutes. Useful for short-window and multi-window volume, price, liquidity, and trader-count deltas.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `eth` | Chain |
+| `tokenAddress` | string | **yes** | — | Token address |
+| `durations` | string | no | `hour1,day1` | Comma-separated durations: `min5`, `hour1`, `hour4`, `hour12`, `day1` |
+| `bucketCount` | number | no | `6` | Number of buckets requested from Codex |
+| `timestamp` | number | no | — | Optional unix timestamp snapshot |
+| `statsType` | string | no | `UNFILTERED` | `FILTERED` or `UNFILTERED` |
+
+```
+GET /detailedTokenStats?chain=eth&tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&durations=hour1,day1&bucketCount=6
+```
+
+**Response:**
+```json
+{
+  "endpoint": "detailedTokenStats",
+  "status": "live",
+  "chain": "eth",
+  "tokenAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "cached": false,
+  "bucketCount": 6,
+  "statsType": "UNFILTERED",
+  "lastTransactionAt": 1773694307,
+  "durations": {
+    "hour1": {
+      "duration": "hour1",
+      "start": 1773690707,
+      "end": 1773694308,
+      "statsUsd": {
+        "volume": { "currentValue": 13839617.47, "previousValue": 20042545.97, "change": -0.3094 },
+        "close": { "currentValue": 2344.03, "previousValue": 2330.46, "change": 0.0058 }
+      }
+    },
+    "day1": {
+      "duration": "day1",
+      "statsUsd": {
+        "volume": { "currentValue": 680716557.75, "previousValue": 356002456.38, "change": 0.9121 }
+      }
+    }
+  },
   "providers": [...]
 }
 ```
@@ -310,7 +364,7 @@ GET /fullAudit?chain=eth&tokenAddress=0x...
 
 ### `GET /holderAnalysis`
 
-Holder distribution, concentration, top holders, whale tracking, and change over time.
+Holder distribution, concentration, top holders, whale tracking, and change over time. Uses Moralis/Birdeye first, with Codex `top10HoldersPercent` as an extra concentration fallback.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -345,6 +399,48 @@ GET /holderAnalysis?chain=eth&tokenAddress=0x...
   "holderChange": { "change24hPct": 2.5, "change7dPct": 10 },
   "concentration": { "top10HolderPercent": 55, "top10UserPercent": 45 },
   "signals": ["High concentration in top 10 holders"],
+  "providers": [...]
+}
+```
+
+---
+
+### `GET /tokenHolders`
+
+Raw token-holder ledger for EVM tokens via Sim by Dune. This is separate from `holderAnalysis`: it returns paginated holder rows rather than a concentration/risk summary.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `tokenAddress` | string | **yes** | — | Token contract address |
+| `network` | string | no | `eth` | EVM chain: `eth`, `base`, `bsc` |
+| `cursor` | string | no | — | Pagination token from the previous response |
+| `limit` | number | no | `50` | Results per page (1–200) |
+
+```
+GET /tokenHolders?tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&network=eth&limit=5
+```
+
+**Response:**
+```json
+{
+  "endpoint": "tokenHolders",
+  "status": "live",
+  "cached": false,
+  "tokenAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "network": "eth",
+  "holderCount": null,
+  "top10HoldersPercent": 58.8,
+  "nextOffset": "eyJwYWdlIjoyfQ==",
+  "holders": [
+    {
+      "address": "0x...",
+      "balance": "13794442047246482254818",
+      "balanceUsd": null,
+      "firstHeldTimestamp": 1738854667,
+      "firstAcquired": "2025-02-06T15:11:07+00:00",
+      "hasInitiatedTransfer": false
+    }
+  ],
   "providers": [...]
 }
 ```
@@ -1113,13 +1209,14 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 
 | Variable | Used By |
 |---|---|
-| `CODEX_API_KEY` | filterTokens, ws/launchpadEvents |
+| `CODEX_API_KEY` | filterTokens, tokenPoolInfo (backup pair discovery), tokenPriceHistory (OHLCV fallback), holderAnalysis (top10 fallback), detailedTokenStats, ws/launchpadEvents |
 | `ZERION_API_KEY` | walletReview (PnL fallback) |
 | `CMC_API_KEY` | tokenPoolInfo, marketOverview |
 | `GOPLUS_ACCESS_TOKEN` | isScam, fullAudit |
 | `DEBANK_API_KEY` | walletReview (protocols, approvals) |
 | `ARKHAM_API_KEY` | walletReview, holderAnalysis |
 | `DUNE_API_KEY` + `DUNE_QUERY_ID` | holderAnalysis |
+| `SIM_API_KEY` | tokenHolders |
 | `LUNARCRUSH_API_KEY` | marketOverview (sentiment) |
 | `REDDIT_CLIENT_ID` + `SECRET` + `USER_AGENT` | fudSearch, marketOverview |
 | `X_BEARER_TOKEN` | fudSearch, marketOverview |

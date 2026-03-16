@@ -117,6 +117,55 @@ export type TokenPriceHistoryResponse = {
   providers: ProviderStatus[];
 };
 
+export type DetailedTokenStatsMetric = {
+  currentValue: number | null;
+  previousValue: number | null;
+  change: number | null;
+};
+
+export type DetailedTokenStatsWindow = {
+  duration: string | null;
+  start: number | null;
+  end: number | null;
+  statsUsd: {
+    volume: DetailedTokenStatsMetric | null;
+    buyVolume: DetailedTokenStatsMetric | null;
+    sellVolume: DetailedTokenStatsMetric | null;
+    open: DetailedTokenStatsMetric | null;
+    highest: DetailedTokenStatsMetric | null;
+    lowest: DetailedTokenStatsMetric | null;
+    close: DetailedTokenStatsMetric | null;
+    liquidity: DetailedTokenStatsMetric | null;
+  };
+  statsNonCurrency: {
+    transactions: DetailedTokenStatsMetric | null;
+    buys: DetailedTokenStatsMetric | null;
+    sells: DetailedTokenStatsMetric | null;
+    traders: DetailedTokenStatsMetric | null;
+    buyers: DetailedTokenStatsMetric | null;
+    sellers: DetailedTokenStatsMetric | null;
+  };
+};
+
+export type DetailedTokenStatsResponse = {
+  endpoint: "detailedTokenStats";
+  status: "live" | "partial";
+  chain: string;
+  tokenAddress: string;
+  cached: boolean;
+  bucketCount: number;
+  statsType: "FILTERED" | "UNFILTERED" | null;
+  lastTransactionAt: number | null;
+  durations: {
+    min5: DetailedTokenStatsWindow | null;
+    hour1: DetailedTokenStatsWindow | null;
+    hour4: DetailedTokenStatsWindow | null;
+    hour12: DetailedTokenStatsWindow | null;
+    day1: DetailedTokenStatsWindow | null;
+  };
+  providers: ProviderStatus[];
+};
+
 export type IsScamResponse = {
   endpoint: "isScam";
   status: "live" | "partial";
@@ -643,6 +692,8 @@ export type TokenHolderItem = {
   balance: string | null;
   balanceUsd: string | null;
   firstHeldTimestamp: number | null;
+  firstAcquired: string | null;
+  hasInitiatedTransfer: boolean | null;
 };
 
 export type TokenHoldersResponse = {
@@ -653,6 +704,7 @@ export type TokenHoldersResponse = {
   network: string;
   holderCount: number | null;
   top10HoldersPercent: number | null;
+  nextOffset: string | null;
   holders: TokenHolderItem[];
   providers: ProviderStatus[];
 };

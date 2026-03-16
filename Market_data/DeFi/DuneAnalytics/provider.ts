@@ -25,8 +25,19 @@ function getHeaders(): Record<string, string> {
   };
 }
 
+function getSimHeaders(): Record<string, string> {
+  return {
+    accept: "application/json",
+    "X-Sim-Api-Key": getRequiredEnv("SIM_API_KEY"),
+  };
+}
+
 export function isDuneConfigured(): boolean {
   return isConfigured(getOptionalEnv("DUNE_API_KEY"));
+}
+
+export function isSimConfigured(): boolean {
+  return isConfigured(getOptionalEnv("SIM_API_KEY"));
 }
 
 /** GET /api/v1/query/{queryId}/results – fetch the latest results of a saved query. */
@@ -79,5 +90,36 @@ export async function getExecutionResults(executionId: string): Promise<DuneQuer
   return requestJson<DuneQueryResultsResponse>(
     `https://api.dune.com/api/v1/execution/${executionId}/results`,
     { headers: getHeaders() },
+  );
+}
+
+type SimTokenHolder = {
+  wallet_address?: string;
+  balance?: string;
+  first_acquired?: string;
+  has_initiated_transfer?: boolean;
+};
+
+export type SimTokenHoldersResponse = {
+  token_address?: string;
+  chain_id?: number;
+  holders?: SimTokenHolder[];
+  next_offset?: string | null;
+};
+
+export async function getSimTokenHolders(
+  chainId: number,
+  tokenAddress: string,
+  limit = 100,
+  offset?: string,
+): Promise<SimTokenHoldersResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (offset) {
+    params.set("offset", offset);
+  }
+
+  return requestJson<SimTokenHoldersResponse>(
+    `https://api.sim.dune.com/v1/evm/token-holders/${chainId}/${encodeURIComponent(tokenAddress)}?${params.toString()}`,
+    { headers: getSimHeaders() },
   );
 }

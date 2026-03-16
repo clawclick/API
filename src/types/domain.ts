@@ -2,6 +2,7 @@ export type EndpointName =
   | "walletReview"
   | "tokenPoolInfo"
   | "tokenPriceHistory"
+  | "detailedTokenStats"
   | "isScam"
   | "fullAudit"
   | "holderAnalysis"

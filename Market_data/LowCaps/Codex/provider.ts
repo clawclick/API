@@ -89,6 +89,98 @@ export type CodexFilterTokensResponse = {
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
+type CodexMetricValue = string | number | null | undefined;
+
+export type CodexDetailedValueMetric = {
+  currentValue?: CodexMetricValue;
+  previousValue?: CodexMetricValue;
+  change?: number | null;
+};
+
+export type CodexDetailedTokenStatsWindow = {
+  duration?: string;
+  start?: number;
+  end?: number;
+  statsUsd?: {
+    volume?: CodexDetailedValueMetric;
+    buyVolume?: CodexDetailedValueMetric;
+    sellVolume?: CodexDetailedValueMetric;
+    open?: CodexDetailedValueMetric;
+    highest?: CodexDetailedValueMetric;
+    lowest?: CodexDetailedValueMetric;
+    close?: CodexDetailedValueMetric;
+    liquidity?: CodexDetailedValueMetric;
+  };
+  statsNonCurrency?: {
+    transactions?: CodexDetailedValueMetric;
+    buys?: CodexDetailedValueMetric;
+    sells?: CodexDetailedValueMetric;
+    traders?: CodexDetailedValueMetric;
+    buyers?: CodexDetailedValueMetric;
+    sellers?: CodexDetailedValueMetric;
+  };
+};
+
+export type CodexDetailedTokenStatsResponse = {
+  data?: {
+    getDetailedTokenStats?: {
+      tokenAddress?: string;
+      networkId?: number;
+      statsType?: CodexStatsType;
+      lastTransactionAt?: number;
+      stats_min5?: CodexDetailedTokenStatsWindow;
+      stats_hour1?: CodexDetailedTokenStatsWindow;
+      stats_hour4?: CodexDetailedTokenStatsWindow;
+      stats_hour12?: CodexDetailedTokenStatsWindow;
+      stats_day1?: CodexDetailedTokenStatsWindow;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+export type CodexTokenBarsResponse = {
+  data?: {
+    getTokenBars?: {
+      o?: Array<number | null>;
+      h?: Array<number | null>;
+      l?: Array<number | null>;
+      c?: Array<number | null>;
+      volume?: Array<string | number | null>;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+export type CodexTop10HoldersPercentResponse = {
+  data?: {
+    top10HoldersPercent?: number | null;
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+export type CodexListPairsForTokenPair = {
+  address?: string;
+  id?: string;
+  networkId?: number;
+  exchangeHash?: string;
+  fee?: number | null;
+  tickSpacing?: number | null;
+  token0?: string;
+  token1?: string;
+  createdAt?: number;
+  pooled?: {
+    token0?: string;
+    token1?: string;
+  };
+};
+
+export type CodexListPairsForTokenResponse = {
+  data?: {
+    listPairsForToken?: CodexListPairsForTokenPair[];
+  };
+  errors?: Array<{ message?: string }>;
+};
+
 export function isCodexConfigured(): boolean {
   return isConfigured(getOptionalEnv("CODEX_API_KEY"));
 }
@@ -101,6 +193,162 @@ function getAuthHeader(): Record<string, string> {
 }
 
 const CODEX_GRAPHQL_URL = "https://graph.codex.io/graphql";
+
+const DETAILED_TOKEN_STATS_QUERY = `query GetDetailedTokenStats($tokenAddress: String!, $networkId: Int!, $timestamp: Int, $durations: [DetailedTokenStatsDuration!], $bucketCount: Int, $statsType: TokenPairStatisticsType) {
+  getDetailedTokenStats(tokenAddress: $tokenAddress, networkId: $networkId, timestamp: $timestamp, durations: $durations, bucketCount: $bucketCount, statsType: $statsType) {
+    tokenAddress
+    networkId
+    statsType
+    lastTransactionAt
+    stats_min5 {
+      duration
+      start
+      end
+      statsUsd {
+        volume { currentValue previousValue change }
+        buyVolume { currentValue previousValue change }
+        sellVolume { currentValue previousValue change }
+        open { currentValue previousValue change }
+        highest { currentValue previousValue change }
+        lowest { currentValue previousValue change }
+        close { currentValue previousValue change }
+        liquidity { currentValue previousValue change }
+      }
+      statsNonCurrency {
+        transactions { currentValue previousValue change }
+        buys { currentValue previousValue change }
+        sells { currentValue previousValue change }
+        traders { currentValue previousValue change }
+        buyers { currentValue previousValue change }
+        sellers { currentValue previousValue change }
+      }
+    }
+    stats_hour1 {
+      duration
+      start
+      end
+      statsUsd {
+        volume { currentValue previousValue change }
+        buyVolume { currentValue previousValue change }
+        sellVolume { currentValue previousValue change }
+        open { currentValue previousValue change }
+        highest { currentValue previousValue change }
+        lowest { currentValue previousValue change }
+        close { currentValue previousValue change }
+        liquidity { currentValue previousValue change }
+      }
+      statsNonCurrency {
+        transactions { currentValue previousValue change }
+        buys { currentValue previousValue change }
+        sells { currentValue previousValue change }
+        traders { currentValue previousValue change }
+        buyers { currentValue previousValue change }
+        sellers { currentValue previousValue change }
+      }
+    }
+    stats_hour4 {
+      duration
+      start
+      end
+      statsUsd {
+        volume { currentValue previousValue change }
+        buyVolume { currentValue previousValue change }
+        sellVolume { currentValue previousValue change }
+        open { currentValue previousValue change }
+        highest { currentValue previousValue change }
+        lowest { currentValue previousValue change }
+        close { currentValue previousValue change }
+        liquidity { currentValue previousValue change }
+      }
+      statsNonCurrency {
+        transactions { currentValue previousValue change }
+        buys { currentValue previousValue change }
+        sells { currentValue previousValue change }
+        traders { currentValue previousValue change }
+        buyers { currentValue previousValue change }
+        sellers { currentValue previousValue change }
+      }
+    }
+    stats_hour12 {
+      duration
+      start
+      end
+      statsUsd {
+        volume { currentValue previousValue change }
+        buyVolume { currentValue previousValue change }
+        sellVolume { currentValue previousValue change }
+        open { currentValue previousValue change }
+        highest { currentValue previousValue change }
+        lowest { currentValue previousValue change }
+        close { currentValue previousValue change }
+        liquidity { currentValue previousValue change }
+      }
+      statsNonCurrency {
+        transactions { currentValue previousValue change }
+        buys { currentValue previousValue change }
+        sells { currentValue previousValue change }
+        traders { currentValue previousValue change }
+        buyers { currentValue previousValue change }
+        sellers { currentValue previousValue change }
+      }
+    }
+    stats_day1 {
+      duration
+      start
+      end
+      statsUsd {
+        volume { currentValue previousValue change }
+        buyVolume { currentValue previousValue change }
+        sellVolume { currentValue previousValue change }
+        open { currentValue previousValue change }
+        highest { currentValue previousValue change }
+        lowest { currentValue previousValue change }
+        close { currentValue previousValue change }
+        liquidity { currentValue previousValue change }
+      }
+      statsNonCurrency {
+        transactions { currentValue previousValue change }
+        buys { currentValue previousValue change }
+        sells { currentValue previousValue change }
+        traders { currentValue previousValue change }
+        buyers { currentValue previousValue change }
+        sellers { currentValue previousValue change }
+      }
+    }
+  }
+}`;
+
+const TOKEN_BARS_QUERY = `query GetTokenBars($symbol: String!, $from: Int!, $to: Int!, $resolution: String!, $countback: Int, $currencyCode: QuoteCurrency, $removeLeadingNullValues: Boolean, $removeEmptyBars: Boolean, $statsType: TokenPairStatisticsType) {
+  getTokenBars(symbol: $symbol, from: $from, to: $to, resolution: $resolution, countback: $countback, currencyCode: $currencyCode, removeLeadingNullValues: $removeLeadingNullValues, removeEmptyBars: $removeEmptyBars, statsType: $statsType) {
+    o
+    h
+    l
+    c
+    volume
+  }
+}`;
+
+const TOP_10_HOLDERS_PERCENT_QUERY = `query Top10HoldersPercent($tokenId: String!) {
+  top10HoldersPercent(tokenId: $tokenId)
+}`;
+
+const LIST_PAIRS_FOR_TOKEN_QUERY = `query ListPairsForToken($tokenAddress: String!, $networkId: Int!, $limit: Int) {
+  listPairsForToken(tokenAddress: $tokenAddress, networkId: $networkId, limit: $limit) {
+    address
+    id
+    networkId
+    exchangeHash
+    fee
+    tickSpacing
+    token0
+    token1
+    createdAt
+    pooled {
+      token0
+      token1
+    }
+  }
+}`;
 
 /* ── Network ID mapping ──────────────────────────────────── */
 
@@ -642,5 +890,90 @@ export async function codexHolders(
     method: "POST",
     headers: getAuthHeader(),
     body: JSON.stringify({ query: HOLDERS_QUERY, variables: { input } }),
+  });
+}
+
+export async function codexGetDetailedTokenStats(
+  tokenAddress: string,
+  networkId: number,
+  durations: string[],
+  bucketCount?: number,
+  statsType: CodexStatsType = "UNFILTERED",
+  timestamp?: number,
+): Promise<CodexDetailedTokenStatsResponse> {
+  return requestJson<CodexDetailedTokenStatsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: DETAILED_TOKEN_STATS_QUERY,
+      variables: {
+        tokenAddress,
+        networkId,
+        durations,
+        bucketCount,
+        statsType,
+        timestamp,
+      },
+    }),
+  });
+}
+
+export async function codexGetTokenBars(input: {
+  symbol: string;
+  from: number;
+  to: number;
+  resolution: string;
+  countback?: number;
+  currencyCode?: "USD" | "TOKEN";
+  removeLeadingNullValues?: boolean;
+  removeEmptyBars?: boolean;
+  statsType?: CodexStatsType;
+}): Promise<CodexTokenBarsResponse> {
+  return requestJson<CodexTokenBarsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: TOKEN_BARS_QUERY,
+      variables: {
+        symbol: input.symbol,
+        from: input.from,
+        to: input.to,
+        resolution: input.resolution,
+        countback: input.countback,
+        currencyCode: input.currencyCode ?? "USD",
+        removeLeadingNullValues: input.removeLeadingNullValues ?? false,
+        removeEmptyBars: input.removeEmptyBars ?? false,
+        statsType: input.statsType ?? "UNFILTERED",
+      },
+    }),
+  });
+}
+
+export async function codexTop10HoldersPercent(
+  tokenAddress: string,
+  networkId: number,
+): Promise<CodexTop10HoldersPercentResponse> {
+  return requestJson<CodexTop10HoldersPercentResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: TOP_10_HOLDERS_PERCENT_QUERY,
+      variables: { tokenId: `${tokenAddress}:${networkId}` },
+    }),
+  });
+}
+
+export async function codexListPairsForToken(
+  tokenAddress: string,
+  networkId: number,
+  limit = 10,
+): Promise<CodexListPairsForTokenResponse> {
+  return requestJson<CodexListPairsForTokenResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: LIST_PAIRS_FOR_TOKEN_QUERY,
+      variables: { tokenAddress, networkId, limit },
+    }),
   });
 }
