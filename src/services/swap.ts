@@ -1,4 +1,5 @@
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
+import { addStatus, runProvider } from "#lib/runProvider";
 import type { SwapQuery, SwapQuoteQuery } from "#routes/helpers";
 import type { ProviderStatus, SwapTxResponse, SwapQuoteResponse } from "#types/api";
 
@@ -20,26 +21,7 @@ import { buildSwapTx as pumpDexSwap, getQuote as pumpDexQuote } from "#providers
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
-function addStatus(statuses: ProviderStatus[], provider: string, status: ProviderStatus["status"], detail?: string): void {
-  statuses.push({ provider, status, detail });
-}
 
-async function runProvider<T>(statuses: ProviderStatus[], provider: string, shouldRun: boolean, task: () => Promise<T>): Promise<T | null> {
-  if (!shouldRun) {
-    addStatus(statuses, provider, "skipped", "Not available for this chain/dex combination.");
-    return null;
-  }
-
-  try {
-    const result = await task();
-    addStatus(statuses, provider, "ok");
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    addStatus(statuses, provider, "error", message);
-    return null;
-  }
-}
 
 /* ── DEX registry ─────────────────────────────────────────── */
 
@@ -160,6 +142,7 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
       slippageBps: query.slippageBps,
       deadline: query.deadline,
     }),
+    `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
 
   return {
@@ -203,6 +186,7 @@ export async function getSwapQuote(query: SwapQuoteQuery): Promise<SwapQuoteResp
   const quoteFn = entry.quoteByChain[chain];
   const result = await runProvider(providers, entry.id, !!quoteFn, () =>
     quoteFn!(query.tokenIn, query.tokenOut, query.amountIn, query.slippageBps),
+    `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
 
   return {

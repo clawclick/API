@@ -1,4 +1,5 @@
 import { isConfigured } from "#config/env";
+import { addStatus, runProvider, summarizeStatus } from "#lib/runProvider";
 import { getHistoricalPrices as getAlchemyHistory, isAlchemyConfigured } from "#providers/market/alchemy";
 import {
   getHolderDistribution as getBirdeyeHolderDistribution,
@@ -140,10 +141,6 @@ function buildHolderSignals(input: {
   return signals;
 }
 
-function addStatus(statuses: ProviderStatus[], provider: string, status: ProviderStatus["status"], detail?: string): void {
-  statuses.push({ provider, status, detail });
-}
-
 function formatDexLabel(dexId: string | undefined, labels: string[] | undefined): string | null {
   if (!dexId) return null;
   const version = labels?.find((l) => /^v\d/i.test(l));
@@ -157,26 +154,6 @@ function poolCacheKey(chain: string, tokenAddress: string): string {
   return `${chain}:${tokenAddress.toLowerCase()}`;
 }
 
-async function runProvider<T>(statuses: ProviderStatus[], provider: string, shouldRun: boolean, task: () => Promise<T>): Promise<T | null> {
-  if (!shouldRun) {
-    addStatus(statuses, provider, "skipped", "Provider not configured or not supported for this chain.");
-    return null;
-  }
-
-  try {
-    const result = await task();
-    addStatus(statuses, provider, "ok");
-    return result;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    addStatus(statuses, provider, "error", message);
-    return null;
-  }
-}
-
-function summarizeStatus(statuses: ProviderStatus[]): "live" | "partial" {
-  return statuses.some((status) => status.status === "ok") ? "live" : "partial";
-}
 
 function getHistoryDays(limit: string): number {
   const value = limit.trim().toLowerCase();

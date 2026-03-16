@@ -18,6 +18,7 @@ import {
   isMoralisConfigured
 } from "#providers/walletTracking/moralis";
 import { isEvmChain, normalizeChain } from "#providers/shared/chains";
+import { runProvider, summarizeStatus } from "#lib/runProvider";
 import type { WalletReviewQuery } from "#routes/helpers";
 import type { ProviderStatus, WalletApproval, WalletHolding, WalletProtocol, WalletReviewResponse } from "#types/api";
 
@@ -45,26 +46,6 @@ function firstNumber(...values: Array<number | string | undefined | null>): numb
   return null;
 }
 
-async function runProvider<T>(statuses: ProviderStatus[], provider: string, shouldRun: boolean, task: () => Promise<T>): Promise<T | null> {
-  if (!shouldRun) {
-    statuses.push({ provider, status: "skipped", detail: "Provider not configured or not supported for this chain." });
-    return null;
-  }
-
-  try {
-    const result = await task();
-    statuses.push({ provider, status: "ok" });
-    return result;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    statuses.push({ provider, status: "error", detail });
-    return null;
-  }
-}
-
-function summarizeStatus(statuses: ProviderStatus[]): "live" | "partial" {
-  return statuses.some((status) => status.status === "ok") ? "live" : "partial";
-}
 
 export async function getWalletReview(query: WalletReviewQuery): Promise<WalletReviewResponse> {
   const chain = normalizeChain(query.chain);

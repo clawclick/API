@@ -19,7 +19,15 @@ export function normalizeChain(chain: string): SupportedChain {
     return "sol";
   }
 
-  throw new Error(`Unsupported chain: ${chain}`);
+  throw new ChainError(`Unsupported chain "${chain}". Valid chains: eth, base, bsc, sol`);
+}
+
+/** Error thrown when a chain value is not recognized. Caught by the global error handler as a 400. */
+export class ChainError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChainError";
+  }
 }
 
 export function isEvmChain(chain: SupportedChain): boolean {
