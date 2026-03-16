@@ -23,6 +23,10 @@ type MoralisTokenBalance = {
   usd_value?: number;
 };
 
+type MoralisTokenBalancesResponse = {
+  result?: MoralisTokenBalance[];
+};
+
 function getHeaders(): Record<string, string> {
   return {
     accept: "application/json",
@@ -44,15 +48,20 @@ export async function getWalletProfitabilitySummary(walletAddress: string, chain
 }
 
 export async function getWalletTokenBalances(walletAddress: string, chain: SupportedChain): Promise<MoralisTokenBalance[]> {
-  return requestJson<MoralisTokenBalance[]>(
+  const response = await requestJson<MoralisTokenBalance[] | MoralisTokenBalancesResponse>(
     `https://deep-index.moralis.io/api/v2.2/wallets/${walletAddress}/tokens?chain=${chain}`,
     {
       headers: getHeaders()
     }
   );
+
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  return Array.isArray(response.result) ? response.result : [];
 }
 
-/* ── NEW ENDPOINTS ────────────────────────────────────────── */
 
 type MoralisNetWorth = {
   total_networth_usd?: string;

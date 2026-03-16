@@ -63,6 +63,8 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     runProvider(providers, "moralisBalances", isMoralisConfigured() && isEvmChain(chain), () => getWalletTokenBalances(query.walletAddress, chain))
   ]);
 
+  const moralisTokenList = Array.isArray(moralisTokens) ? moralisTokens : [];
+
   const topHoldings: WalletHolding[] = (debankTokens ?? []).map((token) => ({
     tokenAddress: token.id ?? null,
     chain: token.chain ?? chain,
@@ -80,7 +82,7 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
   })).sort((left, right) => (right.valueUsd ?? 0) - (left.valueUsd ?? 0)).slice(0, 10);
 
   if (topHoldings.length === 0) {
-    topHoldings.push(...(moralisTokens ?? []).map((token) => ({
+    topHoldings.push(...moralisTokenList.map((token) => ({
       tokenAddress: token.token_address ?? null,
       chain,
       symbol: token.symbol ?? null,
