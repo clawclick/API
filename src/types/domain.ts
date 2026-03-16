@@ -6,7 +6,12 @@ export type EndpointName =
   | "fullAudit"
   | "holderAnalysis"
   | "fudSearch"
-  | "marketOverview";
+  | "marketOverview"
+  | "filterTokens"
+  | "filterWallets"
+  | "tokenWallets"
+  | "walletStats"
+  | "tokenHolders";
 
 export type ProviderRecord = {
   id: string;

@@ -68,6 +68,7 @@ function buildSubscriptionQuery(filter: ClientFilter): string {
   onLaunchpadTokenEventBatch${inputBlock} {
     address
     networkId
+    protocol
     eventType
     launchpadName
     marketCap
@@ -80,7 +81,12 @@ function buildSubscriptionQuery(filter: ClientFilter): string {
     sellCount1
     sniperCount
     sniperHeldPercentage
+    bundlerCount
+    bundlerHeldPercentage
+    insiderCount
+    insiderHeldPercentage
     devHeldPercentage
+    top10HoldersPercent
     token {
       name
       symbol
@@ -109,6 +115,7 @@ function mapEvent(raw: Record<string, unknown>): LaunchpadEvent {
   return {
     address: (raw.address as string) ?? null,
     networkId: (raw.networkId as number) ?? null,
+    protocol: (raw.protocol as string) ?? null,
     eventType: (raw.eventType as string) ?? null,
     launchpadName: (raw.launchpadName as string) ?? null,
     marketCap: (raw.marketCap as string) ?? null,
@@ -121,7 +128,12 @@ function mapEvent(raw: Record<string, unknown>): LaunchpadEvent {
     sellCount1: (raw.sellCount1 as number) ?? null,
     sniperCount: (raw.sniperCount as number) ?? null,
     sniperHeldPercentage: (raw.sniperHeldPercentage as number) ?? null,
+    bundlerCount: (raw.bundlerCount as number) ?? null,
+    bundlerHeldPercentage: (raw.bundlerHeldPercentage as number) ?? null,
+    insiderCount: (raw.insiderCount as number) ?? null,
+    insiderHeldPercentage: (raw.insiderHeldPercentage as number) ?? null,
     devHeldPercentage: (raw.devHeldPercentage as number) ?? null,
+    top10HoldersPercent: (raw.top10HoldersPercent as number) ?? null,
     tokenName: (token?.name as string) ?? null,
     tokenSymbol: (token?.symbol as string) ?? null,
     tokenImage: (info?.imageThumbUrl as string) ?? null,

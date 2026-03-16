@@ -12,12 +12,35 @@ export type CodexTokenInfo = {
   name?: string;
   symbol?: string;
   imageThumbUrl?: string;
+  totalSupply?: string;
+  circulatingSupply?: string;
+  description?: string;
+};
+
+export type CodexLaunchpadData = {
+  launchpadName?: string;
+  launchpadProtocol?: string;
+  completed?: boolean;
+  migrated?: boolean;
+  migratedAt?: number;
+  poolAddress?: string;
+  migratedPoolAddress?: string;
+  graduationPercent?: number;
+};
+
+export type CodexSocialLinks = {
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+  website?: string;
 };
 
 export type CodexEnhancedToken = {
   info?: CodexTokenInfo;
   createdAt?: number;
   creatorAddress?: string;
+  launchpad?: CodexLaunchpadData;
+  socialLinks?: CodexSocialLinks;
 };
 
 export type CodexTokenFilterResult = {
@@ -47,6 +70,10 @@ export type CodexTokenFilterResult = {
   insiderHeldPercentage?: number;
   devHeldPercentage?: number;
   top10HoldersPercent?: number;
+  pair?: {
+    address?: string;
+    createdAt?: number;
+  };
 };
 
 export type CodexFilterTokensResponse = {
@@ -107,20 +134,28 @@ export type CodexTokenFilters = {
   isVerified?: boolean;
   launchpadName?: string[];
   launchpadProtocol?: string[];
+  launchpadCompleted?: boolean;
   freezable?: boolean;
   mintable?: boolean;
   sniperCount?: CodexNumberFilter;
+  bundlerCount?: CodexNumberFilter;
+  insiderCount?: CodexNumberFilter;
   devHeldPercentage?: CodexNumberFilter;
   top10HoldersPercent?: CodexNumberFilter;
+  walletAgeAvg?: CodexNumberFilter;
+  buyCount1?: CodexNumberFilter;
+  sellCount1?: CodexNumberFilter;
 };
+
+export type CodexStatsType = "FILTERED" | "UNFILTERED";
 
 export type CodexRanking = {
   attribute: string;
   direction: "ASC" | "DESC";
 };
 
-const FILTER_TOKENS_QUERY = `query FilterTokens($filters: TokenFilters, $rankings: [TokenRanking], $limit: Int, $offset: Int) {
-  filterTokens(filters: $filters, rankings: $rankings, limit: $limit, offset: $offset) {
+const FILTER_TOKENS_QUERY = `query FilterTokens($filters: TokenFilters, $rankings: [TokenRanking], $limit: Int, $offset: Int, $phrase: String, $statsType: TokenPairStatisticsType) {
+  filterTokens(filters: $filters, rankings: $rankings, limit: $limit, offset: $offset, phrase: $phrase, statsType: $statsType) {
     count
     page
     results {
@@ -154,9 +189,101 @@ const FILTER_TOKENS_QUERY = `query FilterTokens($filters: TokenFilters, $ranking
           name
           symbol
           imageThumbUrl
+          totalSupply
+          circulatingSupply
+          description
         }
         createdAt
         creatorAddress
+        launchpad {
+          launchpadName
+          launchpadProtocol
+          completed
+          migrated
+          migratedAt
+          poolAddress
+          migratedPoolAddress
+          graduationPercent
+        }
+        socialLinks {
+          twitter
+          telegram
+          discord
+          website
+        }
+      }
+      pair {
+        address
+        createdAt
+      }
+    }
+  }
+}`;
+
+/* ── filterPairs query ───────────────────────────────────── */
+
+export type CodexPairFilters = {
+  network?: number | number[];
+  liquidity?: CodexNumberFilter;
+  volumeUSD24?: CodexNumberFilter;
+  txnCount24?: CodexNumberFilter;
+  createdAt?: CodexNumberFilter;
+};
+
+export type CodexPairFilterResult = {
+  pair?: {
+    address?: string;
+    createdAt?: number;
+    token0?: string;
+    token1?: string;
+    exchangeHash?: string;
+    networkId?: number;
+  };
+  token0?: string;
+  token1?: string;
+  liquidity?: string;
+  volumeUSD24?: string;
+  txnCount24?: number;
+  priceUSD?: string;
+  priceChange24?: string;
+  buyCount24?: number;
+  sellCount24?: number;
+  holders?: number;
+};
+
+export type CodexFilterPairsResponse = {
+  data?: {
+    filterPairs?: {
+      results?: CodexPairFilterResult[];
+      count?: number;
+      page?: number;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+const FILTER_PAIRS_QUERY = `query FilterPairs($filters: PairFilters, $rankings: [PairRanking], $limit: Int, $offset: Int, $phrase: String, $statsType: TokenPairStatisticsType) {
+  filterPairs(filters: $filters, rankings: $rankings, limit: $limit, offset: $offset, phrase: $phrase, statsType: $statsType) {
+    count
+    page
+    results {
+      liquidity
+      volumeUSD24
+      txnCount24
+      priceUSD
+      priceChange24
+      buyCount24
+      sellCount24
+      holders
+      token0
+      token1
+      pair {
+        address
+        createdAt
+        token0
+        token1
+        exchangeHash
+        networkId
       }
     }
   }
@@ -167,13 +294,353 @@ export async function filterTokens(
   rankings?: CodexRanking[],
   limit = 25,
   offset?: number,
+  phrase?: string,
+  statsType?: CodexStatsType,
 ): Promise<CodexFilterTokensResponse> {
   return requestJson<CodexFilterTokensResponse>(CODEX_GRAPHQL_URL, {
     method: "POST",
     headers: getAuthHeader(),
     body: JSON.stringify({
       query: FILTER_TOKENS_QUERY,
-      variables: { filters, rankings, limit, offset },
+      variables: { filters, rankings, limit, offset, phrase: phrase || undefined, statsType: statsType || undefined },
     }),
+  });
+}
+
+export async function filterPairs(
+  filters?: CodexPairFilters,
+  rankings?: CodexRanking[],
+  limit = 25,
+  offset?: number,
+  phrase?: string,
+  statsType?: CodexStatsType,
+): Promise<CodexFilterPairsResponse> {
+  return requestJson<CodexFilterPairsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: FILTER_PAIRS_QUERY,
+      variables: { filters, rankings, limit, offset, phrase: phrase || undefined, statsType: statsType || undefined },
+    }),
+  });
+}
+
+/* ── filterWallets query ─────────────────────────────────── */
+
+export type CodexWalletTimeFrame = "1d" | "1w" | "30d" | "1y";
+
+export type CodexWalletFilters = {
+  networkId?: number;
+  realizedProfitUsd?: CodexNumberFilter;
+  winRate?: CodexNumberFilter;
+  swaps?: CodexNumberFilter;
+  volumeUsd?: CodexNumberFilter;
+  uniqueTokens?: CodexNumberFilter;
+  includeLabels?: string[];
+  excludeLabels?: string[];
+};
+
+export type CodexWalletResult = {
+  address?: string;
+  labels?: string[];
+  lastTransactionAt?: number;
+  firstTransactionAt?: number;
+  volumeUsd?: string;
+  realizedProfitUsd?: string;
+  realizedProfitPercentage?: number;
+  winRate?: number;
+  swaps?: number;
+  uniqueTokens?: number;
+};
+
+export type CodexFilterWalletsResponse = {
+  data?: {
+    filterWallets?: {
+      results?: CodexWalletResult[];
+      count?: number;
+      offset?: number;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+function buildFilterWalletsQuery(tf: string): string {
+  return `query FilterWallets($input: FilterWalletsInput!) {
+  filterWallets(input: $input) {
+    count
+    offset
+    results {
+      address
+      labels
+      lastTransactionAt
+      firstTransactionAt
+      volumeUsd: volumeUsd${tf}
+      realizedProfitUsd: realizedProfitUsd${tf}
+      realizedProfitPercentage: realizedProfitPercentage${tf}
+      winRate: winRate${tf}
+      swaps: swaps${tf}
+      uniqueTokens: uniqueTokens${tf}
+    }
+  }
+}`;
+}
+
+export async function codexFilterWallets(
+  filters: CodexWalletFilters,
+  sortBy: string | undefined,
+  sortDirection: string | undefined,
+  limit: number,
+  offset: number | undefined,
+  timeFrame: CodexWalletTimeFrame = "1w",
+): Promise<CodexFilterWalletsResponse> {
+  const tf = timeFrame;
+  const inputFilters: Record<string, unknown> = {};
+  if (filters.networkId) inputFilters.networkId = filters.networkId;
+  if (filters.realizedProfitUsd) inputFilters[`realizedProfitUsd${tf}`] = filters.realizedProfitUsd;
+  if (filters.winRate) inputFilters[`winRate${tf}`] = filters.winRate;
+  if (filters.swaps) inputFilters[`swaps${tf}`] = filters.swaps;
+  if (filters.volumeUsd) inputFilters[`volumeUsd${tf}`] = filters.volumeUsd;
+  if (filters.uniqueTokens) inputFilters[`uniqueTokens${tf}`] = filters.uniqueTokens;
+  if (filters.includeLabels?.length) inputFilters.includeLabels = filters.includeLabels;
+  if (filters.excludeLabels?.length) inputFilters.excludeLabels = filters.excludeLabels;
+
+  const input: Record<string, unknown> = { limit, filters: inputFilters };
+  if (offset != null) input.offset = offset;
+  input.rankings = [{ attribute: `${sortBy ?? "realizedProfitUsd"}${tf}`, direction: sortDirection ?? "DESC" }];
+
+  return requestJson<CodexFilterWalletsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({ query: buildFilterWalletsQuery(tf), variables: { input } }),
+  });
+}
+
+/* ── filterTokenWallets query ────────────────────────────── */
+
+export type CodexTokenWalletResult = {
+  address?: string;
+  tokenAddress?: string;
+  networkId?: number;
+  lastTransactionAt?: number;
+  tokenBalance?: string;
+  tokenBalanceLive?: string;
+  tokenBalanceLiveUsd?: string;
+  realizedProfitUsd?: string;
+  realizedProfitPercentage?: number;
+  buys?: number;
+  sells?: number;
+  amountBoughtUsd?: string;
+  amountSoldUsd?: string;
+  token?: { name?: string; symbol?: string };
+};
+
+export type CodexFilterTokenWalletsResponse = {
+  data?: {
+    filterTokenWallets?: {
+      results?: CodexTokenWalletResult[];
+      count?: number;
+      offset?: number;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+function buildFilterTokenWalletsQuery(tf: string): string {
+  return `query FilterTokenWallets($input: FilterTokenWalletsInput!) {
+  filterTokenWallets(input: $input) {
+    count
+    offset
+    results {
+      address
+      tokenAddress
+      networkId
+      lastTransactionAt
+      tokenBalance
+      tokenBalanceLive
+      tokenBalanceLiveUsd
+      realizedProfitUsd: realizedProfitUsd${tf}
+      realizedProfitPercentage: realizedProfitPercentage${tf}
+      buys: buys${tf}
+      sells: sells${tf}
+      amountBoughtUsd: amountBoughtUsd${tf}
+      amountSoldUsd: amountSoldUsd${tf}
+      token { name symbol }
+    }
+  }
+}`;
+}
+
+export async function codexFilterTokenWallets(
+  tokenAddress: string,
+  networkId: number,
+  sortBy: string | undefined,
+  sortDirection: string | undefined,
+  limit: number,
+  offset: number | undefined,
+  timeFrame: CodexWalletTimeFrame = "30d",
+): Promise<CodexFilterTokenWalletsResponse> {
+  const tf = timeFrame;
+  const input: Record<string, unknown> = {
+    tokenIds: [`${tokenAddress}:${networkId}`],
+    limit,
+    rankings: [{ attribute: `${sortBy ?? "realizedProfitUsd"}${tf}`, direction: sortDirection ?? "DESC" }],
+  };
+  if (offset != null) input.offset = offset;
+
+  return requestJson<CodexFilterTokenWalletsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({ query: buildFilterTokenWalletsQuery(tf), variables: { input } }),
+  });
+}
+
+/* ── detailedWalletStats query ───────────────────────────── */
+
+export type CodexStatsUsd = {
+  volumeUsd?: string;
+  realizedProfitUsd?: string;
+  realizedProfitPercentage?: number;
+  averageProfitUsdPerTrade?: string;
+};
+
+export type CodexStatsNonCurrency = {
+  swaps?: number;
+  uniqueTokens?: number;
+  wins?: number;
+  losses?: number;
+};
+
+export type CodexStatsPeriod = {
+  statsUsd?: CodexStatsUsd;
+  statsNonCurrency?: CodexStatsNonCurrency;
+};
+
+export type CodexNetworkBreakdown = {
+  networkId?: number;
+  nativeTokenBalance?: string;
+};
+
+export type CodexDetailedWalletStatsData = {
+  walletAddress?: string;
+  lastTransactionAt?: number;
+  labels?: string[];
+  scammerScore?: number;
+  botScore?: number;
+  statsDay1?: CodexStatsPeriod;
+  statsWeek1?: CodexStatsPeriod;
+  statsDay30?: CodexStatsPeriod;
+  statsYear1?: CodexStatsPeriod;
+  networkBreakdown?: CodexNetworkBreakdown[];
+  wallet?: {
+    address?: string;
+    firstFunding?: {
+      timestamp?: number;
+      address?: string;
+    };
+  };
+};
+
+export type CodexDetailedWalletStatsResponse = {
+  data?: {
+    detailedWalletStats?: CodexDetailedWalletStatsData;
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+const DETAILED_WALLET_STATS_QUERY = `query DetailedWalletStats($input: DetailedWalletStatsInput!) {
+  detailedWalletStats(input: $input) {
+    walletAddress
+    lastTransactionAt
+    labels
+    scammerScore
+    botScore
+    statsDay1 {
+      statsUsd { volumeUsd realizedProfitUsd realizedProfitPercentage averageProfitUsdPerTrade }
+      statsNonCurrency { swaps uniqueTokens wins losses }
+    }
+    statsWeek1 {
+      statsUsd { volumeUsd realizedProfitUsd realizedProfitPercentage averageProfitUsdPerTrade }
+      statsNonCurrency { swaps uniqueTokens wins losses }
+    }
+    statsDay30 {
+      statsUsd { volumeUsd realizedProfitUsd realizedProfitPercentage averageProfitUsdPerTrade }
+      statsNonCurrency { swaps uniqueTokens wins losses }
+    }
+    statsYear1 {
+      statsUsd { volumeUsd realizedProfitUsd realizedProfitPercentage averageProfitUsdPerTrade }
+      statsNonCurrency { swaps uniqueTokens wins losses }
+    }
+    networkBreakdown { networkId nativeTokenBalance }
+    wallet {
+      address
+      firstFunding { address timestamp }
+    }
+  }
+}`;
+
+export async function codexDetailedWalletStats(
+  walletAddress: string,
+): Promise<CodexDetailedWalletStatsResponse> {
+  return requestJson<CodexDetailedWalletStatsResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({
+      query: DETAILED_WALLET_STATS_QUERY,
+      variables: { input: { walletAddress } },
+    }),
+  });
+}
+
+/* ── holders query ───────────────────────────────────────── */
+
+export type CodexHolderItem = {
+  address?: string;
+  shiftedBalance?: string;
+  balanceUsd?: string;
+  firstHeldTimestamp?: number;
+};
+
+export type CodexHoldersResponse = {
+  data?: {
+    holders?: {
+      items?: CodexHolderItem[];
+      count?: number;
+      status?: string;
+      top10HoldersPercent?: number;
+    };
+  };
+  errors?: Array<{ message?: string }>;
+};
+
+const HOLDERS_QUERY = `query Holders($input: HoldersInput!) {
+  holders(input: $input) {
+    count
+    status
+    top10HoldersPercent
+    items {
+      address
+      shiftedBalance
+      balanceUsd
+      firstHeldTimestamp
+    }
+  }
+}`;
+
+export async function codexHolders(
+  tokenAddress: string,
+  networkId: number,
+  cursor?: string,
+  limit = 50,
+): Promise<CodexHoldersResponse> {
+  const input: Record<string, unknown> = {
+    tokenId: `${tokenAddress}:${networkId}`,
+    limit,
+  };
+  if (cursor) input.cursor = cursor;
+
+  return requestJson<CodexHoldersResponse>(CODEX_GRAPHQL_URL, {
+    method: "POST",
+    headers: getAuthHeader(),
+    body: JSON.stringify({ query: HOLDERS_QUERY, variables: { input } }),
   });
 }

@@ -455,6 +455,9 @@ export type FilteredToken = {
   name: string | null;
   symbol: string | null;
   imageUrl: string | null;
+  description: string | null;
+  totalSupply: string | null;
+  circulatingSupply: string | null;
   createdAt: number | null;
   creatorAddress: string | null;
   priceUsd: string | null;
@@ -474,9 +477,28 @@ export type FilteredToken = {
   sniperCount: number | null;
   sniperHeldPct: number | null;
   bundlerCount: number | null;
+  bundlerHeldPct: number | null;
   insiderCount: number | null;
+  insiderHeldPct: number | null;
   devHeldPct: number | null;
   top10HoldersPct: number | null;
+  launchpad: {
+    name: string | null;
+    protocol: string | null;
+    completed: boolean | null;
+    migrated: boolean | null;
+    migratedAt: number | null;
+    poolAddress: string | null;
+    migratedPoolAddress: string | null;
+    graduationPercent: number | null;
+  } | null;
+  socialLinks: {
+    twitter: string | null;
+    telegram: string | null;
+    discord: string | null;
+    website: string | null;
+  } | null;
+  pairAddress: string | null;
 };
 
 export type FilterTokensResponse = {
@@ -494,6 +516,7 @@ export type FilterTokensResponse = {
 export type LaunchpadEvent = {
   address: string | null;
   networkId: number | null;
+  protocol: string | null;
   eventType: string | null;
   launchpadName: string | null;
   marketCap: string | null;
@@ -506,8 +529,130 @@ export type LaunchpadEvent = {
   sellCount1: number | null;
   sniperCount: number | null;
   sniperHeldPercentage: number | null;
+  bundlerCount: number | null;
+  bundlerHeldPercentage: number | null;
+  insiderCount: number | null;
+  insiderHeldPercentage: number | null;
   devHeldPercentage: number | null;
+  top10HoldersPercent: number | null;
   tokenName: string | null;
   tokenSymbol: string | null;
   tokenImage: string | null;
+};
+
+/* ── Codex filterWallets ──────────────────────────────────── */
+
+export type FilteredWallet = {
+  address: string | null;
+  labels: string[];
+  lastTransactionAt: number | null;
+  firstTransactionAt: number | null;
+  volumeUsd: string | null;
+  realizedProfitUsd: string | null;
+  realizedProfitPct: number | null;
+  winRate: number | null;
+  swaps: number | null;
+  uniqueTokens: number | null;
+};
+
+export type FilterWalletsResponse = {
+  endpoint: "filterWallets";
+  status: "live" | "partial";
+  cached: boolean;
+  timeFrame: string;
+  count: number;
+  wallets: FilteredWallet[];
+  providers: ProviderStatus[];
+};
+
+/* ── Codex tokenWallets ───────────────────────────────────── */
+
+export type TokenWalletItem = {
+  address: string | null;
+  tokenAddress: string | null;
+  networkId: number | null;
+  tokenName: string | null;
+  tokenSymbol: string | null;
+  lastTransactionAt: number | null;
+  tokenBalance: string | null;
+  tokenBalanceLive: string | null;
+  tokenBalanceLiveUsd: string | null;
+  realizedProfitUsd: string | null;
+  realizedProfitPct: number | null;
+  buys: number | null;
+  sells: number | null;
+  amountBoughtUsd: string | null;
+  amountSoldUsd: string | null;
+};
+
+export type TokenWalletsResponse = {
+  endpoint: "tokenWallets";
+  status: "live" | "partial";
+  cached: boolean;
+  timeFrame: string;
+  tokenAddress: string;
+  network: string;
+  count: number;
+  wallets: TokenWalletItem[];
+  providers: ProviderStatus[];
+};
+
+/* ── Codex walletStats ────────────────────────────────────── */
+
+export type WalletStatsPeriod = {
+  volumeUsd: string | null;
+  realizedProfitUsd: string | null;
+  realizedProfitPct: number | null;
+  avgProfitPerTrade: string | null;
+  swaps: number | null;
+  uniqueTokens: number | null;
+  wins: number | null;
+  losses: number | null;
+};
+
+export type WalletNetworkBalance = {
+  networkId: number | null;
+  nativeTokenBalance: string | null;
+};
+
+export type WalletStatsResponse = {
+  endpoint: "walletStats";
+  status: "live" | "partial";
+  cached: boolean;
+  walletAddress: string;
+  lastTransactionAt: number | null;
+  labels: string[];
+  scammerScore: number | null;
+  botScore: number | null;
+  stats1d: WalletStatsPeriod | null;
+  stats1w: WalletStatsPeriod | null;
+  stats30d: WalletStatsPeriod | null;
+  stats1y: WalletStatsPeriod | null;
+  networkBalances: WalletNetworkBalance[];
+  firstFunding: {
+    timestamp: number | null;
+    address: string | null;
+  } | null;
+  providers: ProviderStatus[];
+};
+
+/* ── Codex tokenHolders ───────────────────────────────────── */
+
+export type TokenHolderItem = {
+  address: string | null;
+  balance: string | null;
+  balanceUsd: string | null;
+  firstHeldTimestamp: number | null;
+};
+
+export type TokenHoldersResponse = {
+  endpoint: "tokenHolders";
+  status: "live" | "partial";
+  cached: boolean;
+  tokenAddress: string;
+  network: string;
+  holderCount: number | null;
+  top10HoldersPercent: number | null;
+  holders: TokenHolderItem[];
+  providers: ProviderStatus[];
 };

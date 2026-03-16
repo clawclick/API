@@ -6,6 +6,7 @@ import {
   type CodexTokenFilters,
   type CodexRanking,
   type CodexFilterTokensResponse,
+  type CodexStatsType,
 } from "#providers/market/codex";
 import type { FilterTokensQuery } from "#routes/helpers";
 import type { FilterTokensResponse, FilteredToken, ProviderStatus } from "#types/api";
@@ -19,17 +20,21 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 function getCacheKey(q: FilterTokensQuery): string {
   return JSON.stringify({
     network: q.network,
+    phrase: q.phrase,
     minLiquidity: q.minLiquidity,
     minVolume24: q.minVolume24,
     minMarketCap: q.minMarketCap,
     maxMarketCap: q.maxMarketCap,
     minHolders: q.minHolders,
+    minWalletAgeAvg: q.minWalletAgeAvg,
     sortBy: q.sortBy,
     sortDirection: q.sortDirection,
     limit: q.limit,
     offset: q.offset,
     includeScams: q.includeScams,
     launchpadName: q.launchpadName,
+    launchpadCompleted: q.launchpadCompleted,
+    statsType: q.statsType,
   });
 }
 
@@ -68,6 +73,8 @@ export async function getFilteredTokens(q: FilterTokensQuery): Promise<FilterTok
   if (q.launchpadName) {
     filters.launchpadName = q.launchpadName.split(",").map((s) => s.trim());
   }
+  if (q.launchpadCompleted != null) filters.launchpadCompleted = q.launchpadCompleted;
+  if (q.minWalletAgeAvg != null) filters.walletAgeAvg = { gt: q.minWalletAgeAvg };
 
   const rankings: CodexRanking[] | undefined = q.sortBy
     ? [{ attribute: q.sortBy, direction: q.sortDirection ?? "DESC" }]
@@ -77,7 +84,7 @@ export async function getFilteredTokens(q: FilterTokensQuery): Promise<FilterTok
     statuses,
     "codex:filterTokens",
     isCodexConfigured(),
-    () => filterTokens(filters, rankings, q.limit, q.offset),
+    () => filterTokens(filters, rankings, q.limit, q.offset, q.phrase, q.statsType as CodexStatsType | undefined),
     "CODEX_API_KEY not configured. Get one at https://dashboard.codex.io",
   );
 
@@ -86,6 +93,9 @@ export async function getFilteredTokens(q: FilterTokensQuery): Promise<FilterTok
     name: r.token?.info?.name ?? null,
     symbol: r.token?.info?.symbol ?? null,
     imageUrl: r.token?.info?.imageThumbUrl ?? null,
+    description: r.token?.info?.description ?? null,
+    totalSupply: r.token?.info?.totalSupply ?? null,
+    circulatingSupply: r.token?.info?.circulatingSupply ?? null,
     createdAt: r.createdAt ?? r.token?.createdAt ?? null,
     creatorAddress: r.token?.creatorAddress ?? null,
     priceUsd: r.priceUSD ?? null,
@@ -105,9 +115,28 @@ export async function getFilteredTokens(q: FilterTokensQuery): Promise<FilterTok
     sniperCount: r.sniperCount ?? null,
     sniperHeldPct: r.sniperHeldPercentage ?? null,
     bundlerCount: r.bundlerCount ?? null,
+    bundlerHeldPct: r.bundlerHeldPercentage ?? null,
     insiderCount: r.insiderCount ?? null,
+    insiderHeldPct: r.insiderHeldPercentage ?? null,
     devHeldPct: r.devHeldPercentage ?? null,
     top10HoldersPct: r.top10HoldersPercent ?? null,
+    launchpad: r.token?.launchpad ? {
+      name: r.token.launchpad.launchpadName ?? null,
+      protocol: r.token.launchpad.launchpadProtocol ?? null,
+      completed: r.token.launchpad.completed ?? null,
+      migrated: r.token.launchpad.migrated ?? null,
+      migratedAt: r.token.launchpad.migratedAt ?? null,
+      poolAddress: r.token.launchpad.poolAddress ?? null,
+      migratedPoolAddress: r.token.launchpad.migratedPoolAddress ?? null,
+      graduationPercent: r.token.launchpad.graduationPercent ?? null,
+    } : null,
+    socialLinks: r.token?.socialLinks ? {
+      twitter: r.token.socialLinks.twitter ?? null,
+      telegram: r.token.socialLinks.telegram ?? null,
+      discord: r.token.socialLinks.discord ?? null,
+      website: r.token.socialLinks.website ?? null,
+    } : null,
+    pairAddress: r.pair?.address ?? null,
   }));
 
   const response: FilterTokensResponse = {

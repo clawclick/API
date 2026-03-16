@@ -50,5 +50,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "lunarCrush", label: "LunarCrush", category: "sentiment", folder: "Sentiment/Majors/LunarCrush", env: ["LUNARCRUSH_API_KEY"], endpoints: ["fudSearch", "marketOverview"] },
   { id: "polymarket", label: "Polymarket", category: "sentiment", folder: "Sentiment/Majors/Polymarket", env: [], endpoints: ["marketOverview"] },
   { id: "reddit", label: "Reddit API", category: "sentiment", folder: "Sentiment/Majors/Reddit_API", env: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USER_AGENT"], endpoints: ["fudSearch", "marketOverview"] },
-  { id: "santiment", label: "Santiment", category: "sentiment", folder: "Sentiment/Majors/Santiment", env: ["SANTIMENT_API_KEY"], endpoints: ["fudSearch", "marketOverview"] }
+  { id: "santiment", label: "Santiment", category: "sentiment", folder: "Sentiment/Majors/Santiment", env: ["SANTIMENT_API_KEY"], endpoints: ["fudSearch", "marketOverview"] },
+  { id: "zerion", label: "Zerion", category: "walletTracking", folder: "Alpha_Wallet_tracking/Zerion", env: ["ZERION_API_KEY"], endpoints: ["walletReview"] },
+  { id: "codex", label: "Codex", category: "marketData", folder: "Market_data/LowCaps/Codex", env: ["CODEX_API_KEY"], endpoints: ["filterTokens", "filterWallets", "tokenWallets", "walletStats", "tokenHolders"] }
 ];
