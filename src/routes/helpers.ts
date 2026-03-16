@@ -74,6 +74,51 @@ export type SwapQuery = z.output<typeof swapSchema>;
 export type SwapQuoteQuery = z.output<typeof swapQuoteSchema>;
 export type SwapDexesQuery = z.output<typeof swapDexesSchema>;
 
+/* ── Discovery & Market Schemas ─────────────────────────────── */
+
+export const topTradersSchema = z.object({
+  chain: z.string().min(1).default("sol"),
+  tokenAddress: z.string().min(1),
+  timeFrame: z.string().default("24h"),
+});
+
+export const gasFeedSchema = z.object({
+  chain: z.string().min(1).default("eth"),
+});
+
+export const tokenSearchSchema = z.object({
+  query: z.string().min(1),
+});
+
+export const newPairsSchema = z.object({
+  source: z.enum(["all", "dexscreener", "pumpfun", "raydium", "uniswap"]).default("all"),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export type TopTradersQuery = z.output<typeof topTradersSchema>;
+export type GasFeedQuery = z.output<typeof gasFeedSchema>;
+export type TokenSearchQuery = z.output<typeof tokenSearchSchema>;
+export type NewPairsQuery = z.output<typeof newPairsSchema>;
+
+/* ── Codex filterTokens Schema ──────────────────────────────── */
+
+export const filterTokensSchema = z.object({
+  network: z.string().optional(),
+  minLiquidity: z.coerce.number().optional(),
+  minVolume24: z.coerce.number().optional(),
+  minMarketCap: z.coerce.number().optional(),
+  maxMarketCap: z.coerce.number().optional(),
+  minHolders: z.coerce.number().int().optional(),
+  sortBy: z.string().optional(),
+  sortDirection: z.enum(["ASC", "DESC"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(25),
+  offset: z.coerce.number().int().min(0).optional(),
+  includeScams: z.preprocess((v) => v === "true" || v === true, z.boolean().optional()),
+  launchpadName: z.string().optional(),
+});
+
+export type FilterTokensQuery = z.output<typeof filterTokensSchema>;
+
 export function parseQuery<TSchema extends z.ZodTypeAny>(schema: TSchema, query: unknown): z.output<TSchema> {
   return schema.parse(query);
 }

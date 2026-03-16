@@ -17,6 +17,10 @@ import {
   getWalletTokenBalances,
   isMoralisConfigured
 } from "#providers/walletTracking/moralis";
+import {
+  getWalletPnl as getZerionWalletPnl,
+  isZerionConfigured,
+} from "#providers/walletTracking/zerion";
 import { isEvmChain, normalizeChain } from "#providers/shared/chains";
 import { runProvider, summarizeStatus } from "#lib/runProvider";
 import type { WalletReviewQuery } from "#routes/helpers";
@@ -51,7 +55,7 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
 
-  const [debankTotalBalance, debankProtocols, debankTokens, debankHistory, debankApprovals, moralisProfitability, moralisTokens, birdeyeNetWorth, birdeyePnlSummary, birdeyeTxList] = await Promise.all([
+  const [debankTotalBalance, debankProtocols, debankTokens, debankHistory, debankApprovals, moralisProfitability, moralisTokens, birdeyeNetWorth, birdeyePnlSummary, birdeyeTxList, zerionPnl] = await Promise.all([
     runProvider(providers, "debank", isDebankConfigured() && isEvmChain(chain), () => getTotalBalance(query.walletAddress)),
     runProvider(providers, "debankProtocols", isDebankConfigured() && isEvmChain(chain), () => getSimpleProtocolList(query.walletAddress, chain)),
     runProvider(providers, "debankTokens", isDebankConfigured() && isEvmChain(chain), () => getTokenList(query.walletAddress, chain)),
@@ -61,7 +65,8 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     runProvider(providers, "moralisBalances", isMoralisConfigured() && isEvmChain(chain), () => getWalletTokenBalances(query.walletAddress, chain)),
     runProvider(providers, "birdeyeNetWorth", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletCurrentNetWorth(query.walletAddress, 20)),
     runProvider(providers, "birdeyePnl", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletPnlSummary(query.walletAddress, `${query.days}d`)),
-    runProvider(providers, "birdeyeTxList", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletTxList(query.walletAddress, query.pageCount))
+    runProvider(providers, "birdeyeTxList", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletTxList(query.walletAddress, query.pageCount)),
+    runProvider(providers, "zerionPnl", isZerionConfigured(), () => getZerionWalletPnl(query.walletAddress, chain)),
   ]);
 
   const moralisTokenList = Array.isArray(moralisTokens) ? moralisTokens : [];
@@ -177,8 +182,10 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
   }, 0);
   const realizedProfitPct = parseNumber(moralisProfitability?.total_realized_profit_percentage);
   const birdeyeRealizedProfitPct = parseNumber(birdeyePnlSummary?.data?.summary?.pnl?.realized_profit_percent);
+  const zerionRealizedProfitPct = parseNumber(zerionPnl?.data?.attributes?.changes_percent);
+  const zerionRealizedProfitUsd = parseNumber(zerionPnl?.data?.attributes?.realized_absolute);
   const totalNetWorthUsd = firstNumber(debankTotalBalance?.total_usd_value, birdeyeNetWorth?.data?.total_value);
-  const finalRealizedProfitPct = realizedProfitPct ?? birdeyeRealizedProfitPct;
+  const finalRealizedProfitPct = realizedProfitPct ?? birdeyeRealizedProfitPct ?? zerionRealizedProfitPct;
   const birdeyeTradeVolumeUsd = (() => {
     const invested = parseNumber(birdeyePnlSummary?.data?.summary?.cashflow_usd?.total_invested) ?? 0;
     const sold = parseNumber(birdeyePnlSummary?.data?.summary?.cashflow_usd?.total_sold) ?? 0;
@@ -199,7 +206,7 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     summary: {
       totalNetWorthUsd,
       chainNetWorthUsd: firstNumber(chainNetWorthUsd, birdeyeNetWorth?.data?.total_value),
-      realizedProfitUsd: firstNumber(moralisProfitability?.total_realized_profit_usd, birdeyePnlSummary?.data?.summary?.pnl?.realized_profit_usd),
+      realizedProfitUsd: firstNumber(moralisProfitability?.total_realized_profit_usd, birdeyePnlSummary?.data?.summary?.pnl?.realized_profit_usd, zerionRealizedProfitUsd),
       realizedProfitPct: finalRealizedProfitPct,
       totalTradeVolumeUsd: firstNumber(moralisProfitability?.total_trade_volume, birdeyeTradeVolumeUsd),
       totalTrades: moralisProfitability?.total_count_of_trades ?? birdeyePnlSummary?.data?.summary?.counts?.total_trade ?? null,

@@ -347,3 +347,167 @@ export type SwapQuoteResponse = {
   amountOutMin: string | null;
   providers: ProviderStatus[];
 };
+
+/* ── Discovery & Market Endpoints ──────────────────────────── */
+
+export type TrendingToken = {
+  chainId: string | null;
+  tokenAddress: string | null;
+  name: string | null;
+  symbol: string | null;
+  priceUsd: number | null;
+  volume24hUsd: number | null;
+  liquidityUsd: number | null;
+  priceChange24hPct: number | null;
+  fdvUsd: number | null;
+  marketCapUsd: number | null;
+  boostAmount: number | null;
+  pairAddress: string | null;
+  dex: string | null;
+  source: string;
+};
+
+export type TrendingTokensResponse = {
+  endpoint: "trendingTokens";
+  status: "live" | "partial";
+  tokens: TrendingToken[];
+  providers: ProviderStatus[];
+};
+
+export type NewPairItem = {
+  source: string;
+  chainId: string | null;
+  pairAddress: string | null;
+  tokenAddress: string | null;
+  name: string | null;
+  symbol: string | null;
+  description: string | null;
+  createdAt: number | null;
+  tvl: number | null;
+  marketCap: number | null;
+  url: string | null;
+};
+
+export type NewPairsResponse = {
+  endpoint: "newPairs";
+  status: "live" | "partial";
+  source: string | null;
+  pairs: NewPairItem[];
+  providers: ProviderStatus[];
+};
+
+export type TopTraderItem = {
+  address: string | null;
+  tradeCount: number | null;
+  volume: number | null;
+  buyVolume: number | null;
+  sellVolume: number | null;
+};
+
+export type TopTradersResponse = {
+  endpoint: "topTraders";
+  status: "live" | "partial";
+  chain: string;
+  tokenAddress: string;
+  timeFrame: string;
+  traders: TopTraderItem[];
+  providers: ProviderStatus[];
+};
+
+export type GasFeedResponse = {
+  endpoint: "gasFeed";
+  status: "live" | "partial";
+  chain: string;
+  lastBlock: string | null;
+  safeGwei: string | null;
+  proposeGwei: string | null;
+  fastGwei: string | null;
+  baseFeeGwei: string | null;
+  providers: ProviderStatus[];
+};
+
+export type TokenSearchResult = {
+  chainId: string | null;
+  pairAddress: string | null;
+  tokenAddress: string | null;
+  name: string | null;
+  symbol: string | null;
+  priceUsd: number | null;
+  volume24hUsd: number | null;
+  liquidityUsd: number | null;
+  priceChange24hPct: number | null;
+  fdvUsd: number | null;
+  dex: string | null;
+};
+
+export type TokenSearchResponse = {
+  endpoint: "tokenSearch";
+  status: "live" | "partial";
+  query: string;
+  results: TokenSearchResult[];
+  providers: ProviderStatus[];
+};
+
+/* ── Codex filterTokens ───────────────────────────────────── */
+
+export type FilteredToken = {
+  address: string | null;
+  name: string | null;
+  symbol: string | null;
+  imageUrl: string | null;
+  createdAt: number | null;
+  creatorAddress: string | null;
+  priceUsd: string | null;
+  liquidity: string | null;
+  marketCap: string | null;
+  volume24h: string | null;
+  buyVolume24h: string | null;
+  sellVolume24h: string | null;
+  change24h: string | null;
+  change1h: string | null;
+  change5m: string | null;
+  txnCount24h: number | null;
+  buyCount24h: number | null;
+  sellCount24h: number | null;
+  holders: number | null;
+  walletAgeAvg: string | null;
+  sniperCount: number | null;
+  sniperHeldPct: number | null;
+  bundlerCount: number | null;
+  insiderCount: number | null;
+  devHeldPct: number | null;
+  top10HoldersPct: number | null;
+};
+
+export type FilterTokensResponse = {
+  endpoint: "filterTokens";
+  status: "live" | "partial";
+  cached: boolean;
+  count: number;
+  page: number;
+  tokens: FilteredToken[];
+  providers: ProviderStatus[];
+};
+
+/* ── Codex launchpad WebSocket event ──────────────────────── */
+
+export type LaunchpadEvent = {
+  address: string | null;
+  networkId: number | null;
+  eventType: string | null;
+  launchpadName: string | null;
+  marketCap: string | null;
+  price: number | null;
+  liquidity: string | null;
+  holders: number | null;
+  volume1: number | null;
+  transactions1: number | null;
+  buyCount1: number | null;
+  sellCount1: number | null;
+  sniperCount: number | null;
+  sniperHeldPercentage: number | null;
+  devHeldPercentage: number | null;
+  tokenName: string | null;
+  tokenSymbol: string | null;
+  tokenImage: string | null;
+};

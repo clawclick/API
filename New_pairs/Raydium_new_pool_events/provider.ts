@@ -23,6 +23,6 @@ type RaydiumPoolListResponse = {
 /** GET /pools/info/list – list pools sorted by creation date (newest first). No auth required. */
 export async function getNewPools(page = 1, pageSize = 10): Promise<RaydiumPoolListResponse> {
   return requestJson<RaydiumPoolListResponse>(
-    `https://api-v3.raydium.io/pools/info/list?page=${page}&pageSize=${pageSize}&poolSortField=default&sortType=desc`,
+    `https://api-v3.raydium.io/pools/info/list?poolType=all&poolSortField=default&sortType=desc&page=${page}&pageSize=${pageSize}`,
   );
 }

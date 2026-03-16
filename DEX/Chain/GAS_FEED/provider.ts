@@ -17,31 +17,26 @@ type EtherscanResponse = {
   result?: GasOracleResult;
 };
 
-type ChainConfig = {
-  chainId: string;
-  envKey: string;
-};
-
-const chains: Record<string, ChainConfig> = {
-  eth: { chainId: "1", envKey: "ETHERSCAN_API_KEY" },
-  base: { chainId: "8453", envKey: "BASESCAN_API_KEY" },
-  bsc: { chainId: "56", envKey: "BSCSCAN_API_KEY" },
+const CHAIN_IDS: Record<string, string> = {
+  eth: "1",
+  base: "8453",
+  bsc: "56",
 };
 
 export function isEtherscanConfigured(chain: string): boolean {
-  const cfg = chains[chain];
-  if (!cfg) return false;
-  return isConfigured(getOptionalEnv(cfg.envKey));
+  if (!CHAIN_IDS[chain]) return false;
+  return isConfigured(getOptionalEnv("ETHERSCAN_API_KEY"));
 }
 
-/** GET /v2/api?chainid={id}&module=gastracker&action=gasoracle – gas prices for EVM chains. */
+/** GET /v2/api?chainid={id}&module=gastracker&action=gasoracle – gas prices for EVM chains.
+ *  Etherscan V2 uses a single API key for all chains (eth, base, bsc) with chainid param. */
 export async function getGasOracle(chain: string): Promise<EtherscanResponse> {
-  const cfg = chains[chain];
-  if (!cfg) throw new Error(`Unsupported etherscan chain: ${chain}`);
+  const chainId = CHAIN_IDS[chain];
+  if (!chainId) throw new Error(`Unsupported etherscan chain: ${chain}`);
 
-  const apiKey = encodeURIComponent(getRequiredEnv(cfg.envKey));
+  const apiKey = encodeURIComponent(getRequiredEnv("ETHERSCAN_API_KEY"));
 
   return requestJson<EtherscanResponse>(
-    `https://api.etherscan.io/v2/api?chainid=${cfg.chainId}&module=gastracker&action=gasoracle&apikey=${apiKey}`,
+    `https://api.etherscan.io/v2/api?chainid=${chainId}&module=gastracker&action=gasoracle&apikey=${apiKey}`,
   );
 }

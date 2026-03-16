@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
@@ -6,6 +7,8 @@ import { registerRoutes } from "#routes/index";
 
 export function buildApp() {
   const app = Fastify({ logger: true });
+
+  app.register(fastifyWebSocket);
 
   /* ── Global error handler ─────────────────────────────── */
   app.setErrorHandler((error: FastifyError | ZodError | ChainError | Error, request, reply) => {
@@ -58,7 +61,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /tokenPoolInfo, /tokenPriceHistory, /isScam, /fullAudit, /holderAnalysis, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /tokenPoolInfo, /tokenPriceHistory, /isScam, /fullAudit, /holderAnalysis, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /filterTokens, ws:/ws/launchpadEvents`,
     });
   });
 

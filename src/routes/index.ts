@@ -11,7 +11,10 @@ import {
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
 import { getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
-import { fudSearchSchema, marketOverviewSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, walletReviewSchema } from "#routes/helpers";
+import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
+import { getFilteredTokens } from "#services/filterTokens";
+import { handleClient } from "#services/launchpadStream";
+import { filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -32,4 +35,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/swap", async (request) => getSwapTx(parseQuery(swapSchema, request.query)));
   app.get("/swapQuote", async (request) => getSwapQuote(parseQuery(swapQuoteSchema, request.query)));
   app.get("/swapDexes", async (request) => getSwapDexes(parseQuery(swapDexesSchema, request.query).chain));
+
+  // Discovery & market routes
+  app.get("/trendingTokens", async () => getTrendingTokens());
+  app.get("/newPairs", async (request) => getNewPairs(parseQuery(newPairsSchema, request.query)));
+  app.get("/topTraders", async (request) => getTopTraders(parseQuery(topTradersSchema, request.query)));
+  app.get("/gasFeed", async (request) => getGasFeed(parseQuery(gasFeedSchema, request.query)));
+  app.get("/tokenSearch", async (request) => getTokenSearch(parseQuery(tokenSearchSchema, request.query)));
+
+  // Codex filterTokens (cached 5min)
+  app.get("/filterTokens", async (request) => getFilteredTokens(parseQuery(filterTokensSchema, request.query)));
+
+  // WebSocket: Codex launchpad event stream
+  app.get("/ws/launchpadEvents", { websocket: true }, (socket) => {
+    handleClient(socket);
+  });
 }
