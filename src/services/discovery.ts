@@ -172,26 +172,32 @@ export async function getNewPairs(q: NewPairsQuery): Promise<NewPairsResponse> {
    Top traders for a token via Birdeye (Sol).
    ──────────────────────────────────────────────────────────── */
 
+const BIRDEYE_CHAIN_NAMES: Record<string, string> = {
+  sol: "solana",
+  eth: "ethereum",
+  base: "base",
+  bsc: "bsc",
+};
+
 export async function getTopTraders(q: TopTradersQuery): Promise<TopTradersResponse> {
   const chain = normalizeChain(q.chain);
   const statuses: ProviderStatus[] = [];
+  const birdeyeChain = BIRDEYE_CHAIN_NAMES[chain] ?? "solana";
 
   const data = await runProvider(
     statuses,
     "birdeye:topTraders",
-    chain === "sol" && isBirdeyeConfigured(),
-    () => getBirdeyeTopTraders(q.tokenAddress, q.timeFrame),
-    chain !== "sol"
-      ? "topTraders is only supported on Solana via Birdeye."
-      : "Birdeye API key not configured.",
+    isBirdeyeConfigured(),
+    () => getBirdeyeTopTraders(q.tokenAddress, q.timeFrame, "volume", birdeyeChain),
+    "Birdeye API key not configured.",
   );
 
   const traders = (data?.data?.items ?? []).map((t) => ({
     address: t.owner ?? null,
-    tradeCount: t.tradeCount ?? null,
+    tradeCount: t.trade ?? null,
     volume: t.volume ?? null,
-    buyVolume: t.buy ?? null,
-    sellVolume: t.sell ?? null,
+    buyVolume: t.volumeBuy ?? null,
+    sellVolume: t.volumeSell ?? null,
   }));
 
   return {

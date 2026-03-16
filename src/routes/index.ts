@@ -13,12 +13,13 @@ import { getProviderHealth } from "#services/providerHealth";
 import { getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
-import { getFilteredWallets } from "#services/filterWallets";
-import { getTokenWallets } from "#services/tokenWallets";
-import { getWalletStats } from "#services/walletStats";
-import { getTokenHolders } from "#services/tokenHolders";
+// DISABLED — Codex paid-plan-only endpoints (re-enable after upgrading Codex plan)
+// import { getFilteredWallets } from "#services/filterWallets";
+// import { getTokenWallets } from "#services/tokenWallets";
+// import { getWalletStats } from "#services/walletStats";
+// import { getTokenHolders } from "#services/tokenHolders";
 import { handleClient } from "#services/launchpadStream";
-import { filterTokensSchema, filterWalletsSchema, tokenWalletsSchema, walletStatsSchema, tokenHoldersSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema } from "#routes/helpers";
+import { filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -47,20 +48,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/gasFeed", async (request) => getGasFeed(parseQuery(gasFeedSchema, request.query)));
   app.get("/tokenSearch", async (request) => getTokenSearch(parseQuery(tokenSearchSchema, request.query)));
 
-  // Codex filterTokens (cached 5min)
+  // Codex 
   app.get("/filterTokens", async (request) => getFilteredTokens(parseQuery(filterTokensSchema, request.query)));
-
-  // Codex wallet discovery (cached 30min)
-  app.get("/filterWallets", async (request) => getFilteredWallets(parseQuery(filterWalletsSchema, request.query)));
-
-  // Codex token wallet analysis (cached 3min)
-  app.get("/tokenWallets", async (request) => getTokenWallets(parseQuery(tokenWalletsSchema, request.query)));
-
-  // Codex detailed wallet stats (cached 3min)
-  app.get("/walletStats", async (request) => getWalletStats(parseQuery(walletStatsSchema, request.query)));
-
-  // Codex token holders (cached 2min)
-  app.get("/tokenHolders", async (request) => getTokenHolders(parseQuery(tokenHoldersSchema, request.query)));
+  // DISABLED — Codex paid-plan-only ("Not authorized: please upgrade your plan")
+  // app.get("/filterWallets", async (request) => getFilteredWallets(parseQuery(filterWalletsSchema, request.query)));
+  // app.get("/tokenWallets", async (request) => getTokenWallets(parseQuery(tokenWalletsSchema, request.query)));
+  // app.get("/walletStats", async (request) => getWalletStats(parseQuery(walletStatsSchema, request.query)));
+  // app.get("/tokenHolders", async (request) => getTokenHolders(parseQuery(tokenHoldersSchema, request.query)));
 
   // WebSocket: Codex launchpad event stream
   app.get("/ws/launchpadEvents", { websocket: true }, (socket) => {

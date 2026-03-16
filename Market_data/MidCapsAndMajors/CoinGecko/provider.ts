@@ -56,6 +56,13 @@ export async function getTokenMarketChart(chain: SupportedChain, tokenAddress: s
   );
 }
 
+export async function getCoinMarketChart(coinId: string, days: number): Promise<MarketChartResponse | null> {
+  return requestJson<MarketChartResponse>(
+    `${getBaseUrl()}/coins/${coinId}/market_chart?vs_currency=usd&days=${days}`,
+    { headers: buildHeaders() }
+  );
+}
+
 /* ── NEW ENDPOINTS ────────────────────────────────────────── */
 
 type CoinGeckoCoinDetail = {

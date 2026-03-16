@@ -109,10 +109,13 @@ export async function getTokenSecurity(tokenAddress: string): Promise<BirdeyeSec
 
 type BirdeyeTopTrader = {
   owner?: string;
-  tradeCount?: number;
+  trade?: number;
+  tradeBuy?: number;
+  tradeSell?: number;
   volume?: number;
-  buy?: number;
-  sell?: number;
+  volumeBuy?: number;
+  volumeSell?: number;
+  tags?: string[];
 };
 
 type BirdeyeTopTradersResponse = {
@@ -120,11 +123,11 @@ type BirdeyeTopTradersResponse = {
   data?: { items?: BirdeyeTopTrader[] };
 };
 
-/** GET /defi/v3/token/top-traders – top traders for a given token by volume. */
-export async function getTopTraders(tokenAddress: string, timeFrame = "24h", sortType = "volume"): Promise<BirdeyeTopTradersResponse> {
+/** GET /defi/v2/tokens/top_traders – top traders for a given token by volume. */
+export async function getTopTraders(tokenAddress: string, timeFrame = "24h", sortType = "volume", chain = "solana"): Promise<BirdeyeTopTradersResponse> {
   return requestJson<BirdeyeTopTradersResponse>(
-    `https://public-api.birdeye.so/defi/v3/token/top-traders?address=${tokenAddress}&time_frame=${timeFrame}&sort_type=${sortType}`,
-    { headers: getHeaders() },
+    `https://public-api.birdeye.so/defi/v2/tokens/top_traders?address=${tokenAddress}&time_frame=${timeFrame}&sort_by=${sortType}&sort_type=desc&offset=0&limit=10`,
+    { headers: { ...getHeaders(), "x-chain": chain } },
   );
 }
 

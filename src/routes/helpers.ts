@@ -19,9 +19,14 @@ export const marketOverviewSchema = z.object({
   message: "Provide asset for majors sentiment or tokenAddress for token market overview."
 });
 
-export const priceHistorySchema = tokenQuerySchema.extend({
+export const priceHistorySchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  tokenAddress: z.string().optional(),
+  asset: z.string().optional(),
   limit: z.string().default("3m"),
   interval: z.string().default("1d")
+}).refine((value) => Boolean(value.asset || value.tokenAddress), {
+  message: "Provide asset for majors price history or tokenAddress for token price history."
 });
 
 export const fudSearchSchema = z.object({

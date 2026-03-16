@@ -71,14 +71,9 @@ npx tsx src/server.ts   # starts on port 3000
 | `/swapDexes` | GET | List available DEXes for a chain |
 | `/trendingTokens` | GET | Currently trending tokens |
 | `/newPairs` | GET | Recently created pairs/pools |
-| `/topTraders` | GET | Top traders for a token |
-| `/gasFeed` | GET | Current gas prices (EVM chains) |
+| `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |\n| `/gasFeed` | GET | Current gas prices (EVM chains) |
 | `/tokenSearch` | GET | Search tokens by name/symbol/address |
 | `/filterTokens` | GET | Filter tokens by metrics (Codex, cached 5 min) |
-| `/filterWallets` | GET | Discover top wallets by PnL, win rate, volume (Codex, cached 30 min) |
-| `/tokenWallets` | GET | Top wallets trading a specific token (Codex, cached 30 min) |
-| `/walletStats` | GET | Detailed wallet PnL stats across 1d/1w/30d/1y (Codex, cached 3 min) |
-| `/tokenHolders` | GET | Top holders of a token with balances and concentration (Codex, cached 2 min) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 
 ---
@@ -192,17 +187,20 @@ GET /tokenPoolInfo?chain=eth&tokenAddress=0xA0b86991c6218b36c1d19d4a2e9eb0ce3606
 
 ### `GET /tokenPriceHistory`
 
-Historical OHLCV price data for charting.
+Historical OHLCV price data for charting. Supports both token contracts and major assets.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `chain` | string | no | `eth` | Chain |
-| `tokenAddress` | string | **yes** | — | Token address |
+| `tokenAddress` | string | conditional | — | Token address, or a major symbol like `btc`, `eth`, `sol`, `xrp`, `bnb` |
+| `asset` | string | conditional | — | Optional explicit major asset name/symbol |
 | `limit` | string | no | `3m` | Time range (`1d`, `7d`, `1m`, `3m`, `1y`) |
 | `interval` | string | no | `1d` | Candle interval (`5m`, `15m`, `1h`, `4h`, `1d`) |
 
 ```
 GET /tokenPriceHistory?chain=sol&tokenAddress=So111...&limit=7d&interval=1h
+GET /tokenPriceHistory?chain=eth&tokenAddress=eth&limit=7d&interval=1d
+GET /tokenPriceHistory?asset=bitcoin&limit=30d&interval=1d
 ```
 
 **Response:**
@@ -394,13 +392,13 @@ GET /fudSearch?chain=eth&symbol=PEPE
 
 ### `GET /marketOverview`
 
-Combined market overview — sentiment scoring, social signals, prediction markets, pool data, and risk check. Supports two modes: token-level (with `tokenAddress`) or major asset (with `asset`).
+Combined market overview — sentiment scoring, social signals, prediction markets, pool data, and risk check. Supports two modes: token-level or major-asset mode.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `chain` | string | no | `eth` | Chain |
-| `tokenAddress` | string | conditional | — | Token address (for token mode) |
-| `asset` | string | conditional | — | Asset name like `bitcoin` (for major mode) |
+| `tokenAddress` | string | conditional | — | Token address for token mode, or major symbol like `btc`, `eth`, `sol`, `xrp`, `bnb` |
+| `asset` | string | conditional | — | Explicit major asset name/symbol like `bitcoin`, `ethereum`, `solana`, `xrp`, `bnb` |
 | `poolAddress` | string | no | — | Specific pool |
 | `symbol` | string | no | — | Symbol hint |
 | `tokenName` | string | no | — | Name hint |
@@ -408,7 +406,13 @@ Combined market overview — sentiment scoring, social signals, prediction marke
 ```
 GET /marketOverview?chain=eth&tokenAddress=0x...
 GET /marketOverview?asset=bitcoin
+GET /marketOverview?chain=eth&tokenAddress=eth
 ```
+
+Major mode behavior:
+- Uses broad sentiment and macro context sources such as X, Reddit, and Polymarket.
+- Skips token-specific risk checks like Honeypot and token-specific holder analysis.
+- Returns `mode: "major"`, with `pool`, `risk`, and `social` set to `null`.
 
 **Response:**
 ```json
@@ -683,16 +687,16 @@ GET /newPairs?source=pumpfun&limit=5
 
 ### `GET /topTraders`
 
-Top traders for a specific token.
+Top traders for a specific token. Multi-chain via Birdeye (solana, ethereum, base, bsc).
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `chain` | string | no | `sol` | Chain |
+| `chain` | string | no | `sol` | Chain (`sol`, `eth`, `base`, `bsc`) |
 | `tokenAddress` | string | **yes** | — | Token address |
-| `timeFrame` | string | no | `24h` | Time frame |
+| `timeFrame` | string | no | `24h` | Time frame (`30m`, `1h`, `2h`, `4h`, `8h`, `24h`) |
 
 ```
-GET /topTraders?chain=sol&tokenAddress=...&timeFrame=24h
+GET /topTraders?chain=eth&tokenAddress=0xA1290d69c65A6Fe4DF752f95823fae25cB99e5A7&timeFrame=24h
 ```
 
 **Response:**
@@ -700,11 +704,11 @@ GET /topTraders?chain=sol&tokenAddress=...&timeFrame=24h
 {
   "endpoint": "topTraders",
   "status": "live",
-  "chain": "sol",
+  "chain": "eth",
   "tokenAddress": "...",
   "timeFrame": "24h",
   "traders": [
-    { "address": "...", "tradeCount": 50, "volume": 100000, "buyVolume": 60000, "sellVolume": 40000 }
+    { "address": "0x...", "tradeCount": 4, "volume": 394.10, "buyVolume": 394.10, "sellVolume": 0 }
   ],
   "providers": [...]
 }
@@ -931,207 +935,6 @@ GET /filterTokens?network=sol&minLiquidity=50000&maxMarketCap=1000000&sortBy=tre
 
 ---
 
-### `GET /filterWallets`
-
-Discover top-performing wallets by PnL, win rate, volume, and swap count. Powered by Codex.io. Results cached for 30 minutes.
-
-| Param | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `network` | string | no | — | Chain: `eth`, `base`, `bsc`, `sol` |
-| `timeFrame` | string | no | `1w` | Stats period: `1d`, `1w`, `30d`, `1y` |
-| `minPnl` | number | no | — | Min realized profit USD |
-| `minWinRate` | number | no | — | Min win rate % (0–100) |
-| `minSwaps` | number | no | — | Min swap count |
-| `minVolume` | number | no | — | Min trading volume USD |
-| `labels` | string | no | — | Include wallet labels (comma-separated, e.g. `SNIPER,SMART_TRADER_TOKENS_OVER_TWO_DAYS_OLD`) |
-| `excludeLabels` | string | no | — | Exclude wallet labels |
-| `sortBy` | string | no | `realizedProfitUsd` | Sort field |
-| `sortDirection` | string | no | `DESC` | `ASC` or `DESC` |
-| `limit` | number | no | `25` | Results per page (1–200) |
-| `offset` | number | no | `0` | Pagination offset |
-
-#### Wallet Labels
-
-| Label | Meaning |
-|---|---|
-| `SNIPER` | Buys within first seconds of launch |
-| `SMART_TRADER_TOKENS_OVER_TWO_DAYS_OLD` | Profitable on established tokens |
-| `WEALTHY` | High net worth wallet |
-| `INTERESTING` | Notable on-chain activity |
-
-```
-GET /filterWallets?network=sol&timeFrame=1w&minPnl=10000&minWinRate=50&limit=10
-```
-
-**Response:**
-```json
-{
-  "endpoint": "filterWallets",
-  "status": "live",
-  "cached": false,
-  "timeFrame": "1w",
-  "count": 10,
-  "wallets": [
-    {
-      "address": "ApAKzJEq...",
-      "labels": ["SNIPER"],
-      "lastTransactionAt": 1773464644,
-      "firstTransactionAt": 1772197054,
-      "volumeUsd": "4576849.66",
-      "realizedProfitUsd": "2765967.67",
-      "realizedProfitPct": 152.74,
-      "winRate": 93.87,
-      "swaps": 2660,
-      "uniqueTokens": 438
-    }
-  ],
-  "providers": [...]
-}
-```
-
----
-
-### `GET /tokenWallets`
-
-Top wallets trading a specific token, with per-token PnL, balances, and buy/sell stats. Powered by Codex.io. Cached 30 minutes.
-
-| Param | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `tokenAddress` | string | **yes** | — | Token contract address |
-| `network` | string | no | `eth` | Chain: `eth`, `base`, `bsc`, `sol` |
-| `timeFrame` | string | no | `30d` | Stats period: `1d`, `1w`, `30d`, `1y` |
-| `sortBy` | string | no | `realizedProfitUsd` | Sort field |
-| `sortDirection` | string | no | `DESC` | `ASC` or `DESC` |
-| `limit` | number | no | `25` | Results per page (1–200) |
-| `offset` | number | no | `0` | Pagination offset |
-
-```
-GET /tokenWallets?tokenAddress=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2&network=eth&timeFrame=30d&limit=5
-```
-
-**Response:**
-```json
-{
-  "endpoint": "tokenWallets",
-  "status": "live",
-  "cached": false,
-  "timeFrame": "30d",
-  "tokenAddress": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
-  "network": "eth",
-  "count": 5,
-  "wallets": [
-    {
-      "address": "0xd7e123...",
-      "tokenAddress": "0xc02aaa39...",
-      "networkId": 1,
-      "tokenName": "Wrapped ETH",
-      "tokenSymbol": "WETH",
-      "lastTransactionAt": 1773465743,
-      "tokenBalance": "0.896",
-      "tokenBalanceLive": "0.896",
-      "tokenBalanceLiveUsd": "1876.81",
-      "realizedProfitUsd": "8554329.92",
-      "realizedProfitPct": 23.92,
-      "buys": 22138,
-      "sells": 17893,
-      "amountBoughtUsd": "41180489.22",
-      "amountSoldUsd": "44315778.28"
-    }
-  ],
-  "providers": [...]
-}
-```
-
----
-
-### `GET /walletStats`
-
-Detailed trading stats for a single wallet across all time periods (1d, 1w, 30d, 1y). Includes win/loss record, labels (SNIPER, bot, scammer scores), and first funding source. Powered by Codex.io. Cached 3 minutes.
-
-| Param | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `walletAddress` | string | **yes** | — | Wallet address (any chain) |
-
-```
-GET /walletStats?walletAddress=0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-```
-
-**Response:**
-```json
-{
-  "endpoint": "walletStats",
-  "status": "live",
-  "cached": false,
-  "walletAddress": "0xd8dA6BF2...",
-  "lastTransactionAt": 1772551991,
-  "labels": ["INTERESTING"],
-  "scammerScore": 0,
-  "botScore": null,
-  "stats1d": { "volumeUsd": "0", "realizedProfitUsd": "0", "realizedProfitPct": 0, "avgProfitPerTrade": "0", "swaps": 0, "uniqueTokens": 0, "wins": 0, "losses": 0 },
-  "stats1w": { "...": "..." },
-  "stats30d": {
-    "volumeUsd": "140.66",
-    "realizedProfitUsd": "-16.86",
-    "realizedProfitPct": -10.71,
-    "avgProfitPerTrade": "-5.62",
-    "swaps": 3,
-    "uniqueTokens": 4,
-    "wins": 0,
-    "losses": 1
-  },
-  "stats1y": { "...": "..." },
-  "networkBalances": [
-    { "networkId": 1, "nativeTokenBalance": "0.5" }
-  ],
-  "firstFunding": {
-    "timestamp": 1630000000,
-    "address": "0xabc..."
-  },
-  "providers": [...]
-}
-```
-
----
-
-### `GET /tokenHolders`
-
-Top holders of a token ordered by balance, with USD values and concentration metrics. Powered by Codex.io. Cached 2 minutes.
-
-| Param | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `tokenAddress` | string | **yes** | — | Token contract address |
-| `network` | string | no | `eth` | Chain: `eth`, `base`, `bsc`, `sol` |
-| `cursor` | string | no | — | Pagination cursor (from previous response) |
-| `limit` | number | no | `50` | Results per page (1–200) |
-
-```
-GET /tokenHolders?tokenAddress=So11111111111111111111111111111111111111112&network=sol&limit=10
-```
-
-**Response:**
-```json
-{
-  "endpoint": "tokenHolders",
-  "status": "live",
-  "cached": false,
-  "tokenAddress": "So111111...",
-  "network": "sol",
-  "holderCount": 2500000,
-  "top10HoldersPercent": 12.5,
-  "holders": [
-    {
-      "address": "5ZWj7a...",
-      "balance": "1500000.5",
-      "balanceUsd": "225000075.00",
-      "firstHeldTimestamp": 1640000000
-    }
-  ],
-  "providers": [...]
-}
-```
-
----
-
 ### `WS /ws/launchpadEvents`
 
 Real-time launchpad token event stream via WebSocket. Streams new token launches, updates, and migrations from PumpDotFun, Clanker, Virtuals, and more.
@@ -1310,7 +1113,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 
 | Variable | Used By |
 |---|---|
-| `CODEX_API_KEY` | filterTokens, filterWallets, tokenWallets, walletStats, tokenHolders, ws/launchpadEvents |
+| `CODEX_API_KEY` | filterTokens, ws/launchpadEvents |
 | `ZERION_API_KEY` | walletReview (PnL fallback) |
 | `CMC_API_KEY` | tokenPoolInfo, marketOverview |
 | `GOPLUS_ACCESS_TOKEN` | isScam, fullAudit |

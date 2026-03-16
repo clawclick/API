@@ -8,7 +8,7 @@ import {
   getTokenSecurity as getBirdeyeTokenSecurity,
   isBirdeyeConfigured
 } from "#providers/market/birdeye";
-import { getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
+import { getCoinMarketChart, getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
 import { getTokenPairs } from "#providers/market/dexScreener";
 import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPools, getOhlcv as getGeckoTerminalOhlcv } from "#providers/market/geckoTerminal";
 import { getTokenSecurity } from "#providers/risk/goPlus";
@@ -283,21 +283,31 @@ const MAJOR_ASSETS = {
   btc: {
     asset: "btc",
     label: "Bitcoin",
+    coinGeckoId: "bitcoin",
     aliases: ["btc", "bitcoin", "$btc"]
   },
   eth: {
     asset: "eth",
     label: "Ethereum",
+    coinGeckoId: "ethereum",
     aliases: ["eth", "ethereum", "$eth"]
   },
   sol: {
     asset: "sol",
     label: "Solana",
+    coinGeckoId: "solana",
     aliases: ["sol", "solana", "$sol"]
+  },
+  xrp: {
+    asset: "xrp",
+    label: "XRP",
+    coinGeckoId: "ripple",
+    aliases: ["xrp", "ripple", "$xrp"]
   },
   bnb: {
     asset: "bnb",
     label: "BNB",
+    coinGeckoId: "binancecoin",
     aliases: ["bnb", "binance coin", "binance", "$bnb", "bsc"]
   }
 } as const;
@@ -593,8 +603,13 @@ function normalizeMajorAsset(asset: string | undefined): MajorAsset | null {
   if (value === "bitcoin" || value === "btc") return "btc";
   if (value === "ethereum" || value === "eth") return "eth";
   if (value === "solana" || value === "sol") return "sol";
+  if (value === "xrp" || value === "ripple") return "xrp";
   if (value === "bnb" || value === "binance" || value === "binance coin" || value === "bsc" || value === "binance-smart-chain") return "bnb";
   return null;
+}
+
+function resolveMajorAsset(asset: string | undefined, tokenAddress: string | undefined): MajorAsset | null {
+  return normalizeMajorAsset(asset) ?? normalizeMajorAsset(tokenAddress);
 }
 
 function buildMajorXQuery(asset: MajorAsset): string {
@@ -828,14 +843,44 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
   const providers: ProviderStatus[] = [];
   const days = getHistoryDays(query.limit);
   let points: TokenPricePoint[] = [];
+  const majorAsset = resolveMajorAsset((query as { asset?: string }).asset, query.tokenAddress);
+  const tokenAddress = query.tokenAddress ?? "";
+
+  if (majorAsset) {
+    const marketChart = await runProvider(
+      providers,
+      "coinGeckoMajor",
+      true,
+      () => getCoinMarketChart(MAJOR_ASSETS[majorAsset].coinGeckoId, days)
+    );
+
+    if (marketChart?.prices?.length) {
+      points = marketChart.prices.map(([timestamp, price]) => ({
+        timestamp,
+        priceUsd: price
+      }));
+    }
+
+    return {
+      endpoint: "tokenPriceHistory",
+      status: summarizeStatus(providers),
+      chain,
+      tokenAddress: majorAsset,
+      currency: "usd",
+      limit: query.limit,
+      interval: query.interval,
+      points,
+      providers
+    };
+  }
 
   // ── EVM: GeckoTerminal OHLCV (primary) ──
   if (isEvmChain(chain)) {
-    const cacheKey = poolCacheKey(chain, query.tokenAddress);
+    const cacheKey = poolCacheKey(chain, tokenAddress);
     let poolAddress = poolAddressCache.get(cacheKey);
 
     if (!poolAddress) {
-      const pools = await runProvider(providers, "geckoTerminal", true, () => getGeckoTerminalTopPools(chain, query.tokenAddress));
+      const pools = await runProvider(providers, "geckoTerminal", true, () => getGeckoTerminalTopPools(chain, tokenAddress));
       poolAddress = pools?.data?.[0]?.attributes?.address ?? undefined;
       if (poolAddress) poolAddressCache.set(cacheKey, poolAddress);
     }
@@ -862,7 +907,7 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
   if (chain === "sol" && isBirdeyeConfigured() && points.length === 0) {
     const now = Math.floor(Date.now() / 1000);
     const from = now - days * 86400;
-    const beOhlcv = await runProvider(providers, "birdeye", true, () => getBirdeyeOhlcv(query.tokenAddress, getBirdeyeOhlcvType(query.interval), from, now));
+    const beOhlcv = await runProvider(providers, "birdeye", true, () => getBirdeyeOhlcv(tokenAddress, getBirdeyeOhlcvType(query.interval), from, now));
     const items = beOhlcv?.data?.items;
     if (items?.length) {
       points = items.flatMap((item) => {
@@ -885,7 +930,7 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
     const endTime = new Date().toISOString();
     const startTime = new Date(Date.now() - days * 86400_000).toISOString();
     const alchemyInterval = query.interval.trim().toLowerCase().endsWith("h") ? "1h" : "1d";
-    const alchemy = await runProvider(providers, "alchemy", true, () => getAlchemyHistory(chain, query.tokenAddress, startTime, endTime, alchemyInterval));
+    const alchemy = await runProvider(providers, "alchemy", true, () => getAlchemyHistory(chain, tokenAddress, startTime, endTime, alchemyInterval));
     if (alchemy?.data?.length) {
       points = alchemy.data.map((p) => ({
         timestamp: new Date(p.timestamp).getTime(),
@@ -898,7 +943,7 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
     endpoint: "tokenPriceHistory",
     status: summarizeStatus(providers),
     chain,
-    tokenAddress: query.tokenAddress,
+    tokenAddress,
     currency: "usd",
     limit: query.limit,
     interval: query.interval,
@@ -1212,7 +1257,7 @@ export async function getFudSearch(query: FudSearchQuery): Promise<FudSearchResp
 }
 
 export async function getMarketOverview(query: MarketOverviewQuery): Promise<MarketOverviewResponse> {
-  const majorAsset = normalizeMajorAsset(query.asset);
+  const majorAsset = resolveMajorAsset(query.asset, query.tokenAddress);
 
   if (majorAsset) {
     const cachedResponse = marketOverviewCache.get(`major:${majorAsset}`);
