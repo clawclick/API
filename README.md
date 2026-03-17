@@ -878,7 +878,7 @@ GET /newPairs?source=pumpfun&limit=5
   "source": "pumpfun",
   "pairs": [
     {
-      "source": "pumpFun",
+      "source": "pumpfun",
       "chainId": "solana",
       "pairAddress": null,
       "tokenAddress": "...",

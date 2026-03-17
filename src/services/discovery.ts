@@ -94,11 +94,11 @@ export async function getNewPairs(q: NewPairsQuery): Promise<NewPairsResponse> {
 
   // Pump.fun currently live
   if (wantAll || q.source === "pumpfun") {
-    const live = await runProvider(statuses, "pumpFun:live", true, () => getCurrentlyLive());
+    const live = await runProvider(statuses, "pumpfun:live", true, () => getCurrentlyLive());
     if (live) {
       for (const c of live.slice(0, q.limit)) {
         pairs.push({
-          source: "pumpFun",
+          source: "pumpfun",
           chainId: "solana",
           pairAddress: null,
           tokenAddress: c.mint ?? null,

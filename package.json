@@ -57,7 +57,7 @@
     "#providers/dex/pancakeswapV3": "./DEX/Chain/BSC/PANCAKESWAP_V3/provider.ts",
     "#providers/dex/raydium": "./DEX/Chain/SOL/RADYUM/provider.ts",
     "#providers/dex/meteora": "./DEX/Chain/SOL/METEORA/provider.ts",
-    "#providers/dex/pumpfun": "./DEX/Chain/SOL/PUMPDEX/provider.ts",
+    "#providers/dex/pumpfun": "./DEX/Chain/SOL/PUMPFUN/provider.ts",
     "#providers/onchain/rpc": "./DEX/Chain/RPC/provider.ts",
     "#providers/onchain/etherscan": "./DEX/Chain/GAS_FEED/provider.ts"
   },
