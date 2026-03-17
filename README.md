@@ -617,7 +617,7 @@ Supported DEXes:
 | `eth` | `uniswapV2`, `uniswapV3`, `uniswapV4` |
 | `base` | `uniswapV2`, `uniswapV3`, `uniswapV4`, `aerodromeV2`, `aerodromeV3` |
 | `bsc` | `pancakeswapV2`, `pancakeswapV3` |
-| `sol` | `raydium`, `meteora`, `pumpDex` |
+| `sol` | `raydium`, `meteora`, `pumpfun` |
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|

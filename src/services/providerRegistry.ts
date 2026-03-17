@@ -22,7 +22,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "ethUniswapV4", label: "Ethereum Uniswap V4", category: "dex", folder: "DEX/Chain/ETH/UNISWAP_V4", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "solGasFeed", label: "Solana Gas Feed", category: "chainInfra", folder: "DEX/Chain/SOL/GAS_FEED", env: [], endpoints: ["marketOverview"] },
   { id: "meteora", label: "Meteora", category: "dex", folder: "DEX/Chain/SOL/METEORA", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
-  { id: "pumpdex", label: "PumpDex", category: "dex", folder: "DEX/Chain/SOL/PUMPDEX", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
+  { id: "pumpfun", label: "PumpFun", category: "dex", folder: "DEX/Chain/SOL/PUMPDEX", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "raydium", label: "Raydium", category: "dex", folder: "DEX/Chain/SOL/RADYUM", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "solRpc", label: "Solana RPC", category: "chainInfra", folder: "DEX/Chain/SOL/RPC", env: ["SOL_RPC_URL"], endpoints: ["tokenPoolInfo", "holderAnalysis", "marketOverview"] },
   { id: "defiLlama", label: "DefiLlama", category: "marketData", folder: "Market_data/DeFi/DefiLlama", env: [], endpoints: ["marketOverview"] },

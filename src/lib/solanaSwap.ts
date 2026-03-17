@@ -291,6 +291,23 @@ export async function getQuoteWithProtocolFee(
   };
 }
 
+export async function getQuoteWithoutProtocolFee(
+  params: Omit<SolanaSwapParams, "walletAddress">,
+  options: SolanaDexOptions,
+): Promise<{ amountOut: string; amountOutMin: string }> {
+  const quote = validateQuote(await getJupiterQuote({
+    tokenIn: params.tokenIn,
+    tokenOut: params.tokenOut,
+    amountIn: params.amountIn,
+    slippageBps: params.slippageBps,
+  }, options), options.label);
+
+  return {
+    amountOut: quote.outAmount!,
+    amountOutMin: quote.otherAmountThreshold!,
+  };
+}
+
 export async function buildFeeAwareSwapTx(params: SolanaSwapParams, options: SolanaDexOptions): Promise<UnsignedSolTx> {
   const wallet = toPublicKey(params.walletAddress, "walletAddress");
   const feeBps = parseFeeBps();
@@ -352,6 +369,25 @@ export async function buildFeeAwareSwapTx(params: SolanaSwapParams, options: Sol
     amountIn: params.amountIn,
     slippageBps: params.slippageBps,
   }, options), options.label);
+  const instructionsResponse = await getJupiterSwapInstructions(wallet.toBase58(), quote, {
+    wrapAndUnwrapSol: true,
+  });
+
+  return composeVersionedTx(wallet, buildInstructionList(instructionsResponse), instructionsResponse.addressLookupTableAddresses);
+}
+
+export async function buildSwapTxWithoutProtocolFee(
+  params: SolanaSwapParams,
+  options: SolanaDexOptions,
+): Promise<UnsignedSolTx> {
+  const wallet = toPublicKey(params.walletAddress, "walletAddress");
+  const quote = validateQuote(await getJupiterQuote({
+    tokenIn: params.tokenIn,
+    tokenOut: params.tokenOut,
+    amountIn: params.amountIn,
+    slippageBps: params.slippageBps,
+  }, options), options.label);
+
   const instructionsResponse = await getJupiterSwapInstructions(wallet.toBase58(), quote, {
     wrapAndUnwrapSol: true,
   });

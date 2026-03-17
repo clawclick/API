@@ -20,7 +20,7 @@ import { buildSwapTx as bscV3Swap, getQuote as bscV3Quote } from "#providers/dex
 /* ── SOL providers ────────────────────────────────────────── */
 import { buildSwapTx as raydiumSwap, getQuote as raydiumQuote } from "#providers/dex/raydium";
 import { buildSwapTx as meteoraSwap, getQuote as meteoraQuote } from "#providers/dex/meteora";
-import { buildSwapTx as pumpDexSwap, getQuote as pumpDexQuote } from "#providers/dex/pumpDex";
+import { buildSwapTx as pumpfunSwap, getQuote as pumpfunQuote } from "#providers/dex/pumpfun";
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
@@ -32,7 +32,7 @@ type DexId =
   | "uniswapV2" | "uniswapV3" | "uniswapV4"
   | "aerodromeV2" | "aerodromeV3"
   | "pancakeswapV2" | "pancakeswapV3"
-  | "raydium" | "meteora" | "pumpDex";
+  | "raydium" | "meteora" | "pumpfun";
 
 type SwapFn = (params: { walletAddress: string; tokenIn: string; tokenOut: string; amountIn: string; slippageBps: number; deadline?: number; recipient?: string }) => Promise<unknown>;
 type QuoteFn = (tokenIn: string, tokenOut: string, amountIn: string, slippageBps: number) => Promise<{ amountOut: string; amountOutMin: string }>;
@@ -128,10 +128,10 @@ const DEX_REGISTRY: DexEntry[] = [
     quoteByChain: { sol: meteoraQuote },
   },
   {
-    id: "pumpDex", label: "PumpDex",
+    id: "pumpfun", label: "PumpFun",
     chains: ["sol"],
-    swapByChain: { sol: pumpDexSwap },
-    quoteByChain: { sol: pumpDexQuote },
+    swapByChain: { sol: pumpfunSwap },
+    quoteByChain: { sol: pumpfunQuote },
   },
 ];
 
