@@ -116,10 +116,10 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
     };
   }
 
-  // swapExactTokensForTokens
+  // swapExactTokensForTokensSupportingFeeOnTransferTokens
   const offsetWord = encodeUint256(160n);
   const calldata = buildCalldata(
-    selector("38ed1739"),
+    selector("5c11d795"),
     encodeUint256(amtIn),               // amountIn
     encodeUint256(amountOutMin),        // amountOutMin
     offsetWord,                          // offset to path[]

@@ -52,7 +52,8 @@ async function resolveMainPoolFee(
   tokenIn: string,
   tokenOut: string,
 ): Promise<number | null> {
-  const pairs = await getTokenPairs("eth", tokenOut);
+  const lookupToken = tokenOut.toLowerCase() === WRAPPED_NATIVE.eth.toLowerCase() ? tokenIn : tokenOut;
+  const pairs = await getTokenPairs("eth", lookupToken);
   const v3Pairs = pairs
     .filter(
       (p) =>

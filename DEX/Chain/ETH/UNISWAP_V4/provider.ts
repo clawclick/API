@@ -34,7 +34,7 @@ const V4_SWAP_COMMAND = "10";
 const ACTION_SWAP_EXACT_IN_SINGLE = "06";
 const ACTION_SETTLE = "0b";
 const ACTION_SETTLE_ALL = "0c";
-const ACTION_TAKE_ALL = "0f";
+const ACTION_TAKE = "0e";
 const ADDRESS_THIS = "0000000000000000000000000000000000000002";
 const QUOTE_EXACT_INPUT_SINGLE_SELECTOR = "aa9d21cb";
 const EXECUTE_SELECTOR = "3593564c";
@@ -299,13 +299,15 @@ async function quoteExactInputSingle(poolKey: PoolKey, zeroForOne: boolean, amou
 }
 
 async function resolveDexScreenerPool(tokenIn: string, tokenOut: string, nativeIn: boolean): Promise<ResolvedV4Pool> {
-  const pairs = (await getTokenPairs("eth", tokenOut))
+  // For sells (tokenOut = WETH), look up the non-native token so DexScreener returns relevant pairs
+  const lookupToken = isAddressEqual(tokenOut, WRAPPED_NATIVE.eth) ? tokenIn : tokenOut;
+  const pairs = (await getTokenPairs("eth", lookupToken))
     .filter((pair) => isEthUniswapV4Pair(pair) && pairContainsInput(pair, tokenOut, tokenIn, nativeIn))
     .sort(byLiquidityDesc);
 
   const pair = pairs[0];
   if (!pair) {
-    throw new Error(`DexScreener did not return a direct ETH Uniswap V4 pool for ${tokenOut}`);
+    throw new Error(`DexScreener did not return a direct ETH Uniswap V4 pool for ${lookupToken}`);
   }
 
   const poolId = pair.pairAddress.toLowerCase();
@@ -391,18 +393,18 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
 
   const wrapNativeToWeth = nativeIn && isAddressEqual(resolvedPool.inputCurrency, WRAPPED_NATIVE.eth);
   const actions = wrapNativeToWeth
-    ? `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE}${ACTION_TAKE_ALL}`
-    : `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE_ALL}`;
+    ? `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE}${ACTION_TAKE}`
+    : `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE}`;
   const v4Params = wrapNativeToWeth
     ? [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(0n)}${encodeBool(false)}`,
-        `0x${padAddress(tokenOut)}${encodeUint256(0n)}`,
+        `0x${padAddress(tokenOut)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
       ]
     : [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(typeCastMaxUint256())}`,
-        `0x${padAddress(tokenOut)}${encodeUint256(0n)}`,
+        `0x${padAddress(tokenOut)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
       ];
   const v4Input = encodeV4SwapInput(`0x${actions}`, v4Params);
 
@@ -421,7 +423,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     value: nativeIn ? "0x" + amtIn.toString(16) : "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
-    gasLimit: "0xb71b0",  // 750 000
+    gasLimit: "0x1e8480",  // 2 000 000
   };
 }
 

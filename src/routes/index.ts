@@ -14,7 +14,7 @@ import { getProviderHealth } from "#services/providerHealth";
 import { getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
-// DISABLED — Codex paid-plan-only endpoints (re-enable after upgrading Codex plan)
+// DISABLED — Codex paid plan only 
 // import { getFilteredWallets } from "#services/filterWallets";
 // import { getTokenWallets } from "#services/tokenWallets";
 // import { getWalletStats } from "#services/walletStats";
@@ -52,7 +52,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // Codex 
   app.get("/filterTokens", async (request) => getFilteredTokens(parseQuery(filterTokensSchema, request.query)));
-  // DISABLED — Codex paid-plan-only ("Not authorized: please upgrade your plan")
+  // DISABLED — Codex paid plan only 
   // app.get("/filterWallets", async (request) => getFilteredWallets(parseQuery(filterWalletsSchema, request.query)));
   // app.get("/tokenWallets", async (request) => getTokenWallets(parseQuery(tokenWalletsSchema, request.query)));
   // app.get("/walletStats", async (request) => getWalletStats(parseQuery(walletStatsSchema, request.query)));

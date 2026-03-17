@@ -89,9 +89,9 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
     };
   }
 
-  // swapExactTokensForTokens
+  // swapExactTokensForTokensSupportingFeeOnTransferTokens
   const calldata = buildCalldata(
-    selector("38ed1739"),
+    selector("5c11d795"),
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),
     encodeUint256(160n),

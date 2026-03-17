@@ -94,7 +94,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
 
   const offsetWord = encodeUint256(160n);
   const calldata = buildCalldata(
-    selector("38ed1739"),
+    selector("5c11d795"),
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),
     offsetWord,
