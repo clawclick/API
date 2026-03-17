@@ -127,15 +127,16 @@ export async function buildSwapTx(params: SwapParams, stable = false): Promise<U
   const nativeIn = isNativeIn(tokenIn);
   const weth = WRAPPED_NATIVE.base;
   const actualIn = nativeIn ? weth : tokenIn;
+  const actualOut = isNativeIn(tokenOut) ? weth : tokenOut;
 
-  const routes = [{ from: actualIn, to: tokenOut, stable }];
+  const routes = [{ from: actualIn, to: actualOut, stable }];
   const amountOut = await getAmountsOut(amtIn, routes);
   const amountOutMin = applySlippage(amountOut, slippageBps);
 
   const factory = "0x420DD381b31aEf6683db6B902084cB0FFECe40Da";
   const routeWords =
     padAddress(actualIn) +
-    padAddress(tokenOut) +
+    padAddress(actualOut) +
     encodeUint256(stable ? 1n : 0n) +
     padAddress(factory);
 
@@ -188,7 +189,8 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string }> {
   const weth = WRAPPED_NATIVE.base;
   const actualIn = isNativeIn(tokenIn) ? weth : tokenIn;
-  const routes = [{ from: actualIn, to: tokenOut, stable }];
+  const actualOut = isNativeIn(tokenOut) ? weth : tokenOut;
+  const routes = [{ from: actualIn, to: actualOut, stable }];
   const out = await getAmountsOut(BigInt(amountIn), routes);
   return {
     amountOut: out.toString(),

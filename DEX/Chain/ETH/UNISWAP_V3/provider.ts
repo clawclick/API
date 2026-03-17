@@ -153,14 +153,15 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   const nativeIn = isNativeIn(tokenIn);
   const weth = WRAPPED_NATIVE.eth;
   const actualTokenIn = nativeIn ? weth : tokenIn;
+  const actualTokenOut = isNativeIn(tokenOut) ? weth : tokenOut;
 
-  const resolved = await resolveFeeTier(actualTokenIn, tokenOut, amtIn, fee);
+  const resolved = await resolveFeeTier(actualTokenIn, actualTokenOut, amtIn, fee);
   const amountOutMin = applySlippage(resolved.amountOut, slippageBps);
 
   const calldata = buildCalldata(
     selector("04e45aaf"),
     padAddress(actualTokenIn),
-    padAddress(tokenOut),
+    padAddress(actualTokenOut),
     encodeUint256(BigInt(resolved.fee)),
     padAddress(walletAddress),
     encodeUint256(amtIn),
@@ -186,7 +187,8 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
   const weth = WRAPPED_NATIVE.eth;
   const actualIn = isNativeIn(tokenIn) ? weth : tokenIn;
-  const resolved = await resolveFeeTier(actualIn, tokenOut, BigInt(amountIn), fee);
+  const actualOut = isNativeIn(tokenOut) ? weth : tokenOut;
+  const resolved = await resolveFeeTier(actualIn, actualOut, BigInt(amountIn), fee);
   return {
     amountOut: resolved.amountOut.toString(),
     amountOutMin: applySlippage(resolved.amountOut, slippageBps).toString(),

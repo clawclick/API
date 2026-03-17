@@ -380,7 +380,8 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
   const actualTokenIn = nativeIn ? WRAPPED_NATIVE.eth : tokenIn;
-  const resolvedPool = await resolveDexScreenerPool(actualTokenIn, tokenOut, nativeIn);
+  const actualTokenOut = isNativeIn(tokenOut) ? WRAPPED_NATIVE.eth : tokenOut;
+  const resolvedPool = await resolveDexScreenerPool(actualTokenIn, actualTokenOut, nativeIn);
   const amountOut = await quoteExactInputSingle(resolvedPool.poolKey, resolvedPool.zeroForOne, amtIn);
   const amountOutMin = applySlippage(amountOut, slippageBps);
 
@@ -391,6 +392,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     amountOutMin,
   );
 
+  const outputCurrency = resolvedPool.zeroForOne ? resolvedPool.poolKey.currency1 : resolvedPool.poolKey.currency0;
   const wrapNativeToWeth = nativeIn && isAddressEqual(resolvedPool.inputCurrency, WRAPPED_NATIVE.eth);
   const actions = wrapNativeToWeth
     ? `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE}${ACTION_TAKE}`
@@ -399,12 +401,12 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     ? [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(0n)}${encodeBool(false)}`,
-        `0x${padAddress(tokenOut)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
+        `0x${padAddress(outputCurrency)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
       ]
     : [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(typeCastMaxUint256())}`,
-        `0x${padAddress(tokenOut)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
+        `0x${padAddress(outputCurrency)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
       ];
   const v4Input = encodeV4SwapInput(`0x${actions}`, v4Params);
 
@@ -436,7 +438,8 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
   const nativeIn = isNativeIn(tokenIn);
   const actualIn = nativeIn ? WRAPPED_NATIVE.eth : tokenIn;
-  const resolvedPool = await resolveDexScreenerPool(actualIn, tokenOut, nativeIn);
+  const actualOut = isNativeIn(tokenOut) ? WRAPPED_NATIVE.eth : tokenOut;
+  const resolvedPool = await resolveDexScreenerPool(actualIn, actualOut, nativeIn);
   const out = await quoteExactInputSingle(resolvedPool.poolKey, resolvedPool.zeroForOne, BigInt(amountIn));
   return {
     amountOut: out.toString(),

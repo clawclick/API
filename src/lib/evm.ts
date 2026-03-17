@@ -141,3 +141,32 @@ export function wrapNativeBuyTxWithFeeWrapper(
     value: `0x${BigInt(totalAmountIn).toString(16)}`,
   };
 }
+
+/* ── Unwrap WETH/WBNB → native ─────────────────────────────── */
+
+/**
+ * Build an unsigned TX that calls WETH.withdraw(amount) to unwrap
+ * wrapped native tokens back to ETH / BNB.
+ * withdraw(uint256 wad) selector: 0x2e1a7d4d
+ */
+export function buildUnwrapTx(
+  chain: string,
+  walletAddress: string,
+  amount: string,
+): UnsignedSwapTx {
+  const weth = WRAPPED_NATIVE[chain];
+  if (!weth) throw new Error(`Unsupported chain for unwrap: ${chain}`);
+
+  const calldata = buildCalldata(
+    selector("2e1a7d4d"),
+    encodeUint256(BigInt(amount)),
+  );
+
+  return {
+    to: weth,
+    data: calldata,
+    value: "0x0",
+    chainId: EVM_CHAIN_IDS[chain] ?? 1,
+    from: walletAddress,
+  };
+}

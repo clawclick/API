@@ -116,14 +116,15 @@ export async function buildSwapTx(params: SwapParams, tickSpacing?: number): Pro
   const nativeIn = isNativeIn(tokenIn);
   const weth = WRAPPED_NATIVE.base;
   const actualTokenIn = nativeIn ? weth : tokenIn;
+  const actualTokenOut = isNativeIn(tokenOut) ? weth : tokenOut;
 
-  const resolved = await resolveBestTickSpacing(actualTokenIn, tokenOut, amtIn, tickSpacing);
+  const resolved = await resolveBestTickSpacing(actualTokenIn, actualTokenOut, amtIn, tickSpacing);
   const amountOutMin = applySlippage(resolved.amountOut, slippageBps);
 
   const calldata = buildCalldata(
     selector("a026383e"),
     padAddress(actualTokenIn),
-    padAddress(tokenOut),
+    padAddress(actualTokenOut),
     encodeUint256(BigInt(resolved.tickSpacing)),
     padAddress(walletAddress),
     encodeUint256(BigInt(dl)),
@@ -150,7 +151,8 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string; tickSpacing: number }> {
   const weth = WRAPPED_NATIVE.base;
   const actualIn = isNativeIn(tokenIn) ? weth : tokenIn;
-  const resolved = await resolveBestTickSpacing(actualIn, tokenOut, BigInt(amountIn), tickSpacing);
+  const actualOut = isNativeIn(tokenOut) ? weth : tokenOut;
+  const resolved = await resolveBestTickSpacing(actualIn, actualOut, BigInt(amountIn), tickSpacing);
   return {
     amountOut: resolved.amountOut.toString(),
     amountOutMin: applySlippage(resolved.amountOut, slippageBps).toString(),

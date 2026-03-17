@@ -64,7 +64,8 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
   const wbnb = WRAPPED_NATIVE.bsc;
-  const path = nativeIn ? [wbnb, tokenOut] : [tokenIn, tokenOut];
+  const actualTokenOut = isNativeIn(tokenOut) ? wbnb : tokenOut;
+  const path = nativeIn ? [wbnb, actualTokenOut] : [tokenIn, actualTokenOut];
 
   const amountOut = await getAmountsOut(amtIn, path);
   const amountOutMin = applySlippage(amountOut, slippageBps);
@@ -117,7 +118,8 @@ export async function getQuote(
   slippageBps: number,
 ): Promise<{ amountOut: string; amountOutMin: string }> {
   const wbnb = WRAPPED_NATIVE.bsc;
-  const path = isNativeIn(tokenIn) ? [wbnb, tokenOut] : [tokenIn, tokenOut];
+  const actualOut = isNativeIn(tokenOut) ? wbnb : tokenOut;
+  const path = isNativeIn(tokenIn) ? [wbnb, actualOut] : [tokenIn, actualOut];
   const out = await getAmountsOut(BigInt(amountIn), path);
   return {
     amountOut: out.toString(),

@@ -121,14 +121,15 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
   const nativeIn = isNativeIn(tokenIn);
   const wbnb = WRAPPED_NATIVE.bsc;
   const actualTokenIn = nativeIn ? wbnb : tokenIn;
+  const actualTokenOut = isNativeIn(tokenOut) ? wbnb : tokenOut;
 
-  const resolvedFee = await resolveMainPoolFee(actualTokenIn, tokenOut);
+  const resolvedFee = await resolveMainPoolFee(actualTokenIn, actualTokenOut);
   const feesToTry = resolvedFee ? [resolvedFee] : [...FALLBACK_FEES];
   let amountOut: bigint | null = null;
   let fee = feesToTry[0];
   for (const f of feesToTry) {
     try {
-      amountOut = await quoteExactInputSingle(actualTokenIn, tokenOut, amtIn, f);
+      amountOut = await quoteExactInputSingle(actualTokenIn, actualTokenOut, amtIn, f);
       fee = f;
       break;
     } catch { /* try next */ }
@@ -140,7 +141,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
   const calldata = buildCalldata(
     selector("04e45aaf"),
     padAddress(actualTokenIn),
-    padAddress(tokenOut),
+    padAddress(actualTokenOut),
     encodeUint256(BigInt(fee)),
     padAddress(walletAddress),
     encodeUint256(amtIn),
@@ -165,14 +166,15 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
   const wbnb = WRAPPED_NATIVE.bsc;
   const actualIn = isNativeIn(tokenIn) ? wbnb : tokenIn;
+  const actualOut = isNativeIn(tokenOut) ? wbnb : tokenOut;
 
-  const resolvedFee = await resolveMainPoolFee(actualIn, tokenOut);
+  const resolvedFee = await resolveMainPoolFee(actualIn, actualOut);
   const feesToTry = resolvedFee ? [resolvedFee] : [...FALLBACK_FEES];
   let out: bigint | null = null;
   let fee = feesToTry[0];
   for (const f of feesToTry) {
     try {
-      out = await quoteExactInputSingle(actualIn, tokenOut, BigInt(amountIn), f);
+      out = await quoteExactInputSingle(actualIn, actualOut, BigInt(amountIn), f);
       fee = f;
       break;
     } catch { /* try next */ }

@@ -89,6 +89,14 @@ export type SwapQuery = z.output<typeof swapSchema>;
 export type SwapQuoteQuery = z.output<typeof swapQuoteSchema>;
 export type SwapDexesQuery = z.output<typeof swapDexesSchema>;
 
+export const unwrapSchema = z.object({
+  chain: z.string().min(1),
+  walletAddress: z.string().min(1),
+  amount: z.string().min(1),
+});
+
+export type UnwrapQuery = z.output<typeof unwrapSchema>;
+
 /* ── Discovery & Market Schemas ─────────────────────────────── */
 
 export const topTradersSchema = z.object({
