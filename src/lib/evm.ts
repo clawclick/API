@@ -75,12 +75,13 @@ export const WRAPPED_NATIVE: Record<string, string> = {
   bsc:  "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
 };
 
-/** Returns true when tokenIn is the zero address or "ETH"/"BNB" sentinel. */
+/** Returns true when tokenIn is the zero address or "ETH"/"BNB"/"native" sentinel. */
 export function isNativeIn(tokenIn: string): boolean {
   const t = tokenIn.toLowerCase();
   return (
     t === "0x0000000000000000000000000000000000000000" ||
     t === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" ||
+    t === "native" ||
     t === "eth" ||
     t === "bnb"
   );
