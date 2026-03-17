@@ -1,0 +1,154 @@
+# API Environment Variables
+# ======================
+
+# ==============================================
+# 📊 MARKET DATA APIs
+# ==============================================
+
+# Market_data/LowCaps/ 
+# -------------------
+DEXSCREENER_API_URL=https://api.dexscreener.com/latest
+# Docs: https://docs.dexscreener.com/
+GECKOTERMINAL_API_URL=https://api.geckoterminal.com/api/v2
+# Docs: https://www.geckoterminal.com/dex-api
+# DEXTOOLS_API_KEY=your_dextools_key_here
+# Docs: https://www.dextools.io/api
+BIRDEYE_API_URL=https://public-api.birdeye.so/defi
+BIRDEYE_API_KEY=5cd9777b61dd4e898de92cd43a05cf3b
+# Docs: https://docs.birdeye.so/
+
+# Market_data/MidCapsAndMajors/
+# ----------------------------
+COINGECKO_API_URL=https://api.coingecko.com/api/v3
+# Docs: https://www.coingecko.com/en/api/documentation
+COINMARKETCAP_API_KEY=bddcbdf9ac4b48c799a61d54e556a094
+# Docs: https://coinmarketcap.com/api/documentation/
+
+# Market_data/DeFi/
+# ----------------
+DEFILLAMA_API_URL=https://api.llama.fi
+# Docs: https://defillama.com/docs/api
+SIM_API_URL=https://api.sim.dune.com/v1
+SIM_API_KEY=sim_fwnqJlzWnDKEC1IjwE3qISbIEgEO1ANq
+# Docs: https://docs.sim.dune.com/
+
+# ==============================================
+# 🚨 RISK ASSESSMENT APIs
+# ==============================================
+
+# Risk/
+# -----
+GOPLUS_API_URL=https://gopluslabs.io/api/v1
+# Docs: https://docs.gopluslabs.io/
+HONEYPOT_API_URL=https://api.honeypot.is/v1
+# Docs: https://honeypot.is/
+# QUICKINTEL_API_KEY=your_quickintel_key_here
+# Docs: https://www.quickintel.io/docs
+# BUBBLEMAPS_API_KEY=your_bubblemaps_key_here
+# Docs: https://bubblemaps.io/docs
+
+# ==============================================
+# 📈 SENTIMENT ANALYSIS APIs
+# ==============================================
+
+# Sentiment/Majors/
+# -----------------
+# REDDIT_CLIENT_ID=your_reddit_client_id
+# REDDIT_CLIENT_SECRET=your_reddit_secret
+# Docs: https://www.reddit.com/dev/api/
+# LUNARCRUSH_API_KEY=your_lunarcrush_key
+# Docs: https://lunarcrush.com/developers/docs
+# SANTIMENT_API_KEY=your_santiment_key
+# Docs: https://neuro.santiment.net/
+# POLYMARKET_API_KEY=your_polymarket_key
+# Docs: https://docs.polymarket.com/
+
+# Sentiment/LowCaps/ (Twitter/X for KOL analysis, project analysis, CA analysis)
+# ---------------
+# TWITTER_BEARER_TOKEN=your_twitter_token
+# Docs: https://developer.twitter.com/en/docs/twitter-api
+
+# Sentiment/LowCaps/Telegram_groups/ (Channel & ListingAlert monitoring)
+# ----------------------------------
+# TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+# Docs: https://core.telegram.org/bots/api
+
+# ==============================================
+# 👀 ALPHA WALLET TRACKING APIs
+# ==============================================
+
+# Alpha_Wallet_tracking/
+# ----------------------
+MORALIS_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImI2Zjg3ZjA1LTRjNWEtNDkzYS05NTUzLTk3NzM0ZTk4ZDMwOSIsIm9yZ0lkIjoiNTA1NTQzIiwidXNlcklkIjoiNTIwMTcxIiwidHlwZUlkIjoiMGMxYjk3NDMtNGI2Mi00OTg2LWI1MWItNzZjZWEyNjUxNTU4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NzM2MTUzNjEsImV4cCI6NDkyOTM3NTM2MX0.J46cj1DnNqxg3FaHx_N8FW8Q1t1KwT7c4ZZ8V4sNj_s
+# Docs: https://docs.moralis.io/web3-data-api/
+# ARKHAM_API_KEY=your_arkham_key
+# Docs: https://docs.arkham.intel/
+# NANSEN_API_KEY=your_nansen_key
+# Docs: https://docs.nansen.ai/
+# DEBANK_API_KEY=your_debank_key
+# Docs: https://docs.cloud.debank.com/
+
+# ==============================================
+# 🚀 NEW PAIRS MONITORING
+# ==============================================
+
+# New_pairs/ (These are data feeds, not separate API services)
+# ----------
+# Note: Pump.fun, Dexscreener new pairs, Uniswap/Raydium events
+# are accessed through existing APIs above (Dexscreener, RPC endpoints)
+
+# ==============================================
+# ⛓️ BLOCKCHAIN INFRASTRUCTURE
+# ==============================================
+
+# RPC Endpoints (Active)
+# ======================
+ALCHEMY_API_BASE=https://base-mainnet.g.alchemy.com/v2/BdgPEmQddox2due7mrt9J
+ALCHEMY_API_SEPOLIA=https://eth-sepolia.g.alchemy.com/v2/BdgPEmQddox2due7mrt9J
+# Docs: https://docs.alchemy.com/reference/api-overview
+
+# Blockchain Scanners
+# ===================
+ETHERSCAN_API_KEY=69U9FKJK6A46748RA94DYBRJSQCHC8191C
+# Docs: https://docs.etherscan.io/
+
+# DEX/Chain/BSC/
+# --------------
+BSC_RPC_PUBLIC=https://bsc-dataseed.binance.org
+BSC_RPC_PUBLIC_2=https://bsc-dataseed1.defibit.io
+# Docs: https://docs.bnbchain.org/
+BSC_GAS_API_URL=https://api.bscscan.com/api
+# Docs: https://docs.bscscan.com/
+PANCAKESWAP_SUBGRAPH=https://api.thegraph.com/subgraphs/name/pancakeswap/exchange-v2
+# Docs: https://thegraph.com/docs/
+
+# DEX/Chain/ETH/
+# --------------
+ETH_RPC_PUBLIC=https://eth.public-rpc.com
+ETH_RPC_CLOUDFLARE=https://cloudflare-eth.com
+# Docs: https://ethereum.org/en/developers/docs/apis/json-rpc/
+ETH_GAS_API_URL=https://api.etherscan.io/api
+# Docs: https://docs.etherscan.io/
+UNISWAP_SUBGRAPH=https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3
+# Docs: https://thegraph.com/docs/
+
+# DEX/Chain/BASE/
+# ---------------
+BASE_RPC_PUBLIC=https://mainnet.base.org
+BASE_RPC_PUBLIC_2=https://developer-access-mainnet.base.org
+# Docs: https://docs.base.org/docs/
+BASE_GAS_API_URL=https://api.basescan.org/api
+# Docs: https://docs.basescan.org/
+
+# DEX/Chain/SOL/
+# --------------
+SOL_RPC_PUBLIC=https://api.mainnet-beta.solana.com
+# Docs: https://docs.solana.com/api/
+
+# ==============================================
+# 🔗 INFRASTRUCTURE & CEX (Placeholder sections)
+# ==============================================
+
+# Bridge/ - Cross-chain bridge APIs (TBD)
+# Aggregator/ - DEX aggregator APIs (TBD) 
+# CEX/ - Centralized exchange APIs (TBD)
