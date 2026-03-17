@@ -67,9 +67,11 @@ npx tsx src/server.ts   # starts on port 3000
 | `/fudSearch` | GET | Search social mentions for FUD signals |
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
+| `/approve` | GET | Build unsigned approval txs for router, fee wrapper, or Permit2 flows |
 | `/swap` | GET | Build unsigned swap transaction |
 | `/swapQuote` | GET | Get swap quote (amount out) |
 | `/swapDexes` | GET | List available DEXes for a chain |
+| `/unwrap` | GET | Build unsigned wrapped-native withdraw tx |
 | `/trendingTokens` | GET | Currently trending tokens |
 | `/newPairs` | GET | Recently created pairs/pools |
 | `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |
@@ -601,6 +603,22 @@ GET /walletReview?chain=sol&walletAddress=8X35r...&days=30&pageCount=10
 
 Build an unsigned swap transaction. The caller signs and submits it.
 
+Swap notes:
+- Use `native`, `eth`, or `bnb` as the native-token sentinel for EVM native in/out.
+- Native-in EVM buys use the configured fee wrapper when `*_FEE_WRAPPER_ADDRESS` is set.
+- Native-out EVM sells also use the configured fee wrapper when enabled.
+- Base Uniswap V4 sells now use the Permit2-enabled fee wrapper path.
+- If `tokenIn` is an ERC-20, call `/approve` first unless the token is already approved for the resolved spender.
+
+Supported DEXes:
+
+| Chain | DEX ids |
+|---|---|
+| `eth` | `uniswapV2`, `uniswapV3`, `uniswapV4` |
+| `base` | `uniswapV2`, `uniswapV3`, `uniswapV4`, `aerodromeV2`, `aerodromeV3` |
+| `bsc` | `pancakeswapV2`, `pancakeswapV3` |
+| `sol` | `raydium`, `meteora`, `pumpDex` |
+
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `chain` | string | **yes** | — | Chain (`eth`, `base`, `bsc`, `sol`) |
@@ -614,6 +632,8 @@ Build an unsigned swap transaction. The caller signs and submits it.
 
 ```
 GET /swap?chain=eth&dex=uniswapV3&walletAddress=0x...&tokenIn=0x...&tokenOut=0x...&amountIn=1000000000000000000&slippageBps=100
+GET /swap?chain=base&dex=uniswapV4&walletAddress=0x...&tokenIn=native&tokenOut=0xB964cA8757B0d64c50B0da17f0150563139361aC&amountIn=100000000000000&slippageBps=500
+GET /swap?chain=base&dex=aerodromeV3&walletAddress=0x...&tokenIn=0x6985884c4392d348587b19cb9eaaf157f13271cd&tokenOut=native&amountIn=105181035404990950&slippageBps=500
 ```
 
 **Response (EVM):**
@@ -701,7 +721,103 @@ GET /swapDexes?chain=eth
 {
   "endpoint": "swapDexes",
   "chain": "eth",
-  "dexes": ["uniswapV2", "uniswapV3", "uniswapV4"]
+  "dexes": [
+    { "id": "uniswapV2", "label": "Uniswap V2" },
+    { "id": "uniswapV3", "label": "Uniswap V3" },
+    { "id": "uniswapV4", "label": "Uniswap V4" }
+  ]
+}
+```
+
+---
+
+### `GET /approve`
+
+Build unsigned approval transaction steps for a later `/swap` call. In `auto` mode, the endpoint mirrors the current `/swap` path:
+- wrapper-backed native-out sells return an ERC-20 approval to the fee wrapper
+- direct Uniswap V4 flows return Permit2 steps
+- direct router flows return a standard ERC-20 approval to the router
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | **yes** | — | Chain (`eth`, `base`, `bsc`) |
+| `dex` | string | **yes** | — | DEX id from `/swapDexes` |
+| `walletAddress` | string | **yes** | — | Wallet that will sign |
+| `tokenIn` | string | **yes** | — | Token to approve |
+| `tokenOut` | string | **yes** | — | Intended swap output; used by `auto` mode |
+| `amount` | string | no | max approval | Optional Permit2 amount override |
+| `approvalMode` | string | no | `auto` | `auto`, `erc20`, or `permit2` |
+| `spender` | string | no | resolved automatically | Optional explicit spender override |
+| `expiration` | number | no | now + 30 days | Optional Permit2 expiration timestamp |
+
+Examples:
+```
+GET /approve?chain=base&dex=uniswapV3&walletAddress=0x...&tokenIn=0x18b0034be96c0b2828ac74319e4cf8670ce7e710&tokenOut=native
+GET /approve?chain=base&dex=uniswapV4&walletAddress=0x...&tokenIn=0xB964cA8757B0d64c50B0da17f0150563139361aC&tokenOut=native
+GET /approve?chain=eth&dex=uniswapV4&walletAddress=0x...&tokenIn=0x...&tokenOut=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&approvalMode=permit2
+```
+
+**Response:**
+```json
+{
+  "endpoint": "approve",
+  "status": "live",
+  "chain": "base",
+  "dex": "uniswapV4",
+  "tokenIn": "0xB964cA8757B0d64c50B0da17f0150563139361aC",
+  "tokenOut": "native",
+  "approvalMode": "auto",
+  "resolvedMode": "erc20",
+  "spender": "0x946073C7fC556333253F88F92796A74F7FE0Eb61",
+  "steps": [
+    {
+      "kind": "erc20",
+      "label": "Approve fee wrapper to pull tokenIn",
+      "spender": "0x946073C7fC556333253F88F92796A74F7FE0Eb61",
+      "tx": {
+        "to": "0xB964cA8757B0d64c50B0da17f0150563139361aC",
+        "data": "0x095ea7b3...",
+        "value": "0x0",
+        "chainId": 8453,
+        "from": "0xYourWallet"
+      }
+    }
+  ],
+  "notes": [
+    "Auto mode matched the current /swap sell path and resolved to fee-wrapper approval."
+  ],
+  "providers": []
+}
+```
+
+---
+
+### `GET /unwrap`
+
+Build an unsigned wrapped-native withdraw transaction so the caller can unwrap WETH or WBNB back into the chain gas token.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | **yes** | — | `eth`, `base`, or `bsc` |
+| `walletAddress` | string | **yes** | — | Wallet that will sign |
+| `amount` | string | **yes** | — | Raw wrapped-native amount |
+
+```
+GET /unwrap?chain=base&walletAddress=0x...&amount=100000000000000000
+```
+
+**Response:**
+```json
+{
+  "endpoint": "unwrap",
+  "chain": "base",
+  "tx": {
+    "to": "0x4200000000000000000000000000000000000006",
+    "data": "0x2e1a7d4d...",
+    "value": "0x0",
+    "chainId": 8453,
+    "from": "0xYourWallet"
+  }
 }
 ```
 

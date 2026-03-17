@@ -2,6 +2,7 @@ import { getProviderHealth } from "#services/providerHealth";
 import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
+  approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
   tokenPoolInfo: "Returns market cap, price, liquidity, holder summary, and 24h movement for a token or pool.",
   tokenPriceHistory: "Returns normalized price history for a token using an adjustable timeframe.",
@@ -16,9 +17,11 @@ const descriptions: Record<EndpointName, string> = {
   tokenWallets: "Lists wallets trading a specific token with PnL, balance, and buy/sell stats via Codex.",
   walletStats: "Returns detailed PnL and trading stats for a wallet across 1d/1w/30d/1y time periods via Codex.",
   tokenHolders: "Returns raw holder rows for EVM tokens via Sim by Dune, including first-acquired time and whether each wallet has initiated transfers.",
+  unwrap: "Builds an unsigned wrapped-native withdraw transaction so a wallet can unwrap WETH/WBNB back into native gas token.",
 };
 
 const cacheHints: Record<EndpointName, number> = {
+  approve: 0,
   walletReview: 180,
   tokenPoolInfo: 60,
   tokenPriceHistory: 300,
@@ -33,6 +36,7 @@ const cacheHints: Record<EndpointName, number> = {
   tokenWallets: 1800,
   walletStats: 180,
   tokenHolders: 120,
+  unwrap: 0,
 };
 
 export function buildEndpointScaffold(endpoint: EndpointName, request: Record<string, unknown>) {

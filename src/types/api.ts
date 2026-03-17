@@ -397,6 +397,35 @@ export type SwapQuoteResponse = {
   providers: ProviderStatus[];
 };
 
+export type ApproveStep = {
+  kind: "erc20" | "permit2";
+  label: string;
+  spender: string;
+  tx: {
+    to: string;
+    data: string;
+    value: string;
+    chainId: number;
+    from: string;
+    gasLimit?: string;
+  };
+};
+
+export type ApproveResponse = {
+  endpoint: "approve";
+  status: "live" | "partial";
+  chain: string;
+  dex: string;
+  tokenIn: string;
+  tokenOut: string;
+  approvalMode: "auto" | "erc20" | "permit2";
+  resolvedMode: "erc20" | "permit2" | "none";
+  spender: string | null;
+  steps: ApproveStep[];
+  notes: string[];
+  providers: ProviderStatus[];
+};
+
 /* ── Discovery & Market Endpoints ──────────────────────────── */
 
 export type TrendingToken = {

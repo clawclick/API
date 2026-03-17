@@ -11,7 +11,7 @@ import {
 } from "#services/liveEndpoints";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
-import { getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
+import { getApproveTx, getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { buildUnwrapTx } from "#lib/evm";
 import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
@@ -21,7 +21,7 @@ import { getFilteredTokens } from "#services/filterTokens";
 // import { getWalletStats } from "#services/walletStats";
 import { getTokenHolders } from "#services/tokenHolders";
 import { handleClient } from "#services/launchpadStream";
-import { detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema } from "#routes/helpers";
+import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -43,6 +43,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/swap", async (request) => getSwapTx(parseQuery(swapSchema, request.query)));
   app.get("/swapQuote", async (request) => getSwapQuote(parseQuery(swapQuoteSchema, request.query)));
   app.get("/swapDexes", async (request) => getSwapDexes(parseQuery(swapDexesSchema, request.query).chain));
+  app.get("/approve", async (request) => getApproveTx(parseQuery(approveSchema, request.query)));
 
   // Unwrap WETH/WBNB → native ETH/BNB
   app.get("/unwrap", async (request) => {

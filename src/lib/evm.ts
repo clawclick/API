@@ -78,6 +78,8 @@ export const WRAPPED_NATIVE: Record<string, string> = {
   bsc:  "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
 };
 
+export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+
 /** Returns true when tokenIn is the zero address or "ETH"/"BNB"/"native" sentinel. */
 export function isNativeIn(tokenIn: string): boolean {
   const t = tokenIn.toLowerCase();
@@ -236,6 +238,55 @@ export function buildUnwrapTx(
     data: calldata,
     value: "0x0",
     chainId: EVM_CHAIN_IDS[chain] ?? 1,
+    from: walletAddress,
+  };
+}
+
+export function buildErc20ApproveTx(
+  chain: string,
+  walletAddress: string,
+  tokenAddress: string,
+  spender: string,
+  amount = (1n << 256n) - 1n,
+): UnsignedSwapTx {
+  const chainId = EVM_CHAIN_IDS[chain];
+  if (!chainId) throw new Error(`Unsupported chain for approval: ${chain}`);
+
+  return {
+    to: tokenAddress,
+    data: buildCalldata(
+      selector("095ea7b3"),
+      padAddress(spender),
+      encodeUint256(amount),
+    ),
+    value: "0x0",
+    chainId,
+    from: walletAddress,
+  };
+}
+
+export function buildPermit2ApproveTx(
+  chain: string,
+  walletAddress: string,
+  tokenAddress: string,
+  spender: string,
+  amount = (1n << 160n) - 1n,
+  expiration = BigInt(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30),
+): UnsignedSwapTx {
+  const chainId = EVM_CHAIN_IDS[chain];
+  if (!chainId) throw new Error(`Unsupported chain for approval: ${chain}`);
+
+  return {
+    to: PERMIT2_ADDRESS,
+    data: buildCalldata(
+      selector("87517c45"),
+      padAddress(tokenAddress),
+      padAddress(spender),
+      encodeUint256(amount),
+      encodeUint256(expiration),
+    ),
+    value: "0x0",
+    chainId,
     from: walletAddress,
   };
 }

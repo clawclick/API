@@ -1,4 +1,5 @@
 export type EndpointName =
+  | "approve"
   | "walletReview"
   | "tokenPoolInfo"
   | "tokenPriceHistory"
@@ -12,7 +13,8 @@ export type EndpointName =
   | "filterWallets"
   | "tokenWallets"
   | "walletStats"
-  | "tokenHolders";
+  | "tokenHolders"
+  | "unwrap";
 
 export type ProviderRecord = {
   id: string;

@@ -85,9 +85,22 @@ export const swapDexesSchema = z.object({
   chain: z.string().min(1),
 });
 
+export const approveSchema = z.object({
+  chain: z.string().min(1),
+  dex: z.string().min(1),
+  walletAddress: z.string().min(1),
+  tokenIn: z.string().min(1),
+  tokenOut: z.string().min(1),
+  amount: z.string().optional(),
+  approvalMode: z.enum(["auto", "erc20", "permit2"]).default("auto"),
+  spender: z.string().optional(),
+  expiration: z.coerce.number().int().optional(),
+});
+
 export type SwapQuery = z.output<typeof swapSchema>;
 export type SwapQuoteQuery = z.output<typeof swapQuoteSchema>;
 export type SwapDexesQuery = z.output<typeof swapDexesSchema>;
+export type ApproveQuery = z.output<typeof approveSchema>;
 
 export const unwrapSchema = z.object({
   chain: z.string().min(1),
