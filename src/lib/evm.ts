@@ -1,3 +1,5 @@
+import { getOptionalEnv, isConfigured } from "#config/env";
+
 /**
  * Shared EVM utilities for building unsigned swap transactions.
  *
@@ -85,4 +87,57 @@ export function isNativeIn(tokenIn: string): boolean {
     t === "eth" ||
     t === "bnb"
   );
+}
+
+const EVM_FEE_DENOMINATOR = 10_000n;
+const EVM_PROTOCOL_FEE_BPS_DEFAULT = "10";
+
+export function getEvmFeeWrapperAddress(chain: string): string | null {
+  const envName = `${chain.toUpperCase()}_FEE_WRAPPER_ADDRESS`;
+  const value = getOptionalEnv(envName);
+  return isConfigured(value) ? value : null;
+}
+
+export function getEvmProtocolFeeBps(): bigint {
+  const raw = getOptionalEnv("EVM_PROTOCOL_FEE_BPS", EVM_PROTOCOL_FEE_BPS_DEFAULT);
+  const feeBps = Number(raw);
+  if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 100) {
+    throw new Error(`EVM_PROTOCOL_FEE_BPS must be an integer between 0 and 100. Received: ${raw}`);
+  }
+  return BigInt(feeBps);
+}
+
+export function subtractProtocolFee(amount: bigint, feeBps = getEvmProtocolFeeBps()): bigint {
+  return amount - ((amount * feeBps) / EVM_FEE_DENOMINATOR);
+}
+
+function encodeBytes(data: string): string {
+  const raw = data.replace(/^0x/, "");
+  const padded = raw.padEnd(Math.ceil(raw.length / 64) * 64, "0");
+  return encodeUint256(BigInt(raw.length / 2)) + padded;
+}
+
+export function wrapNativeBuyTxWithFeeWrapper(
+  tx: UnsignedSwapTx,
+  chain: string,
+  totalAmountIn: string,
+): UnsignedSwapTx {
+  const wrapper = getEvmFeeWrapperAddress(chain);
+  if (!wrapper) {
+    return tx;
+  }
+
+  const calldata = buildCalldata(
+    selector("f3437c19"),
+    padAddress(tx.to),
+    encodeUint256(64n),
+    encodeBytes(tx.data),
+  );
+
+  return {
+    ...tx,
+    to: wrapper,
+    data: calldata,
+    value: `0x${BigInt(totalAmountIn).toString(16)}`,
+  };
 }

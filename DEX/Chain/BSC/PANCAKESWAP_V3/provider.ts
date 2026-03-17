@@ -3,10 +3,12 @@
  *
  * Builds unsigned swap txs against PancakeSwap's V3-style SmartRouter on BNB Chain.
  * Uses exactInputSingle for single-hop concentrated-liquidity swaps.
+ * Resolves the fee tier from the main (highest-liquidity) DexScreener pair.
  */
 
 import { getRequiredEnv } from "#config/env";
 import { requestJson } from "#lib/http";
+import { getTokenPairs } from "#providers/market/dexScreener";
 import {
   type UnsignedSwapTx,
   type SwapParams,
@@ -24,6 +26,53 @@ import {
 const CHAIN_ID = EVM_CHAIN_IDS.bsc;
 const ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4"; // PancakeSwap V3 SmartRouter on BSC
 const QUOTER = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"; // PancakeSwap QuoterV2 on BSC
+const FALLBACK_FEES = [2500, 500, 10000, 100] as const;
+
+/* ── Fee-tier resolution via DexScreener + on-chain ───────── */
+
+async function readPoolFee(poolAddress: string): Promise<number> {
+  const rpcUrl = getRequiredEnv("BSC_RPC_URL");
+  const result = await requestJson<{ result?: string }>(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [{ to: poolAddress, data: "0xddca3f43" }, "latest"],
+    }),
+  });
+  if (!result.result || result.result === "0x") {
+    throw new Error("Could not read fee() from pool " + poolAddress);
+  }
+  return Number(BigInt(result.result));
+}
+
+async function resolveMainPoolFee(
+  tokenIn: string,
+  tokenOut: string,
+): Promise<number | null> {
+  const pairs = await getTokenPairs("bsc", tokenOut);
+  const v3Pairs = pairs
+    .filter(
+      (p) =>
+        p.chainId === "bsc" &&
+        p.dexId?.toLowerCase() === "pancakeswap" &&
+        (p.labels ?? []).some((l) => l.toLowerCase() === "v3") &&
+        [p.baseToken?.address, p.quoteToken?.address]
+          .filter((a): a is string => !!a)
+          .some((a) => a.toLowerCase() === tokenIn.toLowerCase() || a.toLowerCase() === WRAPPED_NATIVE.bsc.toLowerCase()),
+    )
+    .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+
+  if (v3Pairs.length === 0) return null;
+
+  try {
+    return await readPoolFee(v3Pairs[0].pairAddress);
+  } catch {
+    return null;
+  }
+}
 
 /* ── QuoterV2 ─────────────────────────────────────────────── */
 
@@ -64,7 +113,7 @@ async function quoteExactInputSingle(
 
 /* ── Build unsigned swap TX ──────────────────────────────── */
 
-export async function buildSwapTx(params: SwapParams, fee = 2500): Promise<UnsignedSwapTx> {
+export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
@@ -72,7 +121,18 @@ export async function buildSwapTx(params: SwapParams, fee = 2500): Promise<Unsig
   const wbnb = WRAPPED_NATIVE.bsc;
   const actualTokenIn = nativeIn ? wbnb : tokenIn;
 
-  const amountOut = await quoteExactInputSingle(actualTokenIn, tokenOut, amtIn, fee);
+  const resolvedFee = await resolveMainPoolFee(actualTokenIn, tokenOut);
+  const feesToTry = resolvedFee ? [resolvedFee] : [...FALLBACK_FEES];
+  let amountOut: bigint | null = null;
+  let fee = feesToTry[0];
+  for (const f of feesToTry) {
+    try {
+      amountOut = await quoteExactInputSingle(actualTokenIn, tokenOut, amtIn, f);
+      fee = f;
+      break;
+    } catch { /* try next */ }
+  }
+  if (amountOut === null) throw new Error("No PancakeSwap V3 pool found for this pair");
   const amountOutMin = applySlippage(amountOut, slippageBps);
 
   // exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))
@@ -101,11 +161,22 @@ export async function getQuote(
   tokenOut: string,
   amountIn: string,
   slippageBps: number,
-  fee = 2500,
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
   const wbnb = WRAPPED_NATIVE.bsc;
   const actualIn = isNativeIn(tokenIn) ? wbnb : tokenIn;
-  const out = await quoteExactInputSingle(actualIn, tokenOut, BigInt(amountIn), fee);
+
+  const resolvedFee = await resolveMainPoolFee(actualIn, tokenOut);
+  const feesToTry = resolvedFee ? [resolvedFee] : [...FALLBACK_FEES];
+  let out: bigint | null = null;
+  let fee = feesToTry[0];
+  for (const f of feesToTry) {
+    try {
+      out = await quoteExactInputSingle(actualIn, tokenOut, BigInt(amountIn), f);
+      fee = f;
+      break;
+    } catch { /* try next */ }
+  }
+  if (out === null) throw new Error("No PancakeSwap V3 pool found for this pair");
   return {
     amountOut: out.toString(),
     amountOutMin: applySlippage(out, slippageBps).toString(),

@@ -1,13 +1,14 @@
 /**
  * Uniswap V4 – Ethereum (chain 1)
  *
- * Builds unsigned swap txs via the Universal Router on ETH mainnet.
- * V4 swaps are routed through the Universal Router's execute() with
- * V3_SWAP_EXACT_IN command (which also covers V4 pool routing).
+ * Builds unsigned swap txs via the V4 Universal Router on ETH mainnet.
+ * V4 uses a PoolManager with hook-based pools. Swaps go through the
+ * Universal Router's `execute()` with V4_SWAP command.
  */
 
 import { getRequiredEnv } from "#config/env";
 import { requestJson } from "#lib/http";
+import { getTokenPairs } from "#providers/market/dexScreener";
 import {
   type UnsignedSwapTx,
   type SwapParams,
@@ -23,90 +24,362 @@ import {
 } from "#lib/evm";
 
 const CHAIN_ID = EVM_CHAIN_IDS.eth;
-const UNIVERSAL_ROUTER = "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD";
-const QUOTER_V2 = "0x61fFE014bA17989E743c5F6cB21bF9697530B21e";
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const UNIVERSAL_ROUTER = "0x66a9893cc07d91d95644aedd05d03f95e1dba8af";
+const POOL_MANAGER = "0x000000000004444c5dc75cB358380D2e3dE08A90";
+const V4_QUOTER = "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203";
+const INITIALIZE_TOPIC = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438";
+const WRAP_ETH_COMMAND = "0b";
+const V4_SWAP_COMMAND = "10";
+const ACTION_SWAP_EXACT_IN_SINGLE = "06";
+const ACTION_SETTLE = "0b";
+const ACTION_SETTLE_ALL = "0c";
+const ACTION_TAKE_ALL = "0f";
+const QUOTE_EXACT_INPUT_SINGLE_SELECTOR = "aa9d21cb";
+const EXECUTE_SELECTOR = "3593564c";
+const CONTRACT_BALANCE =
+  "0x8000000000000000000000000000000000000000000000000000000000000000";
 
-/* ── QuoterV2 ─────────────────────────────────────────────── */
+type DexPair = Awaited<ReturnType<typeof getTokenPairs>>[number];
+type PoolKey = {
+  currency0: string;
+  currency1: string;
+  fee: number;
+  tickSpacing: number;
+  hooks: string;
+};
+type ResolvedV4Pool = {
+  pair: DexPair;
+  poolId: string;
+  poolKey: PoolKey;
+  inputCurrency: string;
+  zeroForOne: boolean;
+};
 
-async function quoteExactInputSingle(
-  tokenIn: string,
-  tokenOut: string,
-  amountIn: bigint,
-  fee: number,
-): Promise<bigint> {
-  const rpcUrl = getRequiredEnv("ETH_RPC_URL");
-  const data = buildCalldata(
-    selector("c6a5026a"),
-    padAddress(tokenIn),
-    padAddress(tokenOut),
-    encodeUint256(amountIn),
-    encodeUint256(BigInt(fee)),
-    encodeUint256(0n),
-  );
+const poolKeyCache = new Map<string, PoolKey>();
 
-  const result = await requestJson<{ result?: string }>(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "eth_call",
-      params: [{ to: QUOTER_V2, data }, "latest"],
-    }),
-  });
-
-  if (!result.result || result.result === "0x") {
-    throw new Error("QuoterV2 returned empty – V4 pool may not exist for this fee tier");
-  }
-
-  return BigInt("0x" + result.result.replace(/^0x/, "").slice(0, 64));
+function normalizeAddress(address: string): string {
+  return address.toLowerCase();
 }
 
-/* ── Build unsigned swap TX via Universal Router ──────────── */
+function isAddressEqual(left: string, right: string): boolean {
+  return normalizeAddress(left) === normalizeAddress(right);
+}
+
+function stripHexPrefix(value: string): string {
+  return value.replace(/^0x/, "");
+}
+
+function encodeBytes(data: string): string {
+  const raw = stripHexPrefix(data);
+  const padded = raw.padEnd(Math.ceil(raw.length / 64) * 64, "0");
+  return encodeUint256(BigInt(raw.length / 2)) + padded;
+}
+
+function encodeBool(value: boolean): string {
+  return encodeUint256(value ? 1n : 0n);
+}
+
+function encodeInt24(value: number): string {
+  const normalized = BigInt.asUintN(24, BigInt(value));
+  return encodeUint256(normalized);
+}
+
+function encodeBytesArray(items: string[]): string {
+  const encodedItems = items.map((item) => encodeBytes(item));
+  const headSize = BigInt(items.length * 32);
+  let currentOffset = headSize;
+  const heads: string[] = [];
+  for (const encodedItem of encodedItems) {
+    heads.push(encodeUint256(currentOffset));
+    currentOffset += BigInt(encodedItem.length / 2);
+  }
+  return encodeUint256(BigInt(items.length)) + heads.join("") + encodedItems.join("");
+}
+
+function encodeDynamicTuple(items: string[]): string {
+  const headSize = BigInt(items.length * 32);
+  let currentOffset = headSize;
+  const heads: string[] = [];
+  for (const item of items) {
+    heads.push(encodeUint256(currentOffset));
+    currentOffset += BigInt(item.length / 2);
+  }
+  return heads.join("") + items.join("");
+}
+
+function wrapSingleDynamic(body: string): string {
+  return encodeUint256(32n) + body;
+}
+
+function toHexBlock(blockNumber: number): string {
+  return `0x${blockNumber.toString(16)}`;
+}
+
+function parseBlockNumber(value?: string): number {
+  if (!value) throw new Error("Missing block number in RPC response");
+  return Number(BigInt(value));
+}
+
+function parseTimestamp(value?: string): number {
+  if (!value) throw new Error("Missing block timestamp in RPC response");
+  return Number(BigInt(value));
+}
+
+function decodeSignedInt24(word: string): number {
+  const value = Number(BigInt(`0x${word.slice(-6)}`));
+  return value >= 0x800000 ? value - 0x1000000 : value;
+}
+
+function normalizePairCreatedAt(value: number | undefined): number | null {
+  if (!value || !Number.isFinite(value)) return null;
+  return value > 1_000_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+}
+
+function isEthUniswapV4Pair(pair: DexPair): boolean {
+  return (
+    pair.chainId === "ethereum" &&
+    pair.dexId?.toLowerCase() === "uniswap" &&
+    (pair.labels ?? []).some((label) => label.toLowerCase() === "v4") &&
+    pair.pairAddress.length === 66
+  );
+}
+
+function pairContainsInput(pair: DexPair, tokenOut: string, tokenIn: string, nativeIn: boolean): boolean {
+  const tokens = [pair.baseToken?.address, pair.quoteToken?.address].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+  const containsOut = tokens.some((value) => isAddressEqual(value, tokenOut));
+  const containsIn = tokens.some((value) => isAddressEqual(value, tokenIn));
+  const containsWrappedNative = nativeIn && tokens.some((value) => isAddressEqual(value, WRAPPED_NATIVE.eth));
+  return containsOut && (containsIn || containsWrappedNative);
+}
+
+function byLiquidityDesc(left: DexPair, right: DexPair): number {
+  return (right.liquidity?.usd ?? 0) - (left.liquidity?.usd ?? 0);
+}
+
+async function rpcCall<T>(method: string, params: unknown[]): Promise<T> {
+  const rpcUrl = getRequiredEnv("ETH_RPC_URL");
+  return requestJson<T>(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+}
+
+async function getLatestBlock(): Promise<{ number: number; timestamp: number }> {
+  const block = await rpcCall<{ result?: { number?: string; timestamp?: string } }>("eth_getBlockByNumber", ["latest", false]);
+  return {
+    number: parseBlockNumber(block.result?.number),
+    timestamp: parseTimestamp(block.result?.timestamp),
+  };
+}
+
+async function getInitializeLogs(poolId: string, fromBlock: number, toBlock: number): Promise<Array<{ topics?: string[]; data?: string }>> {
+  const response = await rpcCall<{ result?: Array<{ topics?: string[]; data?: string }> }>("eth_getLogs", [{
+    address: POOL_MANAGER,
+    fromBlock: toHexBlock(fromBlock),
+    toBlock: toHexBlock(toBlock),
+    topics: [INITIALIZE_TOPIC, poolId],
+  }]);
+  return response.result ?? [];
+}
+
+function decodeInitializeLog(poolId: string, log: { topics?: string[]; data?: string }): PoolKey {
+  const topics = log.topics ?? [];
+  const data = stripHexPrefix(log.data ?? "0x");
+  if (topics.length < 4 || data.length < 64 * 5) {
+    throw new Error(`Malformed Initialize log for pool ${poolId}`);
+  }
+
+  const feeWord = data.slice(0, 64);
+  const tickSpacingWord = data.slice(64, 128);
+  const hooksWord = data.slice(128, 192);
+
+  return {
+    currency0: `0x${topics[2].slice(-40)}`,
+    currency1: `0x${topics[3].slice(-40)}`,
+    fee: Number(BigInt(`0x${feeWord}`)),
+    tickSpacing: decodeSignedInt24(tickSpacingWord),
+    hooks: `0x${hooksWord.slice(-40)}`,
+  };
+}
+
+async function resolvePoolKey(poolId: string, pairCreatedAt?: number): Promise<PoolKey> {
+  const cached = poolKeyCache.get(poolId);
+  if (cached) return cached;
+
+  const latestBlock = await getLatestBlock();
+  const createdAt = normalizePairCreatedAt(pairCreatedAt);
+  const estimatedBlock = createdAt
+    ? Math.max(0, latestBlock.number - Math.floor((latestBlock.timestamp - createdAt) / 2))
+    : latestBlock.number;
+
+  const searchWindows = createdAt ? [50_000, 200_000, 1_000_000, 5_000_000] : [200_000, 1_000_000, 5_000_000];
+
+  for (const window of searchWindows) {
+    const start = Math.max(0, estimatedBlock - window);
+    const end = Math.min(latestBlock.number, estimatedBlock + window);
+
+    for (let fromBlock = start; fromBlock <= end; fromBlock += 25_000) {
+      const toBlock = Math.min(end, fromBlock + 24_999);
+      const logs = await getInitializeLogs(poolId, fromBlock, toBlock);
+      if (logs.length > 0) {
+        const poolKey = decodeInitializeLog(poolId, logs[0]);
+        poolKeyCache.set(poolId, poolKey);
+        return poolKey;
+      }
+    }
+  }
+
+  throw new Error(`Unable to resolve Uniswap V4 PoolKey for pool id ${poolId}`);
+}
+
+function encodeQuoteExactInputSingle(poolKey: PoolKey, zeroForOne: boolean, amountIn: bigint): string {
+  const hookData = encodeBytes("0x");
+  const structBody = [
+    padAddress(poolKey.currency0),
+    padAddress(poolKey.currency1),
+    encodeUint256(BigInt(poolKey.fee)),
+    encodeInt24(poolKey.tickSpacing),
+    padAddress(poolKey.hooks),
+    encodeBool(zeroForOne),
+    encodeUint256(amountIn),
+    encodeUint256(256n),
+    hookData,
+  ].join("");
+
+  return buildCalldata(selector(QUOTE_EXACT_INPUT_SINGLE_SELECTOR), wrapSingleDynamic(structBody));
+}
+
+async function quoteExactInputSingle(poolKey: PoolKey, zeroForOne: boolean, amountIn: bigint): Promise<bigint> {
+  const data = encodeQuoteExactInputSingle(poolKey, zeroForOne, amountIn);
+  const result = await rpcCall<{ result?: string }>("eth_call", [{ to: V4_QUOTER, data }, "latest"]);
+
+  if (!result.result || result.result === "0x") {
+    throw new Error("V4 quoter returned empty result");
+  }
+
+  return BigInt(`0x${stripHexPrefix(result.result).slice(0, 64)}`);
+}
+
+async function resolveDexScreenerPool(tokenIn: string, tokenOut: string, nativeIn: boolean): Promise<ResolvedV4Pool> {
+  const pairs = (await getTokenPairs("eth", tokenOut))
+    .filter((pair) => isEthUniswapV4Pair(pair) && pairContainsInput(pair, tokenOut, tokenIn, nativeIn))
+    .sort(byLiquidityDesc);
+
+  const pair = pairs[0];
+  if (!pair) {
+    throw new Error(`DexScreener did not return a direct ETH Uniswap V4 pool for ${tokenOut}`);
+  }
+
+  const poolId = pair.pairAddress.toLowerCase();
+  const poolKey = await resolvePoolKey(poolId, pair.pairCreatedAt);
+  const usesNative = isAddressEqual(poolKey.currency0, ZERO_ADDRESS) || isAddressEqual(poolKey.currency1, ZERO_ADDRESS);
+  const inputCurrency = nativeIn && usesNative ? ZERO_ADDRESS : tokenIn;
+
+  if (!isAddressEqual(inputCurrency, poolKey.currency0) && !isAddressEqual(inputCurrency, poolKey.currency1)) {
+    throw new Error(`Resolved V4 PoolKey for ${poolId} does not include input currency ${inputCurrency}`);
+  }
+
+  return {
+    pair,
+    poolId,
+    poolKey,
+    inputCurrency,
+    zeroForOne: isAddressEqual(inputCurrency, poolKey.currency0),
+  };
+}
+
+function encodeExactInputSingleAction(
+  poolKey: PoolKey,
+  zeroForOne: boolean,
+  amountIn: bigint,
+  amountOutMin: bigint,
+): string {
+  const hookData = encodeBytes("0x");
+  const structBody = [
+    padAddress(poolKey.currency0),
+    padAddress(poolKey.currency1),
+    encodeUint256(BigInt(poolKey.fee)),
+    encodeInt24(poolKey.tickSpacing),
+    padAddress(poolKey.hooks),
+    encodeBool(zeroForOne),
+    encodeUint256(amountIn),
+    encodeUint256(amountOutMin),
+    encodeUint256(256n),
+    hookData,
+  ].join("");
+
+  return wrapSingleDynamic(structBody);
+}
+
+function encodeV4SwapInput(actions: string, params: string[]): string {
+  const encodedActions = encodeBytes(actions);
+  const encodedParams = encodeBytesArray(params);
+  return `0x${encodeDynamicTuple([encodedActions, encodedParams])}`;
+}
+
+function buildUniversalRouterCalldata(commands: string, inputs: string[], deadline: number): string {
+  const encodedCommands = encodeBytes(commands);
+  const encodedInputs = encodeBytesArray(inputs);
+  const argsHead = [
+    encodeUint256(96n),
+    encodeUint256(96n + BigInt(encodedCommands.length / 2)),
+    encodeUint256(BigInt(deadline)),
+  ].join("");
+  return buildCalldata(selector(EXECUTE_SELECTOR), argsHead, encodedCommands, encodedInputs);
+}
+
+function typeCastMaxUint256(): bigint {
+  return (1n << 256n) - 1n;
+}
+
+/* ── Build unsigned swap TX ──────────────────────────────── */
 
 export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
-  const weth = WRAPPED_NATIVE.eth;
-  const actualTokenIn = nativeIn ? weth : tokenIn;
-
-  const amountOut = await quoteExactInputSingle(actualTokenIn, tokenOut, amtIn, fee);
+  const actualTokenIn = nativeIn ? WRAPPED_NATIVE.eth : tokenIn;
+  const resolvedPool = await resolveDexScreenerPool(actualTokenIn, tokenOut, nativeIn);
+  const amountOut = await quoteExactInputSingle(resolvedPool.poolKey, resolvedPool.zeroForOne, amtIn);
   const amountOutMin = applySlippage(amountOut, slippageBps);
 
-  // Path: tokenIn (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)
-  const pathHex =
-    actualTokenIn.replace(/^0x/, "").toLowerCase() +
-    fee.toString(16).padStart(6, "0") +
-    tokenOut.replace(/^0x/, "").toLowerCase();
-  const pathLen = pathHex.length / 2;
-  const pathPadded = pathHex.padEnd(Math.ceil(pathHex.length / 64) * 64, "0");
-
-  const inputBytesRaw =
-    padAddress(walletAddress) +
-    encodeUint256(amtIn) +
-    encodeUint256(amountOutMin) +
-    encodeUint256(160n) +
-    encodeUint256(nativeIn ? 1n : 0n) +
-    encodeUint256(BigInt(pathLen)) +
-    pathPadded;
-  const inputBytesLen = inputBytesRaw.length / 2;
-
-  const commands = "00"; // V3_SWAP_EXACT_IN
-
-  const calldata = buildCalldata(
-    selector("3593564c"),
-    encodeUint256(96n),
-    encodeUint256(160n),
-    encodeUint256(BigInt(dl)),
-    encodeUint256(1n),
-    commands.padEnd(64, "0"),
-    encodeUint256(1n),
-    encodeUint256(32n),
-    encodeUint256(BigInt(inputBytesLen)),
-    inputBytesRaw.padEnd(Math.ceil(inputBytesRaw.length / 64) * 64, "0"),
+  const swapAction = encodeExactInputSingleAction(
+    resolvedPool.poolKey,
+    resolvedPool.zeroForOne,
+    amtIn,
+    amountOutMin,
   );
+
+  const wrapNativeToWeth = nativeIn && isAddressEqual(resolvedPool.inputCurrency, WRAPPED_NATIVE.eth);
+  const actions = wrapNativeToWeth
+    ? `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE}${ACTION_TAKE_ALL}`
+    : `${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE_ALL}`;
+  const v4Params = wrapNativeToWeth
+    ? [
+        swapAction,
+        `0x${padAddress(resolvedPool.inputCurrency)}${CONTRACT_BALANCE.slice(2)}${encodeBool(false)}`,
+        `0x${padAddress(tokenOut)}${encodeUint256(0n)}`,
+      ]
+    : [
+        swapAction,
+        `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(typeCastMaxUint256())}`,
+        `0x${padAddress(tokenOut)}${encodeUint256(0n)}`,
+      ];
+  const v4Input = encodeV4SwapInput(`0x${actions}`, v4Params);
+
+  const commands = wrapNativeToWeth ? `${WRAP_ETH_COMMAND}${V4_SWAP_COMMAND}` : V4_SWAP_COMMAND;
+  const inputs = wrapNativeToWeth
+    ? [
+        `0x${padAddress(UNIVERSAL_ROUTER)}${encodeUint256(amtIn)}`,
+        v4Input,
+      ]
+    : [v4Input];
+  const calldata = buildUniversalRouterCalldata(`0x${commands}`, inputs, dl);
 
   return {
     to: UNIVERSAL_ROUTER,
@@ -124,12 +397,13 @@ export async function getQuote(
   slippageBps: number,
   fee = 3000,
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
-  const weth = WRAPPED_NATIVE.eth;
-  const actualIn = isNativeIn(tokenIn) ? weth : tokenIn;
-  const out = await quoteExactInputSingle(actualIn, tokenOut, BigInt(amountIn), fee);
+  const nativeIn = isNativeIn(tokenIn);
+  const actualIn = nativeIn ? WRAPPED_NATIVE.eth : tokenIn;
+  const resolvedPool = await resolveDexScreenerPool(actualIn, tokenOut, nativeIn);
+  const out = await quoteExactInputSingle(resolvedPool.poolKey, resolvedPool.zeroForOne, BigInt(amountIn));
   return {
     amountOut: out.toString(),
     amountOutMin: applySlippage(out, slippageBps).toString(),
-    fee,
+    fee: resolvedPool.poolKey.fee,
   };
 }

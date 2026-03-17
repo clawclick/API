@@ -2,11 +2,13 @@
  * Uniswap V3 – BASE (chain 8453)
  *
  * Builds unsigned swap txs against the SwapRouter02 on Base.
- * Uses exactInputSingle for single-hop swaps.
+ * Resolves the fee tier from the main (highest-liquidity) DexScreener pair,
+ * then quotes via QuoterV2.
  */
 
 import { getRequiredEnv } from "#config/env";
 import { requestJson } from "#lib/http";
+import { getTokenPairs } from "#providers/market/dexScreener";
 import {
   type UnsignedSwapTx,
   type SwapParams,
@@ -23,15 +25,57 @@ import {
 
 const CHAIN_ID = EVM_CHAIN_IDS.base;
 const ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02 on Base
-
-/* ── Quoter V2 for exact input ────────────────────────────── */
-
 const QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"; // QuoterV2 on Base
+const FALLBACK_FEES = [3000, 500, 10000, 100] as const;
 
-/**
- * quoteExactInputSingle((address tokenIn, address tokenOut, uint256 amountIn, uint24 fee, uint160 sqrtPriceLimitX96))
- * selector: 0xc6a5026a
- */
+/* ── Fee-tier resolution via DexScreener + on-chain ───────── */
+
+async function readPoolFee(poolAddress: string): Promise<number> {
+  const rpcUrl = getRequiredEnv("BASE_RPC_URL");
+  const result = await requestJson<{ result?: string }>(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [{ to: poolAddress, data: "0xddca3f43" }, "latest"],
+    }),
+  });
+  if (!result.result || result.result === "0x") {
+    throw new Error("Could not read fee() from pool " + poolAddress);
+  }
+  return Number(BigInt(result.result));
+}
+
+async function resolveMainPoolFee(
+  tokenIn: string,
+  tokenOut: string,
+): Promise<number | null> {
+  const pairs = await getTokenPairs("base", tokenOut);
+  const v3Pairs = pairs
+    .filter(
+      (p) =>
+        p.chainId === "base" &&
+        p.dexId?.toLowerCase() === "uniswap" &&
+        (p.labels ?? []).some((l) => l.toLowerCase() === "v3") &&
+        [p.baseToken?.address, p.quoteToken?.address]
+          .filter((a): a is string => !!a)
+          .some((a) => a.toLowerCase() === tokenIn.toLowerCase() || a.toLowerCase() === WRAPPED_NATIVE.base.toLowerCase()),
+    )
+    .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0));
+
+  if (v3Pairs.length === 0) return null;
+
+  try {
+    return await readPoolFee(v3Pairs[0].pairAddress);
+  } catch {
+    return null;
+  }
+}
+
+/* ── QuoterV2 ─────────────────────────────────────────────── */
+
 async function quoteExactInputSingle(
   tokenIn: string,
   tokenOut: string,
@@ -46,7 +90,7 @@ async function quoteExactInputSingle(
     padAddress(tokenOut),
     encodeUint256(amountIn),
     encodeUint256(BigInt(fee)),
-    encodeUint256(0n), // sqrtPriceLimitX96 = 0
+    encodeUint256(0n),
   );
 
   const result = await requestJson<{ result?: string }>(rpcUrl, {
@@ -64,18 +108,45 @@ async function quoteExactInputSingle(
     throw new Error("QuoterV2 returned empty – pool may not exist for this fee tier");
   }
 
-  // First 32-byte word = amountOut
   const hex = result.result.replace(/^0x/, "");
   return BigInt("0x" + hex.slice(0, 64));
 }
 
+async function resolveFeeTier(
+  tokenIn: string,
+  tokenOut: string,
+  amountIn: bigint,
+  preferredFee?: number,
+): Promise<{ fee: number; amountOut: bigint }> {
+  // 1. Try to get the fee from the main DexScreener pair
+  const mainFee = await resolveMainPoolFee(tokenIn, tokenOut);
+  if (mainFee) {
+    try {
+      const amountOut = await quoteExactInputSingle(tokenIn, tokenOut, amountIn, mainFee);
+      return { fee: mainFee, amountOut };
+    } catch { /* fall through to fallback */ }
+  }
+
+  // 2. Fallback: try common fees in order (for tokens not on DexScreener yet)
+  const candidates = preferredFee
+    ? [preferredFee, ...FALLBACK_FEES.filter((f) => f !== preferredFee)]
+    : [...FALLBACK_FEES];
+
+  let lastError: Error | null = null;
+  for (const fee of candidates) {
+    try {
+      const amountOut = await quoteExactInputSingle(tokenIn, tokenOut, amountIn, fee);
+      return { fee, amountOut };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  throw lastError ?? new Error("No V3 pool found for this token pair on any fee tier");
+}
+
 /* ── Build unsigned swap TX ──────────────────────────────── */
 
-/**
- * exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient,
- *   uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96))
- * selector: 0x04e45aaf
- */
 export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
   const dl = defaultDeadline(deadline);
@@ -84,19 +155,18 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   const weth = WRAPPED_NATIVE.base;
   const actualTokenIn = nativeIn ? weth : tokenIn;
 
-  const amountOut = await quoteExactInputSingle(actualTokenIn, tokenOut, amtIn, fee);
-  const amountOutMin = applySlippage(amountOut, slippageBps);
+  const resolved = await resolveFeeTier(actualTokenIn, tokenOut, amtIn, fee);
+  const amountOutMin = applySlippage(resolved.amountOut, slippageBps);
 
-  // Pack struct as sequential words (Solidity tuple encoding)
   const calldata = buildCalldata(
     selector("04e45aaf"),
-    padAddress(actualTokenIn),        // tokenIn
-    padAddress(tokenOut),             // tokenOut
-    encodeUint256(BigInt(fee)),       // fee
-    padAddress(walletAddress),        // recipient
-    encodeUint256(amtIn),             // amountIn
-    encodeUint256(amountOutMin),      // amountOutMinimum
-    encodeUint256(0n),                // sqrtPriceLimitX96
+    padAddress(actualTokenIn),
+    padAddress(tokenOut),
+    encodeUint256(BigInt(resolved.fee)),
+    padAddress(walletAddress),
+    encodeUint256(amtIn),
+    encodeUint256(amountOutMin),
+    encodeUint256(0n),
   );
 
   return {
@@ -108,7 +178,6 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   };
 }
 
-/** Quote: returns expected output and minimum after slippage for a V3 single-hop. */
 export async function getQuote(
   tokenIn: string,
   tokenOut: string,
@@ -118,10 +187,10 @@ export async function getQuote(
 ): Promise<{ amountOut: string; amountOutMin: string; fee: number }> {
   const weth = WRAPPED_NATIVE.base;
   const actualIn = isNativeIn(tokenIn) ? weth : tokenIn;
-  const out = await quoteExactInputSingle(actualIn, tokenOut, BigInt(amountIn), fee);
+  const resolved = await resolveFeeTier(actualIn, tokenOut, BigInt(amountIn), fee);
   return {
-    amountOut: out.toString(),
-    amountOutMin: applySlippage(out, slippageBps).toString(),
-    fee,
+    amountOut: resolved.amountOut.toString(),
+    amountOutMin: applySlippage(resolved.amountOut, slippageBps).toString(),
+    fee: resolved.fee,
   };
 }

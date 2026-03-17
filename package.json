@@ -46,6 +46,7 @@
     "#providers/newPairs/raydiumNewPools": "./New_pairs/Raydium_new_pool_events/provider.ts",
     "#providers/newPairs/uniswapPairCreation": "./New_pairs/Uniswap_pair_creation_events/provider.ts",
     "#providers/dex/aerodrome": "./DEX/Chain/BASE/AERODOME_V2/provider.ts",
+    "#providers/dex/aerodromeV3": "./DEX/Chain/BASE/AERODOME_V3/provider.ts",
     "#providers/dex/baseUniswapV2": "./DEX/Chain/BASE/UNISWAP_V2/provider.ts",
     "#providers/dex/baseUniswapV3": "./DEX/Chain/BASE/UNISWAP_V3/provider.ts",
     "#providers/dex/baseUniswapV4": "./DEX/Chain/BASE/UNISWAP_V4/provider.ts",

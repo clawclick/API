@@ -1,10 +1,11 @@
 import { requestJson } from "#lib/http";
 import { toDexScreenerChain, type SupportedChain } from "#providers/shared/chains";
 
-type DexPair = {
+export type DexPair = {
   chainId: string;
   dexId: string;
   pairAddress: string;
+  pairCreatedAt?: number;
   labels?: string[];
   baseToken?: {
     address?: string;

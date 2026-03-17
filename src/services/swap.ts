@@ -1,7 +1,9 @@
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
 import { addStatus, runProvider } from "#lib/runProvider";
+import { getEvmFeeWrapperAddress, isNativeIn, subtractProtocolFee, wrapNativeBuyTxWithFeeWrapper } from "#lib/evm";
 import type { SwapQuery, SwapQuoteQuery } from "#routes/helpers";
 import type { ProviderStatus, SwapTxResponse, SwapQuoteResponse } from "#types/api";
+import type { UnsignedSwapTx } from "#lib/evm";
 
 /* ── EVM providers ────────────────────────────────────────── */
 import { buildSwapTx as ethUniV2Swap, getQuote as ethUniV2Quote } from "#providers/dex/ethUniswapV2";
@@ -11,6 +13,7 @@ import { buildSwapTx as baseUniV2Swap, getQuote as baseUniV2Quote } from "#provi
 import { buildSwapTx as baseUniV3Swap, getQuote as baseUniV3Quote } from "#providers/dex/baseUniswapV3";
 import { buildSwapTx as baseUniV4Swap, getQuote as baseUniV4Quote } from "#providers/dex/baseUniswapV4";
 import { buildSwapTx as aeroSwap, getQuote as aeroQuote } from "#providers/dex/aerodrome";
+import { buildSwapTx as aeroV3Swap, getQuote as aeroV3Quote } from "#providers/dex/aerodromeV3";
 import { buildSwapTx as bscV2Swap, getQuote as bscV2Quote } from "#providers/dex/pancakeswapV2";
 import { buildSwapTx as bscV3Swap, getQuote as bscV3Quote } from "#providers/dex/pancakeswapV3";
 
@@ -27,7 +30,7 @@ import { buildSwapTx as pumpDexSwap, getQuote as pumpDexQuote } from "#providers
 
 type DexId =
   | "uniswapV2" | "uniswapV3" | "uniswapV4"
-  | "aerodromeV2"
+  | "aerodromeV2" | "aerodromeV3"
   | "pancakeswapV2" | "pancakeswapV3"
   | "raydium" | "meteora" | "pumpDex";
 
@@ -66,6 +69,12 @@ const DEX_REGISTRY: DexEntry[] = [
     chains: ["base"],
     swapByChain: { base: aeroSwap },
     quoteByChain: { base: aeroQuote },
+  },
+  {
+    id: "aerodromeV3", label: "Aerodrome V3 (Slipstream)",
+    chains: ["base"],
+    swapByChain: { base: aeroV3Swap },
+    quoteByChain: { base: aeroV3Quote },
   },
   {
     id: "pancakeswapV2", label: "PancakeSwap V2",
@@ -115,6 +124,11 @@ function dexesForChain(chain: SupportedChain): DexEntry[] {
 export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
+  const nativeInBuy = isEvmChain(chain) && isNativeIn(query.tokenIn) && !isNativeIn(query.tokenOut);
+  const feeWrapperAddress = nativeInBuy ? getEvmFeeWrapperAddress(chain) : null;
+  const adjustedAmountIn = feeWrapperAddress
+    ? subtractProtocolFee(BigInt(query.amountIn)).toString()
+    : query.amountIn;
 
   const entry = resolveDex(query.dex);
   if (!entry) {
@@ -138,12 +152,16 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
       walletAddress: query.walletAddress,
       tokenIn: query.tokenIn,
       tokenOut: query.tokenOut,
-      amountIn: query.amountIn,
+      amountIn: adjustedAmountIn,
       slippageBps: query.slippageBps,
       deadline: query.deadline,
     }),
     `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
+
+  const wrappedResult = feeWrapperAddress && result
+    ? wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn)
+    : result;
 
   return {
     endpoint: "swap",
@@ -154,7 +172,7 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
     tokenOut: query.tokenOut,
     amountIn: query.amountIn,
     slippageBps: query.slippageBps,
-    tx: result as SwapTxResponse["tx"],
+    tx: wrappedResult as SwapTxResponse["tx"],
     providers,
   };
 }
@@ -165,6 +183,11 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
 export async function getSwapQuote(query: SwapQuoteQuery): Promise<SwapQuoteResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
+  const nativeInBuy = isEvmChain(chain) && isNativeIn(query.tokenIn) && !isNativeIn(query.tokenOut);
+  const feeWrapperAddress = nativeInBuy ? getEvmFeeWrapperAddress(chain) : null;
+  const adjustedAmountIn = feeWrapperAddress
+    ? subtractProtocolFee(BigInt(query.amountIn)).toString()
+    : query.amountIn;
 
   const entry = resolveDex(query.dex);
   if (!entry) {
@@ -185,7 +208,7 @@ export async function getSwapQuote(query: SwapQuoteQuery): Promise<SwapQuoteResp
 
   const quoteFn = entry.quoteByChain[chain];
   const result = await runProvider(providers, entry.id, !!quoteFn, () =>
-    quoteFn!(query.tokenIn, query.tokenOut, query.amountIn, query.slippageBps),
+    quoteFn!(query.tokenIn, query.tokenOut, adjustedAmountIn, query.slippageBps),
     `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
 
