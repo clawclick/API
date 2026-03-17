@@ -96,7 +96,7 @@ type SolanaDexOptions = {
 const JUP_SWAP_API_BASE_URL = getOptionalEnv("JUP_SWAP_API_BASE_URL", "https://lite-api.jup.ag/swap/v1");
 const SOL_FEE_BPS_DEFAULT = "10";
 const FEE_DENOMINATOR = 10_000n;
-const NATIVE_SOL_ALIASES = new Set(["sol", "solana", NATIVE_MINT.toBase58()]);
+const NATIVE_SOL_ALIASES = new Set(["sol", "solana", NATIVE_MINT.toBase58().toLowerCase()]);
 
 let connection: Connection | null = null;
 

@@ -21,7 +21,7 @@ function getBaseUrl(): string {
   return getOptionalEnv("PUMPFUN_API_BASE_URL", "https://api.pumpfun.io");
 }
 
-const NATIVE_SOL_ALIASES = new Set(["sol", "solana", "So11111111111111111111111111111111111111112"]);
+const NATIVE_SOL_ALIASES = new Set(["sol", "solana", "so11111111111111111111111111111111111111112"]);
 
 function isPumpBuy(tokenIn: string, tokenOut: string): boolean {
   return NATIVE_SOL_ALIASES.has(tokenIn.trim().toLowerCase()) && !NATIVE_SOL_ALIASES.has(tokenOut.trim().toLowerCase());
