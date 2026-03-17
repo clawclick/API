@@ -18,6 +18,12 @@ Deployment params for Base:
 - `feeBps`: `10`
 - `initialRouters`: chosen Base router addresses to whitelist
 
+Permit2-enabled variant:
+- New contract file: `ProtocolFeeSwapWrapperPermit2.sol`
+- Extra constructor param: `permit2` = `0x000000000022D473030F116dDEE9F6B43aC78BA3`
+- Adds `sellTokenForNativeViaPermit2(...)` for Uniswap V4 / Universal Router sell flows
+- Keeps the original `buyWithNative(...)` and `sellTokenForNative(...)` paths unchanged
+
 Admin controls:
 - `setFeeRecipient(address)` lets the owner rotate the treasury address.
 - `setAllowedRouter(address,bool)` lets the owner update the router whitelist.

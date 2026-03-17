@@ -1,6 +1,6 @@
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
 import { addStatus, runProvider } from "#lib/runProvider";
-import { getEvmFeeWrapperAddress, isNativeIn, subtractProtocolFee, wrapNativeBuyTxWithFeeWrapper, wrapTokenSellTxWithFeeWrapper } from "#lib/evm";
+import { getEvmFeeWrapperAddress, isNativeIn, subtractProtocolFee, wrapNativeBuyTxWithFeeWrapper, wrapTokenSellTxWithFeeWrapper, wrapTokenSellTxWithPermit2FeeWrapper } from "#lib/evm";
 import type { SwapQuery, SwapQuoteQuery } from "#routes/helpers";
 import type { ProviderStatus, SwapTxResponse, SwapQuoteResponse } from "#types/api";
 import type { UnsignedSwapTx } from "#lib/evm";
@@ -147,6 +147,10 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
     };
   }
 
+  const wrapSellWithPermit2 = nativeOutSell && entry.id === "uniswapV4" && chain === "base";
+  const wrapSellWithLegacy = nativeOutSell && !wrapSellWithPermit2;
+  const shouldWrapSell = wrapSellWithLegacy || wrapSellWithPermit2;
+
   const swapFn = entry.swapByChain[chain];
   const result = await runProvider(providers, entry.id, !!swapFn, () =>
     swapFn!({
@@ -156,7 +160,7 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
       amountIn: adjustedAmountIn,
       slippageBps: query.slippageBps,
       deadline: query.deadline,
-      recipient: (nativeOutSell && feeWrapperAddress) ? feeWrapperAddress : undefined,
+      recipient: (shouldWrapSell && feeWrapperAddress) ? feeWrapperAddress : undefined,
     }),
     `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
@@ -164,7 +168,9 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
   let wrappedResult = result;
   if (nativeInBuy && feeWrapperAddress && result) {
     wrappedResult = wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn);
-  } else if (nativeOutSell && feeWrapperAddress && result) {
+  } else if (wrapSellWithPermit2 && feeWrapperAddress && result) {
+    wrappedResult = wrapTokenSellTxWithPermit2FeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn);
+  } else if (wrapSellWithLegacy && feeWrapperAddress && result) {
     wrappedResult = wrapTokenSellTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn);
   }
 

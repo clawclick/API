@@ -177,6 +177,40 @@ export function wrapTokenSellTxWithFeeWrapper(
   };
 }
 
+/**
+ * Wrap a token→native sell TX through the Permit2-enabled fee wrapper path.
+ * sellTokenForNativeViaPermit2(address router, address tokenIn, uint256 amountIn, uint256 minNetNativeOut, bytes routerCalldata)
+ * selector: 0xd122eda0
+ */
+export function wrapTokenSellTxWithPermit2FeeWrapper(
+  tx: UnsignedSwapTx,
+  chain: string,
+  walletAddress: string,
+  tokenIn: string,
+  amountIn: string,
+): UnsignedSwapTx {
+  const wrapper = getEvmFeeWrapperAddress(chain);
+  if (!wrapper) return tx;
+
+  const calldata = buildCalldata(
+    selector("d122eda0"),
+    padAddress(tx.to),
+    padAddress(tokenIn),
+    encodeUint256(BigInt(amountIn)),
+    encodeUint256(0n),
+    encodeUint256(160n),
+    encodeBytes(tx.data),
+  );
+
+  return {
+    ...tx,
+    to: wrapper,
+    data: calldata,
+    value: "0x0",
+    from: walletAddress,
+  };
+}
+
 /* ── Unwrap WETH/WBNB → native ─────────────────────────────── */
 
 /**
