@@ -386,6 +386,7 @@ function buildUniversalRouterCalldata(commands: string, inputs: string[], deadli
  */
 export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
+  const recipient = params.recipient ?? walletAddress;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
@@ -411,12 +412,12 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     ? [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(0n)}${encodeBool(false)}`,
-        `0x${padAddress(outputCurrency)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
+        `0x${padAddress(outputCurrency)}${padAddress(recipient)}${encodeUint256(0n)}`,
       ]
     : [
         swapAction,
         `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(typeCastMaxUint256())}`,
-        `0x${padAddress(outputCurrency)}${padAddress(walletAddress)}${encodeUint256(0n)}`,
+        `0x${padAddress(outputCurrency)}${padAddress(recipient)}${encodeUint256(0n)}`,
       ];
   const v4Input = encodeV4SwapInput(`0x${actions}`, v4Params);
 

@@ -34,6 +34,7 @@ export type SwapParams = {
   amountIn: string;      // raw wei / lamport string
   slippageBps: number;   // basis points, e.g. 50 = 0.5 %
   deadline?: number;     // unix seconds (default: now + 20 min)
+  recipient?: string;    // override swap recipient (e.g. fee wrapper for sells)
 };
 
 /* ── ABI encoding helpers (zero-dep) ───────────────────────── */
@@ -139,6 +140,40 @@ export function wrapNativeBuyTxWithFeeWrapper(
     to: wrapper,
     data: calldata,
     value: `0x${BigInt(totalAmountIn).toString(16)}`,
+  };
+}
+
+/**
+ * Wrap a token→native sell TX through the fee wrapper's sellTokenForNative.
+ * sellTokenForNative(address router, address tokenIn, uint256 amountIn, uint256 minNetNativeOut, bytes routerCalldata)
+ * selector: 0x881d4fd6
+ */
+export function wrapTokenSellTxWithFeeWrapper(
+  tx: UnsignedSwapTx,
+  chain: string,
+  walletAddress: string,
+  tokenIn: string,
+  amountIn: string,
+): UnsignedSwapTx {
+  const wrapper = getEvmFeeWrapperAddress(chain);
+  if (!wrapper) return tx;
+
+  const calldata = buildCalldata(
+    selector("881d4fd6"),
+    padAddress(tx.to),              // router address
+    padAddress(tokenIn),            // tokenIn
+    encodeUint256(BigInt(amountIn)),// amountIn
+    encodeUint256(0n),              // minNetNativeOut (router handles slippage)
+    encodeUint256(160n),            // offset to bytes param (5 * 32)
+    encodeBytes(tx.data),           // routerCalldata
+  );
+
+  return {
+    ...tx,
+    to: wrapper,
+    data: calldata,
+    value: "0x0",
+    from: walletAddress,
   };
 }
 

@@ -111,6 +111,7 @@ async function resolveBestTickSpacing(
  */
 export async function buildSwapTx(params: SwapParams, tickSpacing?: number): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
+  const recipient = params.recipient ?? walletAddress;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
@@ -126,7 +127,7 @@ export async function buildSwapTx(params: SwapParams, tickSpacing?: number): Pro
     padAddress(actualTokenIn),
     padAddress(actualTokenOut),
     encodeUint256(BigInt(resolved.tickSpacing)),
-    padAddress(walletAddress),
+    padAddress(recipient),
     encodeUint256(BigInt(dl)),
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),

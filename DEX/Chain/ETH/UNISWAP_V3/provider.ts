@@ -148,6 +148,7 @@ async function resolveFeeTier(
 
 export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
+  const recipient = params.recipient ?? walletAddress;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
@@ -163,7 +164,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     padAddress(actualTokenIn),
     padAddress(actualTokenOut),
     encodeUint256(BigInt(resolved.fee)),
-    padAddress(walletAddress),
+    padAddress(recipient),
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),
     encodeUint256(0n),

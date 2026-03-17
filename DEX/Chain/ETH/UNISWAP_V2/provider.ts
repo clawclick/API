@@ -63,6 +63,7 @@ async function getAmountsOut(amountIn: bigint, path: string[]): Promise<bigint> 
 
 export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
   const { walletAddress, tokenIn, tokenOut, amountIn, slippageBps, deadline } = params;
+  const recipient = params.recipient ?? walletAddress;
   const dl = defaultDeadline(deadline);
   const amtIn = BigInt(amountIn);
   const nativeIn = isNativeIn(tokenIn);
@@ -99,7 +100,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
     encodeUint256(amtIn),
     encodeUint256(amountOutMin),
     offsetWord,
-    padAddress(walletAddress),
+    padAddress(recipient),
     encodeUint256(BigInt(dl)),
     encodeUint256(BigInt(path.length)),
     ...path.map((a) => padAddress(a)),

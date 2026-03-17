@@ -1,6 +1,6 @@
 import { normalizeChain, isEvmChain, type SupportedChain } from "#providers/shared/chains";
 import { addStatus, runProvider } from "#lib/runProvider";
-import { getEvmFeeWrapperAddress, isNativeIn, subtractProtocolFee, wrapNativeBuyTxWithFeeWrapper } from "#lib/evm";
+import { getEvmFeeWrapperAddress, isNativeIn, subtractProtocolFee, wrapNativeBuyTxWithFeeWrapper, wrapTokenSellTxWithFeeWrapper } from "#lib/evm";
 import type { SwapQuery, SwapQuoteQuery } from "#routes/helpers";
 import type { ProviderStatus, SwapTxResponse, SwapQuoteResponse } from "#types/api";
 import type { UnsignedSwapTx } from "#lib/evm";
@@ -34,7 +34,7 @@ type DexId =
   | "pancakeswapV2" | "pancakeswapV3"
   | "raydium" | "meteora" | "pumpDex";
 
-type SwapFn = (params: { walletAddress: string; tokenIn: string; tokenOut: string; amountIn: string; slippageBps: number; deadline?: number }) => Promise<unknown>;
+type SwapFn = (params: { walletAddress: string; tokenIn: string; tokenOut: string; amountIn: string; slippageBps: number; deadline?: number; recipient?: string }) => Promise<unknown>;
 type QuoteFn = (tokenIn: string, tokenOut: string, amountIn: string, slippageBps: number) => Promise<{ amountOut: string; amountOutMin: string }>;
 
 type DexEntry = {
@@ -125,8 +125,9 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
   const nativeInBuy = isEvmChain(chain) && isNativeIn(query.tokenIn) && !isNativeIn(query.tokenOut);
-  const feeWrapperAddress = nativeInBuy ? getEvmFeeWrapperAddress(chain) : null;
-  const adjustedAmountIn = feeWrapperAddress
+  const nativeOutSell = isEvmChain(chain) && !isNativeIn(query.tokenIn) && isNativeIn(query.tokenOut);
+  const feeWrapperAddress = (nativeInBuy || nativeOutSell) ? getEvmFeeWrapperAddress(chain) : null;
+  const adjustedAmountIn = (nativeInBuy && feeWrapperAddress)
     ? subtractProtocolFee(BigInt(query.amountIn)).toString()
     : query.amountIn;
 
@@ -155,13 +156,17 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
       amountIn: adjustedAmountIn,
       slippageBps: query.slippageBps,
       deadline: query.deadline,
+      recipient: (nativeOutSell && feeWrapperAddress) ? feeWrapperAddress : undefined,
     }),
     `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
 
-  const wrappedResult = feeWrapperAddress && result
-    ? wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn)
-    : result;
+  let wrappedResult = result;
+  if (nativeInBuy && feeWrapperAddress && result) {
+    wrappedResult = wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn);
+  } else if (nativeOutSell && feeWrapperAddress && result) {
+    wrappedResult = wrapTokenSellTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn);
+  }
 
   return {
     endpoint: "swap",
