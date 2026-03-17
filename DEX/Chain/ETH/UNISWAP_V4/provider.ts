@@ -35,6 +35,7 @@ const ACTION_SWAP_EXACT_IN_SINGLE = "06";
 const ACTION_SETTLE = "0b";
 const ACTION_SETTLE_ALL = "0c";
 const ACTION_TAKE_ALL = "0f";
+const ADDRESS_THIS = "0000000000000000000000000000000000000002";
 const QUOTE_EXACT_INPUT_SINGLE_SELECTOR = "aa9d21cb";
 const EXECUTE_SELECTOR = "3593564c";
 const CONTRACT_BALANCE =
@@ -206,32 +207,65 @@ function decodeInitializeLog(poolId: string, log: { topics?: string[]; data?: st
   };
 }
 
+async function getBlockTimestamp(blockNumber: number): Promise<number> {
+  const block = await rpcCall<{ result?: { timestamp?: string } }>("eth_getBlockByNumber", [toHexBlock(blockNumber), false]);
+  return parseTimestamp(block.result?.timestamp);
+}
+
+async function findBlockByTimestamp(targetTimestamp: number, latestBlock: { number: number; timestamp: number }): Promise<number> {
+  let lo = 0;
+  let hi = latestBlock.number;
+  // Initial estimate using average block time (~12s on ETH)
+  const avgBlockTime = (latestBlock.timestamp - (await getBlockTimestamp(Math.max(0, latestBlock.number - 10_000)))) / 10_000;
+  const estimate = Math.max(0, Math.min(hi, latestBlock.number - Math.floor((latestBlock.timestamp - targetTimestamp) / avgBlockTime)));
+  lo = Math.max(0, estimate - 100_000);
+  hi = Math.min(latestBlock.number, estimate + 100_000);
+
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    const ts = await getBlockTimestamp(mid);
+    if (ts < targetTimestamp) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return hi;
+}
+
+async function scanForInitializeLog(poolId: string, start: number, end: number, chunkSize = 10): Promise<PoolKey | null> {
+  for (let fromBlock = start; fromBlock <= end; fromBlock += chunkSize) {
+    const toBlock = Math.min(end, fromBlock + chunkSize - 1);
+    const logs = await getInitializeLogs(poolId, fromBlock, toBlock);
+    if (logs.length > 0) {
+      const poolKey = decodeInitializeLog(poolId, logs[0]);
+      poolKeyCache.set(poolId, poolKey);
+      return poolKey;
+    }
+  }
+  return null;
+}
+
 async function resolvePoolKey(poolId: string, pairCreatedAt?: number): Promise<PoolKey> {
   const cached = poolKeyCache.get(poolId);
   if (cached) return cached;
 
   const latestBlock = await getLatestBlock();
   const createdAt = normalizePairCreatedAt(pairCreatedAt);
-  const estimatedBlock = createdAt
-    ? Math.max(0, latestBlock.number - Math.floor((latestBlock.timestamp - createdAt) / 2))
-    : latestBlock.number;
 
-  const searchWindows = createdAt ? [50_000, 200_000, 1_000_000, 5_000_000] : [200_000, 1_000_000, 5_000_000];
-
-  for (const window of searchWindows) {
-    const start = Math.max(0, estimatedBlock - window);
-    const end = Math.min(latestBlock.number, estimatedBlock + window);
-
-    for (let fromBlock = start; fromBlock <= end; fromBlock += 25_000) {
-      const toBlock = Math.min(end, fromBlock + 24_999);
-      const logs = await getInitializeLogs(poolId, fromBlock, toBlock);
-      if (logs.length > 0) {
-        const poolKey = decodeInitializeLog(poolId, logs[0]);
-        poolKeyCache.set(poolId, poolKey);
-        return poolKey;
-      }
-    }
+  if (createdAt) {
+    const targetBlock = await findBlockByTimestamp(createdAt, latestBlock);
+    // Tight scan ±200 blocks in 10-block chunks
+    const result = await scanForInitializeLog(poolId, Math.max(0, targetBlock - 200), Math.min(latestBlock.number, targetBlock + 200));
+    if (result) return result;
+    // Widen to ±2000
+    const wide = await scanForInitializeLog(poolId, Math.max(0, targetBlock - 2000), Math.min(latestBlock.number, targetBlock + 2000));
+    if (wide) return wide;
   }
+
+  // Fallback: scan recent 10K blocks
+  const fallback = await scanForInitializeLog(poolId, Math.max(0, latestBlock.number - 10_000), latestBlock.number);
+  if (fallback) return fallback;
 
   throw new Error(`Unable to resolve Uniswap V4 PoolKey for pool id ${poolId}`);
 }
@@ -308,7 +342,7 @@ function encodeExactInputSingleAction(
     encodeBool(zeroForOne),
     encodeUint256(amountIn),
     encodeUint256(amountOutMin),
-    encodeUint256(256n),
+    encodeUint256(288n),
     hookData,
   ].join("");
 
@@ -362,7 +396,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   const v4Params = wrapNativeToWeth
     ? [
         swapAction,
-        `0x${padAddress(resolvedPool.inputCurrency)}${CONTRACT_BALANCE.slice(2)}${encodeBool(false)}`,
+        `0x${padAddress(resolvedPool.inputCurrency)}${encodeUint256(0n)}${encodeBool(false)}`,
         `0x${padAddress(tokenOut)}${encodeUint256(0n)}`,
       ]
     : [
@@ -375,7 +409,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
   const commands = wrapNativeToWeth ? `${WRAP_ETH_COMMAND}${V4_SWAP_COMMAND}` : V4_SWAP_COMMAND;
   const inputs = wrapNativeToWeth
     ? [
-        `0x${padAddress(UNIVERSAL_ROUTER)}${encodeUint256(amtIn)}`,
+        `0x${padAddress(ADDRESS_THIS)}${encodeUint256(amtIn)}`,
         v4Input,
       ]
     : [v4Input];
@@ -387,6 +421,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     value: nativeIn ? "0x" + amtIn.toString(16) : "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
+    gasLimit: "0xb71b0",  // 750 000
   };
 }
 
