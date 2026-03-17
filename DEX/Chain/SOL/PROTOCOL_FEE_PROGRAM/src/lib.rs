@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("Fg6PaFpoGXkYsidMpWxTWqkZJYx9YjA8h1uA2xT9yK9C");
+declare_id!("6r3qmoQA1mkZxB4mDXhtNUgwHSDjYzq9HxjYdRJtpA7X");
 
 const CONFIG_SEED: &[u8] = b"config";
 const VAULT_AUTHORITY_SEED: &[u8] = b"vault_authority";
@@ -20,7 +20,6 @@ pub mod protocol_fee_program {
         config.treasury = treasury;
         config.fee_bps = fee_bps;
         config.bump = ctx.bumps.config;
-        config.vault_authority_bump = ctx.bumps.vault_authority;
         Ok(())
     }
 
@@ -36,7 +35,11 @@ pub mod protocol_fee_program {
         Ok(())
     }
 
-    pub fn settle_sell_wsol(ctx: Context<SettleSellWsol>, min_net_out: u64) -> Result<()> {
+    pub fn settle_sell_wsol(
+        ctx: Context<SettleSellWsol>,
+        vault_seed: [u8; 8],
+        min_net_out: u64,
+    ) -> Result<()> {
         let config = &ctx.accounts.config;
         let gross_out = ctx.accounts.vault_wsol.amount;
 
@@ -54,7 +57,9 @@ pub mod protocol_fee_program {
 
         let authority_seeds: &[&[u8]] = &[
             VAULT_AUTHORITY_SEED,
-            &[config.vault_authority_bump],
+            ctx.accounts.user.key.as_ref(),
+            &vault_seed,
+            &[ctx.bumps.vault_authority],
         ];
         let signer_seeds = &[authority_seeds];
 
@@ -109,9 +114,6 @@ pub struct Initialize<'info> {
         bump
     )]
     pub config: Account<'info, FeeConfig>,
-    /// CHECK: PDA authority used only as a signer seed for program-owned vault accounts.
-    #[account(seeds = [VAULT_AUTHORITY_SEED], bump)]
-    pub vault_authority: UncheckedAccount<'info>,
     #[account(mut)]
     pub admin: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -132,11 +134,12 @@ pub struct UpdateAdmin<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(vault_seed: [u8; 8], min_net_out: u64)]
 pub struct SettleSellWsol<'info> {
     #[account(seeds = [CONFIG_SEED], bump = config.bump)]
     pub config: Account<'info, FeeConfig>,
     /// CHECK: PDA authority used only as a signer seed for the vault account.
-    #[account(seeds = [VAULT_AUTHORITY_SEED], bump = config.vault_authority_bump)]
+    #[account(seeds = [VAULT_AUTHORITY_SEED, user.key().as_ref(), &vault_seed], bump)]
     pub vault_authority: UncheckedAccount<'info>,
     #[account(
         mut,
@@ -169,11 +172,10 @@ pub struct FeeConfig {
     pub treasury: Pubkey,
     pub fee_bps: u16,
     pub bump: u8,
-    pub vault_authority_bump: u8,
 }
 
 impl FeeConfig {
-    pub const LEN: usize = 32 + 32 + 2 + 1 + 1;
+    pub const LEN: usize = 32 + 32 + 2 + 1;
 }
 
 #[error_code]

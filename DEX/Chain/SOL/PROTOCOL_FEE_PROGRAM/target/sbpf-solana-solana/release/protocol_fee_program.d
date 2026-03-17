@@ -1,0 +1,1 @@
+/Users/zcsmacpro/VscProjects/API/DEX/Chain/SOL/PROTOCOL_FEE_PROGRAM/target/sbpf-solana-solana/release/protocol_fee_program.so: /Users/zcsmacpro/VscProjects/API/DEX/Chain/SOL/PROTOCOL_FEE_PROGRAM/src/lib.rs

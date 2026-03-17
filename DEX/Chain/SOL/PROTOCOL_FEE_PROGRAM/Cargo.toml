@@ -9,3 +9,6 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
+
+[profile.release]
+overflow-checks = true

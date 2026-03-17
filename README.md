@@ -1227,3 +1227,6 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `COINGECKO_PRO_API_KEY` | tokenPoolInfo |
 | `DEXTOOLS_API_KEY` | tokenPoolInfo |
 | `NANSEN_API_KEY` | walletReview |
+| `SOL_FEE_TREASURY` | Solana `/swap` native-in fee recipient wallet |
+| `SOL_FEE_TREASURY_WSOL_ACCOUNT` + `SOL_FEE_PROGRAM_ID` | Solana `/swap` token-to-SOL fee settlement |
+| `SOL_PROTOCOL_FEE_BPS` | Solana `/swap` protocol fee basis points, default `10` |

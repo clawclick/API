@@ -1,0 +1,10 @@
+/Users/zcsmacpro/VscProjects/API/DEX/Chain/SOL/PROTOCOL_FEE_PROGRAM/target/release/deps/version_check-ab065c50098327b5.d: /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/zcsmacpro/VscProjects/API/DEX/Chain/SOL/PROTOCOL_FEE_PROGRAM/target/release/deps/libversion_check-ab065c50098327b5.rlib: /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/zcsmacpro/VscProjects/API/DEX/Chain/SOL/PROTOCOL_FEE_PROGRAM/target/release/deps/libversion_check-ab065c50098327b5.rmeta: /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs /Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs
+
+/Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/lib.rs:
+/Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/version.rs:
+/Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/channel.rs:
+/Users/zcsmacpro/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/version_check-0.9.5/src/date.rs:

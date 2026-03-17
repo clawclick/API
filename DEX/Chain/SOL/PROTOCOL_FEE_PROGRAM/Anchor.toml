@@ -1,0 +1,10 @@
+[features]
+resolution = true
+skip-lint = true
+
+[programs.mainnet]
+protocol_fee_program = "6r3qmoQA1mkZxB4mDXhtNUgwHSDjYzq9HxjYdRJtpA7X"
+
+[provider]
+cluster = "mainnet"
+wallet = "/tmp/solana-deployer.json"
