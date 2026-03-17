@@ -27,12 +27,19 @@ const CHAIN_ID = EVM_CHAIN_IDS.base;
 const ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02 on Base
 const QUOTER = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"; // QuoterV2 on Base
 const FALLBACK_FEES = [3000, 500, 10000, 100] as const;
+const poolFeeCache = new Map<string, Promise<number>>();
 
 /* ── Fee-tier resolution via DexScreener + on-chain ───────── */
 
 async function readPoolFee(poolAddress: string): Promise<number> {
+  const cacheKey = poolAddress.toLowerCase();
+  const cached = poolFeeCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const rpcUrl = getRequiredEnv("BASE_RPC_URL");
-  const result = await requestJson<{ result?: string }>(rpcUrl, {
+  const request = requestJson<{ result?: string }>(rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -41,11 +48,20 @@ async function readPoolFee(poolAddress: string): Promise<number> {
       method: "eth_call",
       params: [{ to: poolAddress, data: "0xddca3f43" }, "latest"],
     }),
-  });
-  if (!result.result || result.result === "0x") {
-    throw new Error("Could not read fee() from pool " + poolAddress);
-  }
-  return Number(BigInt(result.result));
+  })
+    .then((result) => {
+      if (!result.result || result.result === "0x") {
+        throw new Error("Could not read fee() from pool " + poolAddress);
+      }
+      return Number(BigInt(result.result));
+    })
+    .catch((error) => {
+      poolFeeCache.delete(cacheKey);
+      throw error;
+    });
+
+  poolFeeCache.set(cacheKey, request);
+  return request;
 }
 
 async function resolveMainPoolFee(

@@ -49,7 +49,6 @@ cp .env.example .env   # fill in your API keys
 npm install
 npx tsx src/server.ts   # starts on port 3000
 ```
-
 ---
 
 ## Endpoints Overview

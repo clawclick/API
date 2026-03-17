@@ -39,9 +39,16 @@ type AerodromeSubgraphResponse = {
 };
 
 const AERODROME_SUBGRAPH = "https://api.studio.thegraph.com/query/86556/aerodrome-slipstream/version/latest";
+const poolsByTokenCache = new Map<string, Promise<AerodromeSubgraphResponse>>();
 
 /** POST subgraph – get pools containing a given token on Aerodrome V2 (Base). No auth required. */
 export async function getPoolsByToken(tokenAddress: string, first = 5): Promise<AerodromeSubgraphResponse> {
+  const cacheKey = `${tokenAddress.toLowerCase()}:${first}`;
+  const cached = poolsByTokenCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const query = `query AerodromePools($token: String!, $first: Int!) {
   pools(first: $first, where: { token0_: { id: $token } }) {
     id
@@ -50,11 +57,17 @@ export async function getPoolsByToken(tokenAddress: string, first = 5): Promise<
   }
 }`;
 
-  return requestJson<AerodromeSubgraphResponse>(AERODROME_SUBGRAPH, {
+  const request = requestJson<AerodromeSubgraphResponse>(AERODROME_SUBGRAPH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables: { token: tokenAddress.toLowerCase(), first } }),
+  }).catch((error) => {
+    poolsByTokenCache.delete(cacheKey);
+    throw error;
   });
+
+  poolsByTokenCache.set(cacheKey, request);
+  return request;
 }
 
 /* ── Swap TX builders ─────────────────────────────────────── */

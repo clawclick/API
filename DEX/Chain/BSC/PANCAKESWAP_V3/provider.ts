@@ -27,12 +27,19 @@ const CHAIN_ID = EVM_CHAIN_IDS.bsc;
 const ROUTER = "0x13f4EA83D0bd40E75C8222255bc855a974568Dd4"; // PancakeSwap V3 SmartRouter on BSC
 const QUOTER = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997"; // PancakeSwap QuoterV2 on BSC
 const FALLBACK_FEES = [2500, 500, 10000, 100] as const;
+const poolFeeCache = new Map<string, Promise<number>>();
 
 /* ── Fee-tier resolution via DexScreener + on-chain ───────── */
 
 async function readPoolFee(poolAddress: string): Promise<number> {
+  const cacheKey = poolAddress.toLowerCase();
+  const cached = poolFeeCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const rpcUrl = getRequiredEnv("BSC_RPC_URL");
-  const result = await requestJson<{ result?: string }>(rpcUrl, {
+  const request = requestJson<{ result?: string }>(rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -41,11 +48,20 @@ async function readPoolFee(poolAddress: string): Promise<number> {
       method: "eth_call",
       params: [{ to: poolAddress, data: "0xddca3f43" }, "latest"],
     }),
-  });
-  if (!result.result || result.result === "0x") {
-    throw new Error("Could not read fee() from pool " + poolAddress);
-  }
-  return Number(BigInt(result.result));
+  })
+    .then((result) => {
+      if (!result.result || result.result === "0x") {
+        throw new Error("Could not read fee() from pool " + poolAddress);
+      }
+      return Number(BigInt(result.result));
+    })
+    .catch((error) => {
+      poolFeeCache.delete(cacheKey);
+      throw error;
+    });
+
+  poolFeeCache.set(cacheKey, request);
+  return request;
 }
 
 async function resolveMainPoolFee(

@@ -1,6 +1,9 @@
 import { requestJson } from "#lib/http";
 import { toDexScreenerChain, type SupportedChain } from "#providers/shared/chains";
 
+const tokenPairsCache = new Map<string, Promise<DexPair[]>>();
+const pairByAddressCache = new Map<string, Promise<DexPair | null>>();
+
 export type DexPair = {
   chainId: string;
   dexId: string;
@@ -37,7 +40,20 @@ export async function getTokenPairs(chain: SupportedChain, tokenAddress: string)
     return [];
   }
 
-  return requestJson<DexPair[]>(`https://api.dexscreener.com/tokens/v1/${dexChain}/${tokenAddress}`);
+  const cacheKey = `${dexChain}:${tokenAddress.toLowerCase()}`;
+  const cached = tokenPairsCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const request = requestJson<DexPair[]>(`https://api.dexscreener.com/tokens/v1/${dexChain}/${tokenAddress}`)
+    .catch((error) => {
+      tokenPairsCache.delete(cacheKey);
+      throw error;
+    });
+
+  tokenPairsCache.set(cacheKey, request);
+  return request;
 }
 
 /* ── NEW ENDPOINTS ────────────────────────────────────────── */
@@ -59,10 +75,23 @@ export async function getPairByAddress(chain: SupportedChain, pairAddress: strin
   const dexChain = toDexScreenerChain(chain);
   if (!dexChain) return null;
 
-  const res = await requestJson<{ pairs?: DexPair[] }>(
+  const cacheKey = `${dexChain}:${pairAddress.toLowerCase()}`;
+  const cached = pairByAddressCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const request = requestJson<{ pairs?: DexPair[] }>(
     `https://api.dexscreener.com/latest/dex/pairs/${dexChain}/${pairAddress}`,
-  );
-  return res.pairs?.[0] ?? null;
+  )
+    .then((res) => res.pairs?.[0] ?? null)
+    .catch((error) => {
+      pairByAddressCache.delete(cacheKey);
+      throw error;
+    });
+
+  pairByAddressCache.set(cacheKey, request);
+  return request;
 }
 
 type DexBoost = {
