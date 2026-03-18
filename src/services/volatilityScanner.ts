@@ -25,6 +25,8 @@ export type SwingCandidate = {
   swingCount: number;
   currentPosition: number | null;
   buyVsSellRatio: number | null;
+  volumeTrend: "rising" | "falling" | "flat";
+  volumeChangePct: number;
   swingScore: number;
 };
 
@@ -193,6 +195,9 @@ function buildCandidate(
   const sells = window.statsNonCurrency.sells?.currentValue ?? 0;
   const buyVsSellRatio = sells > 0 ? Math.round((buys / sells) * 100) / 100 : null;
 
+  // Volume trend from OHLCV candles — compare recent half vs older half
+  const { trend: volumeTrend, changePct: volumeChangePct } = analyzeVolumeTrend(points);
+
   // Compute composite swing score (0-100)
   let score = 0;
 
@@ -243,8 +248,37 @@ function buildCandidate(
     swingCount,
     currentPosition: currentPosition != null ? Math.round(currentPosition * 1000) / 1000 : null,
     buyVsSellRatio,
+    volumeTrend,
+    volumeChangePct: Math.round(volumeChangePct * 100) / 100,
     swingScore: score,
   };
+}
+
+/**
+ * Analyze OHLCV volume trend by comparing the average volume of the
+ * recent third of candles vs the older two-thirds.
+ * Returns trend direction and percentage change.
+ */
+function analyzeVolumeTrend(
+  points: TokenPricePoint[],
+): { trend: "rising" | "falling" | "flat"; changePct: number } {
+  const vols = points.map((p) => p.volume ?? 0).filter((v) => v > 0);
+  if (vols.length < 6) return { trend: "flat", changePct: 0 };
+
+  const split = Math.floor(vols.length * 2 / 3);
+  const olderAvg = vols.slice(0, split).reduce((a, b) => a + b, 0) / split;
+  const recentAvg = vols.slice(split).reduce((a, b) => a + b, 0) / (vols.length - split);
+
+  if (olderAvg === 0) return { trend: recentAvg > 0 ? "rising" : "flat", changePct: 0 };
+
+  const changePct = ((recentAvg - olderAvg) / olderAvg) * 100;
+
+  let trend: "rising" | "falling" | "flat";
+  if (changePct > 15) trend = "rising";
+  else if (changePct < -15) trend = "falling";
+  else trend = "flat";
+
+  return { trend, changePct };
 }
 
 /**
