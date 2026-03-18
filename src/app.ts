@@ -61,7 +61,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /tokenPoolInfo, /tokenPriceHistory, /isScam, /fullAudit, /holderAnalysis, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /filterTokens, ws:/ws/launchpadEvents`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /tokenPoolInfo, /tokenPriceHistory, /isScam, /fullAudit, /holderAnalysis, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
     });
   });
 

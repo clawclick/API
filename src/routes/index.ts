@@ -21,7 +21,9 @@ import { getFilteredTokens } from "#services/filterTokens";
 // import { getWalletStats } from "#services/walletStats";
 import { getTokenHolders } from "#services/tokenHolders";
 import { handleClient } from "#services/launchpadStream";
-import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema } from "#routes/helpers";
+import { listStrategies, getStrategy } from "#services/strategies";
+import { scanVolatility } from "#services/volatilityScanner";
+import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -60,11 +62,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // Codex 
   app.get("/filterTokens", async (request) => getFilteredTokens(parseQuery(filterTokensSchema, request.query)));
+  app.get("/volatilityScanner", async (request) => scanVolatility(parseQuery(volatilityScannerSchema, request.query)));
   // DISABLED — Codex paid plan only 
   // app.get("/filterWallets", async (request) => getFilteredWallets(parseQuery(filterWalletsSchema, request.query)));
   // app.get("/tokenWallets", async (request) => getTokenWallets(parseQuery(tokenWalletsSchema, request.query)));
   // app.get("/walletStats", async (request) => getWalletStats(parseQuery(walletStatsSchema, request.query)));
   app.get("/tokenHolders", async (request) => getTokenHolders(parseQuery(tokenHoldersSchema, request.query)));
+
+  // Strategy guides
+  app.get("/strats", async () => listStrategies());
+  app.get("/strats/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = getStrategy(id);
+    if (!result) {
+      reply.status(404).send({ error: "Strategy not found", available: listStrategies().strategies.map(s => s.path) });
+      return;
+    }
+    reply.type("text/markdown").send(result.content);
+  });
 
   // WebSocket: Codex launchpad event stream
   app.get("/ws/launchpadEvents", { websocket: true }, (socket) => {

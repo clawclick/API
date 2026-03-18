@@ -14,7 +14,8 @@ export type EndpointName =
   | "tokenWallets"
   | "walletStats"
   | "tokenHolders"
-  | "unwrap";
+  | "unwrap"
+  | "volatilityScanner";
 
 export type ProviderRecord = {
   id: string;

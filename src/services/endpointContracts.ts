@@ -18,6 +18,7 @@ const descriptions: Record<EndpointName, string> = {
   walletStats: "Returns detailed PnL and trading stats for a wallet across 1d/1w/30d/1y time periods via Codex.",
   tokenHolders: "Returns raw holder rows for EVM tokens via Sim by Dune, including first-acquired time and whether each wallet has initiated transfers.",
   unwrap: "Builds an unsigned wrapped-native withdraw transaction so a wallet can unwrap WETH/WBNB back into native gas token.",
+  volatilityScanner: "Scans high-volume tokens for consistent swing patterns, computing support/resistance levels and a composite swing score.",
 };
 
 const cacheHints: Record<EndpointName, number> = {
@@ -37,6 +38,7 @@ const cacheHints: Record<EndpointName, number> = {
   walletStats: 180,
   tokenHolders: 120,
   unwrap: 0,
+  volatilityScanner: 300,
 };
 
 export function buildEndpointScaffold(endpoint: EndpointName, request: Record<string, unknown>) {

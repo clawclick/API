@@ -211,6 +211,18 @@ export const tokenHoldersSchema = z.object({
 
 export type TokenHoldersQuery = z.output<typeof tokenHoldersSchema>;
 
+/* ── Volatility Scanner Schema ──────────────────────────────── */
+
+export const volatilityScannerSchema = z.object({
+  chain: z.string().min(1).default("sol"),
+  minVolume: z.coerce.number().min(0).default(100_000),
+  minSwingPct: z.coerce.number().min(0).default(10),
+  duration: z.string().default("hour4,day1"),
+  maxResults: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export type VolatilityScannerQuery = z.output<typeof volatilityScannerSchema>;
+
 export function parseQuery<TSchema extends z.ZodTypeAny>(schema: TSchema, query: unknown): z.output<TSchema> {
   return schema.parse(query);
 }
