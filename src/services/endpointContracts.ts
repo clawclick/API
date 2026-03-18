@@ -19,6 +19,7 @@ const descriptions: Record<EndpointName, string> = {
   tokenHolders: "Returns raw holder rows for EVM tokens via Sim by Dune, including first-acquired time and whether each wallet has initiated transfers.",
   unwrap: "Builds an unsigned wrapped-native withdraw transaction so a wallet can unwrap WETH/WBNB back into native gas token.",
   volatilityScanner: "Scans high-volume tokens for consistent swing patterns, computing support/resistance levels and a composite swing score.",
+  priceHistoryIndicators: "Returns OHLCV price history plus timeframe-adaptive technical indicators (RSI, MACD, EMA, Bollinger Bands, ATR, Stoch RSI, Support/Resistance, VWAP, OBV) with an aggregate buy/sell signal.",
 };
 
 const cacheHints: Record<EndpointName, number> = {
@@ -39,6 +40,7 @@ const cacheHints: Record<EndpointName, number> = {
   tokenHolders: 120,
   unwrap: 0,
   volatilityScanner: 300,
+  priceHistoryIndicators: 60,
 };
 
 export function buildEndpointScaffold(endpoint: EndpointName, request: Record<string, unknown>) {

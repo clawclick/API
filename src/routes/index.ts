@@ -23,7 +23,8 @@ import { getTokenHolders } from "#services/tokenHolders";
 import { handleClient } from "#services/launchpadStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
-import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { getPriceHistoryIndicators } from "#services/indicators";
+import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -33,6 +34,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));
   app.get("/tokenPriceHistory", async (request) => getTokenPriceHistory(parseQuery(priceHistorySchema, request.query)));
+  app.get("/priceHistoryIndicators", async (request) => getPriceHistoryIndicators(parseQuery(priceHistoryIndicatorsSchema, request.query)));
   app.get("/detailedTokenStats", async (request) => getDetailedTokenStats(parseQuery(detailedTokenStatsSchema, request.query)));
   app.get("/isScam", async (request) => getIsScam(parseQuery(tokenQuerySchema, request.query)));
   app.get("/fullAudit", async (request) => getFullAudit(parseQuery(tokenQuerySchema, request.query)));
