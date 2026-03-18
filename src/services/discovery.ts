@@ -7,6 +7,7 @@ import { getCurrentlyLive } from "#providers/newPairs/pumpFun";
 import { getNewPools } from "#providers/newPairs/raydiumNewPools";
 import { getLatestPools } from "#providers/newPairs/uniswapPairCreation";
 import { isEtherscanConfigured, getGasOracle } from "#providers/onchain/etherscan";
+import { getBlockNumber, getFeeHistory, getGasPrice } from "#providers/onchain/rpc";
 import type { GasFeedQuery, NewPairsQuery, TokenSearchQuery, TopTradersQuery } from "#routes/helpers";
 import type {
   GasFeedResponse,
@@ -220,7 +221,7 @@ export async function getGasFeed(q: GasFeedQuery): Promise<GasFeedResponse> {
   const chain = normalizeChain(q.chain);
   const statuses: ProviderStatus[] = [];
 
-  const data = await runProvider(
+  const etherscanData = await runProvider(
     statuses,
     "etherscan:gasOracle",
     isEvmChain(chain) && isEtherscanConfigured(chain),
@@ -230,19 +231,99 @@ export async function getGasFeed(q: GasFeedQuery): Promise<GasFeedResponse> {
       : "Etherscan/Basescan/Bscscan API key not configured for this chain.",
   );
 
-  const result = data?.result;
+  let lastBlock = etherscanData?.result?.LastBlock ?? null;
+  let safeGwei = etherscanData?.result?.SafeGasPrice ?? null;
+  let proposeGwei = etherscanData?.result?.ProposeGasPrice ?? null;
+  let fastGwei = etherscanData?.result?.FastGasPrice ?? null;
+  let baseFeeGwei = etherscanData?.result?.suggestBaseFee ?? null;
+
+  const needsRpcFallback = isEvmChain(chain) && (!safeGwei || !proposeGwei || !fastGwei || !baseFeeGwei);
+
+  if (needsRpcFallback) {
+    const [blockData, gasPriceData, feeHistoryData] = await Promise.all([
+      runProvider(statuses, "rpc:blockNumber", true, () => getBlockNumber(chain)),
+      runProvider(statuses, "rpc:gasPrice", true, () => getGasPrice(chain)),
+      runProvider(statuses, "rpc:feeHistory", true, () => getFeeHistory(chain)),
+    ]);
+
+    const blockResult = blockData?.result;
+    const gasPriceResult = gasPriceData?.result;
+    const feeHistoryResult = feeHistoryData?.result;
+
+    if (!lastBlock && blockResult) {
+      lastBlock = String(parseInt(blockResult, 16));
+    }
+
+    const gasPriceGwei = hexWeiToGweiString(gasPriceResult);
+    const rpcBaseFeeGwei = hexWeiToGweiString(feeHistoryResult?.baseFeePerGas?.at(-1) ?? feeHistoryResult?.baseFeePerGas?.[0]);
+    const rewardSeries = feeHistoryResult?.reward ?? [];
+    const latestRewardSet = rewardSeries.at(-1) ?? [];
+    const safeRewardGwei = hexWeiToGweiString(latestRewardSet[0]);
+    const proposeRewardGwei = hexWeiToGweiString(latestRewardSet[1]);
+    const fastRewardGwei = hexWeiToGweiString(latestRewardSet[2]);
+
+    if (!baseFeeGwei) {
+      baseFeeGwei = rpcBaseFeeGwei ?? gasPriceGwei;
+    }
+    if (!safeGwei) {
+      safeGwei = sumGwei(baseFeeGwei, safeRewardGwei) ?? gasPriceGwei;
+    }
+    if (!proposeGwei) {
+      proposeGwei = sumGwei(baseFeeGwei, proposeRewardGwei) ?? gasPriceGwei;
+    }
+    if (!fastGwei) {
+      fastGwei = sumGwei(baseFeeGwei, fastRewardGwei) ?? gasPriceGwei;
+    }
+  }
 
   return {
     endpoint: "gasFeed",
     status: summarizeStatus(statuses),
     chain,
-    lastBlock: result?.LastBlock ?? null,
-    safeGwei: result?.SafeGasPrice ?? null,
-    proposeGwei: result?.ProposeGasPrice ?? null,
-    fastGwei: result?.FastGasPrice ?? null,
-    baseFeeGwei: result?.suggestBaseFee ?? null,
+    lastBlock,
+    safeGwei,
+    proposeGwei,
+    fastGwei,
+    baseFeeGwei,
     providers: statuses,
   };
+}
+
+function hexWeiToGweiString(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const wei = BigInt(value);
+    const whole = wei / 1_000_000_000n;
+    const fraction = (wei % 1_000_000_000n).toString().padStart(9, "0").replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sumGwei(left: string | null, right: string | null): string | null {
+  if (!left || !right) {
+    return null;
+  }
+
+  try {
+    const sum = parseGweiToNano(left) + parseGweiToNano(right);
+    const whole = sum / 1_000_000_000n;
+    const fraction = (sum % 1_000_000_000n).toString().padStart(9, "0").replace(/0+$/, "");
+    return fraction ? `${whole}.${fraction}` : whole.toString();
+  } catch {
+    return null;
+  }
+}
+
+function parseGweiToNano(value: string): bigint {
+  const [wholePart, fractionPart = ""] = value.split(".");
+  const whole = BigInt(wholePart || "0");
+  const fraction = BigInt((fractionPart.slice(0, 9)).padEnd(9, "0") || "0");
+  return (whole * 1_000_000_000n) + fraction;
 }
 
 /* ────────────────────────────────────────────────────────────

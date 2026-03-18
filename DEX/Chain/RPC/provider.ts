@@ -11,6 +11,13 @@ type JsonRpcResponse<T = unknown> = {
   error?: { code?: number; message?: string };
 };
 
+type FeeHistoryResult = {
+  oldestBlock?: string;
+  baseFeePerGas?: string[];
+  gasUsedRatio?: number[];
+  reward?: string[][];
+};
+
 const rpcEnvKeys: Record<string, string> = {
   eth: "ETH_RPC_URL",
   base: "BASE_RPC_URL",
@@ -36,6 +43,23 @@ export async function rpcCall<T = unknown>(chain: string, method: string, params
 /** Get latest block number (EVM chains). */
 export async function getBlockNumber(chain: string): Promise<JsonRpcResponse<string>> {
   return rpcCall<string>(chain, "eth_blockNumber");
+}
+
+export async function getGasPrice(chain: string): Promise<JsonRpcResponse<string>> {
+  return rpcCall<string>(chain, "eth_gasPrice");
+}
+
+export async function getFeeHistory(
+  chain: string,
+  blockCount = 4,
+  newestBlock = "latest",
+  rewardPercentiles: number[] = [10, 50, 90],
+): Promise<JsonRpcResponse<FeeHistoryResult>> {
+  return rpcCall<FeeHistoryResult>(chain, "eth_feeHistory", [toRpcQuantity(blockCount), newestBlock, rewardPercentiles]);
+}
+
+function toRpcQuantity(value: number): string {
+  return `0x${value.toString(16)}`;
 }
 
 /** Solana health check. */
