@@ -25,11 +25,21 @@ export function listStrategies(): { strategies: StrategyListItem[] } {
   return { strategies: STRATEGY_REGISTRY };
 }
 
+/* ── Cache markdown content so we don't hit disk on every request ── */
+const contentCache = new Map<string, { content: string; expiresAt: number }>();
+const STRAT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 export function getStrategy(id: string): { id: string; name: string; content: string } | null {
   const entry = STRATEGY_REGISTRY.find((s) => s.id === id);
   if (!entry) return null;
 
+  const hit = contentCache.get(id);
+  if (hit && hit.expiresAt > Date.now()) {
+    return { id: entry.id, name: entry.name, content: hit.content };
+  }
+
   const filePath = join(STRATS_DIR, `${id}.md`);
   const content = readFileSync(filePath, "utf-8");
+  contentCache.set(id, { content, expiresAt: Date.now() + STRAT_CACHE_TTL_MS });
   return { id: entry.id, name: entry.name, content };
 }

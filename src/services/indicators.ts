@@ -62,6 +62,7 @@ export type PriceHistoryIndicatorsResponse = {
   interval: string;
   indicatorTimeFrame: string;
   pointCount: number;
+  cached: boolean;
   points: TokenPricePoint[];
   indicators: Indicators;
   providers: ProviderStatus[];
@@ -114,9 +115,24 @@ export type PriceHistoryIndicatorsQuery = {
   indicatorTimeFrame: string;
 };
 
+/* ── 60-second cache ─────────────────────────────────────── */
+type IndicatorsCacheEntry = { data: PriceHistoryIndicatorsResponse; expiresAt: number };
+const indicatorsCache = new Map<string, IndicatorsCacheEntry>();
+const INDICATORS_CACHE_TTL_MS = 60 * 1000;
+
+function indicatorsCacheKey(q: PriceHistoryIndicatorsQuery): string {
+  return `${q.chain}:${q.tokenAddress}:${q.indicatorTimeFrame}`;
+}
+
 export async function getPriceHistoryIndicators(
   q: PriceHistoryIndicatorsQuery,
 ): Promise<PriceHistoryIndicatorsResponse> {
+  const key = indicatorsCacheKey(q);
+  const hit = indicatorsCache.get(key);
+  if (hit && hit.expiresAt > Date.now()) {
+    return { ...hit.data, cached: true };
+  }
+
   const tf = q.indicatorTimeFrame;
   const config = getConfig(tf);
   const { interval, limit } = getHistoryParams(tf);
@@ -158,7 +174,7 @@ export async function getPriceHistoryIndicators(
   // Build aggregate signal
   indicators.summary = buildSummary(indicators);
 
-  return {
+  const response: PriceHistoryIndicatorsResponse = {
     endpoint: "priceHistoryIndicators",
     status: history.status,
     chain: history.chain,
@@ -168,10 +184,14 @@ export async function getPriceHistoryIndicators(
     interval,
     indicatorTimeFrame: tf,
     pointCount: points.length,
+    cached: false,
     points,
     indicators,
     providers: history.providers,
   };
+
+  indicatorsCache.set(key, { data: response, expiresAt: Date.now() + INDICATORS_CACHE_TTL_MS });
+  return response;
 }
 
 /* ══════════════════════════════════════════════════════════════

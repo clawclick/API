@@ -15,6 +15,14 @@ export type EndpointName =
   | "walletStats"
   | "tokenHolders"
   | "unwrap"
+  | "swap"
+  | "swapQuote"
+  | "swapDexes"
+  | "trendingTokens"
+  | "newPairs"
+  | "topTraders"
+  | "gasFeed"
+  | "tokenSearch"
   | "volatilityScanner"
   | "priceHistoryIndicators";
 
