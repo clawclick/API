@@ -3,7 +3,18 @@ import { Pool, type PoolClient } from "pg";
 
 import { getOptionalEnv, getRequiredEnv, isConfigured } from "#config/env";
 import { isNativeIn } from "#lib/evm";
-import type { ApiKeyGenerateResponse, ApiRuntimeStatsResponse } from "#types/api";
+import type {
+  ApiKeyGenerateResponse,
+  ApiRuntimeStatsResponse,
+  ApiStatsOverviewResponse,
+  ApiStatsRequests,
+  ApiStatsRequestsResponse,
+  ApiStatsUsers,
+  ApiStatsUsersResponse,
+  ApiStatsUserItem,
+  ApiStatsVolume,
+  ApiStatsVolumeResponse,
+} from "#types/api";
 
 type StoredApiKey = {
   id: string;
@@ -31,12 +42,6 @@ type DailyMetrics = {
   };
 };
 
-type RuntimeState = {
-  version: 1;
-  apiKeys: StoredApiKey[];
-  metrics: DailyMetrics;
-};
-
 type ResolvedApiKey = {
   id: string;
   prefix: string;
@@ -53,7 +58,14 @@ export class AccessError extends Error {
 }
 
 const PUBLIC_PATHS = new Set(["/health", "/providers"]);
-const ADMIN_PATHS = new Set(["/admin/apiKeys/generate", "/admin/stats"]);
+const ADMIN_PATHS = new Set([
+  "/admin/apiKeys/generate",
+  "/admin/stats",
+  "/stats",
+  "/stats/requests",
+  "/stats/users",
+  "/stats/volume",
+]);
 const PROTECTED_PREFIXES = [
   "/tokenPoolInfo",
   "/tokenPriceHistory",
@@ -83,8 +95,6 @@ const PROTECTED_PREFIXES = [
   "/ws/launchpadEvents",
   "/admin/",
 ];
-
-const STATS_ROW_KEY = "global";
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
 
@@ -97,10 +107,14 @@ function getNextResetAt(date = new Date()): string {
   return resetAt.toISOString();
 }
 
+function getDayStartAt(date = new Date()): string {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0)).toISOString();
+}
+
 function createDailyMetrics(date = new Date()): DailyMetrics {
   return {
     dayKey: getDayKey(date),
-    startedAt: date.toISOString(),
+    startedAt: getDayStartAt(date),
     resetsAt: getNextResetAt(date),
     totalRequests: 0,
     requestsByEndpoint: {},
@@ -114,24 +128,8 @@ function createDailyMetrics(date = new Date()): DailyMetrics {
   };
 }
 
-function createDefaultState(): RuntimeState {
-  return {
-    version: 1,
-    apiKeys: [],
-    metrics: createDailyMetrics(),
-  };
-}
-
 function hashApiKey(apiKey: string): string {
   return createHash("sha256").update(apiKey).digest("hex");
-}
-
-function normalizeState(state: RuntimeState): RuntimeState {
-  const normalized = state.version === 1 ? state : createDefaultState();
-  if (normalized.metrics.dayKey !== getDayKey()) {
-    normalized.metrics = createDailyMetrics();
-  }
-  return normalized;
 }
 
 function shouldUseSsl(connectionString: string): boolean {
@@ -159,25 +157,62 @@ function getPool(): Pool {
   return pool;
 }
 
-async function ensureStateTable(client: Pool | PoolClient): Promise<void> {
+async function ensureTables(client: Pool | PoolClient): Promise<void> {
   await client.query(`
-    CREATE TABLE IF NOT EXISTS "ApiStats" (
-      key TEXT PRIMARY KEY,
-      state JSONB NOT NULL,
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      label TEXT,
+      prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      last_used_at TIMESTAMPTZ,
+      total_requests BIGINT NOT NULL DEFAULT 0
     )
   `);
-}
 
-async function ensureStateRow(client: Pool | PoolClient): Promise<void> {
   await client.query(
     `
-      INSERT INTO "ApiStats" (key, state)
-      VALUES ($1, $2::jsonb)
-      ON CONFLICT (key) DO NOTHING
+      CREATE TABLE IF NOT EXISTS api_daily_stats (
+        day_key DATE PRIMARY KEY,
+        started_at TIMESTAMPTZ NOT NULL,
+        resets_at TIMESTAMPTZ NOT NULL,
+        total_requests BIGINT NOT NULL DEFAULT 0,
+        status_codes JSONB NOT NULL DEFAULT '{}'::jsonb,
+        eth_buy_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        eth_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        eth_buy_count INTEGER NOT NULL DEFAULT 0,
+        eth_sell_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
     `,
-    [STATS_ROW_KEY, JSON.stringify(createDefaultState())],
+  );
+
+  await client.query(
+    `
+      CREATE TABLE IF NOT EXISTS api_daily_endpoint_stats (
+        day_key DATE NOT NULL REFERENCES api_daily_stats(day_key) ON DELETE CASCADE,
+        endpoint TEXT NOT NULL,
+        request_count BIGINT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (day_key, endpoint)
+      )
+    `,
+  );
+
+  await client.query(
+    `
+      CREATE TABLE IF NOT EXISTS api_daily_key_stats (
+        day_key DATE NOT NULL REFERENCES api_daily_stats(day_key) ON DELETE CASCADE,
+        api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+        request_count BIGINT NOT NULL DEFAULT 0,
+        last_used_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (day_key, api_key_id)
+      )
+    `,
   );
 }
 
@@ -185,8 +220,7 @@ async function ensureDatabaseReady(): Promise<void> {
   if (!databaseReadyPromise) {
     databaseReadyPromise = (async () => {
       const db = getPool();
-      await ensureStateTable(db);
-      await ensureStateRow(db);
+      await ensureTables(db);
     })().catch((error) => {
       databaseReadyPromise = null;
       throw error;
@@ -196,62 +230,39 @@ async function ensureDatabaseReady(): Promise<void> {
   await databaseReadyPromise;
 }
 
-function parseStoredState(value: unknown): RuntimeState {
-  if (!value) {
-    return createDefaultState();
-  }
-
-  if (typeof value === "string") {
-    return normalizeState(JSON.parse(value) as RuntimeState);
-  }
-
-  return normalizeState(value as RuntimeState);
-}
-
-async function loadState(): Promise<RuntimeState> {
-  await ensureDatabaseReady();
-  const result = await getPool().query<{ state: unknown }>(
-    `SELECT state FROM "ApiStats" WHERE key = $1 LIMIT 1`,
-    [STATS_ROW_KEY],
-  );
-  return parseStoredState(result.rows[0]?.state);
-}
-
-async function mutateState<T>(mutator: (state: RuntimeState) => Promise<T> | T): Promise<T> {
+async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   await ensureDatabaseReady();
 
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    await ensureStateRow(client);
-
-    const result = await client.query<{ state: unknown }>(
-      `SELECT state FROM "ApiStats" WHERE key = $1 FOR UPDATE`,
-      [STATS_ROW_KEY],
-    );
-
-    const state = parseStoredState(result.rows[0]?.state);
-    const output = await mutator(state);
-    const normalized = normalizeState(state);
-
-    await client.query(
-      `
-        UPDATE "ApiStats"
-        SET state = $2::jsonb,
-            updated_at = NOW()
-        WHERE key = $1
-      `,
-      [STATS_ROW_KEY, JSON.stringify(normalized)],
-    );
-
+    const result = await fn(client);
     await client.query("COMMIT");
-    return output;
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+}
+
+async function ensureDailyStatsRow(client: PoolClient, metrics = createDailyMetrics()): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO api_daily_stats (day_key, started_at, resets_at)
+      VALUES ($1::date, $2::timestamptz, $3::timestamptz)
+      ON CONFLICT (day_key) DO NOTHING
+    `,
+    [metrics.dayKey, metrics.startedAt, metrics.resetsAt],
+  );
+}
+
+function parseCount(value: string | number | null | undefined): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  return Number(value ?? 0);
 }
 
 function formatUnits(raw: string, decimals: number): string {
@@ -292,18 +303,18 @@ function getPresentedAdminKey(headers: Record<string, unknown>): string | null {
   return getHeaderValue(headers, "x-admin-key");
 }
 
-function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+function pathMatches(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(`${path}/`);
 }
 
 export function classifyPath(pathname: string): "public" | "admin" | "protected" | "unknown" {
   if (PUBLIC_PATHS.has(pathname)) {
     return "public";
   }
-  if (ADMIN_PATHS.has(pathname)) {
+  if ([...ADMIN_PATHS].some((path) => pathMatches(pathname, path))) {
     return "admin";
   }
-  if (isProtectedPath(pathname)) {
+  if (PROTECTED_PREFIXES.some((prefix) => pathMatches(pathname, prefix))) {
     return "protected";
   }
   return "unknown";
@@ -328,8 +339,17 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
   }
 
   const keyHash = hashApiKey(presented);
-  const state = await loadState();
-  const match = state.apiKeys.find((item) => item.keyHash === keyHash);
+  await ensureDatabaseReady();
+  const result = await getPool().query<{ id: string; prefix: string }>(
+    `
+      SELECT id, prefix
+      FROM api_keys
+      WHERE key_hash = $1
+      LIMIT 1
+    `,
+    [keyHash],
+  );
+  const match = result.rows[0];
   if (!match) {
     throw new AccessError(401, "Invalid API key.");
   }
@@ -338,52 +358,120 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
 }
 
 export async function generateApiKey(label?: string | null): Promise<ApiKeyGenerateResponse> {
-  return mutateState((state) => {
+  return withTransaction(async (client) => {
     const now = new Date().toISOString();
     const apiKey = `ska_${randomBytes(24).toString("hex")}`;
     const prefix = apiKey.slice(0, 12);
-    const record: StoredApiKey = {
-      id: randomBytes(12).toString("hex"),
-      label: label?.trim() ? label.trim() : null,
-      prefix,
-      keyHash: hashApiKey(apiKey),
-      createdAt: now,
-      lastUsedAt: null,
-      lastUsedDay: null,
-      totalRequests: 0,
-    };
+    const recordId = randomBytes(12).toString("hex");
 
-    state.apiKeys.push(record);
+    await client.query(
+      `
+        INSERT INTO api_keys (id, label, prefix, key_hash, created_at, total_requests)
+        VALUES ($1, $2, $3, $4, $5::timestamptz, 0)
+      `,
+      [recordId, label?.trim() ? label.trim() : null, prefix, hashApiKey(apiKey), now],
+    );
 
-    const activeToday = state.apiKeys.filter((item) => item.lastUsedDay === state.metrics.dayKey).length;
+    const metrics = createDailyMetrics();
+    await ensureDailyStatsRow(client, metrics);
+
+    const counts = await client.query<{
+      total_generated: string;
+      active_today: string;
+    }>(
+      `
+        SELECT
+          (SELECT COUNT(*) FROM api_keys) AS total_generated,
+          (SELECT COUNT(*) FROM api_daily_key_stats WHERE day_key = $1::date) AS active_today
+      `,
+      [metrics.dayKey],
+    );
+
+    const summary = counts.rows[0];
     return {
       endpoint: "apiKeyGenerate",
       apiKey,
-      keyId: record.id,
-      prefix: record.prefix,
-      label: record.label,
-      createdAt: record.createdAt,
-      totalGenerated: state.apiKeys.length,
-      activeToday,
+      keyId: recordId,
+      prefix,
+      label: label?.trim() ? label.trim() : null,
+      createdAt: now,
+      totalGenerated: parseCount(summary?.total_generated),
+      activeToday: parseCount(summary?.active_today),
     };
   });
 }
 
 export async function recordRequestMetric(input: { path: string; statusCode: number; apiKeyId?: string | null }): Promise<void> {
-  await mutateState((state) => {
+  await withTransaction(async (client) => {
+    const metrics = createDailyMetrics();
+    await ensureDailyStatsRow(client, metrics);
+
     const endpoint = input.path || "unknown";
-    state.metrics.totalRequests += 1;
-    state.metrics.requestsByEndpoint[endpoint] = (state.metrics.requestsByEndpoint[endpoint] ?? 0) + 1;
     const statusKey = String(input.statusCode || 0);
-    state.metrics.statusCodes[statusKey] = (state.metrics.statusCodes[statusKey] ?? 0) + 1;
+
+    const dailyStats = await client.query<{ status_codes: Record<string, number> | string }>(
+      `
+        SELECT status_codes
+        FROM api_daily_stats
+        WHERE day_key = $1::date
+        FOR UPDATE
+      `,
+      [metrics.dayKey],
+    );
+
+    const existingStatusCodes = dailyStats.rows[0]?.status_codes;
+    const statusCodes = typeof existingStatusCodes === "string"
+      ? JSON.parse(existingStatusCodes) as Record<string, number>
+      : (existingStatusCodes ?? {});
+    statusCodes[statusKey] = (statusCodes[statusKey] ?? 0) + 1;
+
+    await client.query(
+      `
+        UPDATE api_daily_stats
+        SET total_requests = total_requests + 1,
+            status_codes = $2::jsonb,
+            updated_at = NOW()
+        WHERE day_key = $1::date
+      `,
+      [metrics.dayKey, JSON.stringify(statusCodes)],
+    );
+
+    await client.query(
+      `
+        INSERT INTO api_daily_endpoint_stats (day_key, endpoint, request_count)
+        VALUES ($1::date, $2, 1)
+        ON CONFLICT (day_key, endpoint)
+        DO UPDATE SET
+          request_count = api_daily_endpoint_stats.request_count + 1,
+          updated_at = NOW()
+      `,
+      [metrics.dayKey, endpoint],
+    );
 
     if (input.apiKeyId) {
-      const record = state.apiKeys.find((item) => item.id === input.apiKeyId);
-      if (record) {
-        record.lastUsedAt = new Date().toISOString();
-        record.lastUsedDay = state.metrics.dayKey;
-        record.totalRequests += 1;
-      }
+      const usedAt = new Date().toISOString();
+      await client.query(
+        `
+          UPDATE api_keys
+          SET last_used_at = $2::timestamptz,
+              total_requests = total_requests + 1
+          WHERE id = $1
+        `,
+        [input.apiKeyId, usedAt],
+      );
+
+      await client.query(
+        `
+          INSERT INTO api_daily_key_stats (day_key, api_key_id, request_count, last_used_at)
+          VALUES ($1::date, $2, 1, $3::timestamptz)
+          ON CONFLICT (day_key, api_key_id)
+          DO UPDATE SET
+            request_count = api_daily_key_stats.request_count + 1,
+            last_used_at = EXCLUDED.last_used_at,
+            updated_at = NOW()
+        `,
+        [metrics.dayKey, input.apiKeyId, usedAt],
+      );
     }
   });
 }
@@ -399,57 +487,267 @@ export async function recordEthSwapVolume(input: { chain: string; tokenIn: strin
     return;
   }
 
-  await mutateState((state) => {
-    if (buyWei > 0n) {
-      state.metrics.ethVolume.buyWei = (BigInt(state.metrics.ethVolume.buyWei) + buyWei).toString();
-      state.metrics.ethVolume.buyCount += 1;
-    }
-    if (sellWei > 0n) {
-      state.metrics.ethVolume.sellWei = (BigInt(state.metrics.ethVolume.sellWei) + sellWei).toString();
-      state.metrics.ethVolume.sellCount += 1;
-    }
+  await withTransaction(async (client) => {
+    const metrics = createDailyMetrics();
+    await ensureDailyStatsRow(client, metrics);
+
+    await client.query(
+      `
+        UPDATE api_daily_stats
+        SET eth_buy_wei = eth_buy_wei + $2::numeric,
+            eth_sell_wei = eth_sell_wei + $3::numeric,
+            eth_buy_count = eth_buy_count + $4,
+            eth_sell_count = eth_sell_count + $5,
+            updated_at = NOW()
+        WHERE day_key = $1::date
+      `,
+      [
+        metrics.dayKey,
+        buyWei.toString(),
+        sellWei.toString(),
+        buyWei > 0n ? 1 : 0,
+        sellWei > 0n ? 1 : 0,
+      ],
+    );
   });
 }
 
-export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
-  const state = await loadState();
-  const activeToday = state.apiKeys.filter((item) => item.lastUsedDay === state.metrics.dayKey);
-  const everUsed = state.apiKeys.filter((item) => item.totalRequests > 0);
-  const byEndpoint = Object.fromEntries(
-    Object.entries(state.metrics.requestsByEndpoint).sort((a, b) => b[1] - a[1]),
+async function getTodayMetrics(): Promise<DailyMetrics> {
+  await ensureDatabaseReady();
+  const fallback = createDailyMetrics();
+  const result = await getPool().query<{
+    day_key: string;
+    started_at: Date | string;
+    resets_at: Date | string;
+    total_requests: string;
+    status_codes: Record<string, number> | string | null;
+    eth_buy_wei: string;
+    eth_sell_wei: string;
+    eth_buy_count: number | string;
+    eth_sell_count: number | string;
+  }>(
+    `
+      SELECT day_key, started_at, resets_at, total_requests, status_codes, eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count
+      FROM api_daily_stats
+      WHERE day_key = $1::date
+      LIMIT 1
+    `,
+    [fallback.dayKey],
   );
+
+  const row = result.rows[0];
+  if (!row) {
+    return fallback;
+  }
+
+  return {
+    dayKey: fallback.dayKey,
+    startedAt: new Date(row.started_at).toISOString(),
+    resetsAt: new Date(row.resets_at).toISOString(),
+    totalRequests: parseCount(row.total_requests),
+    requestsByEndpoint: {},
+    statusCodes: typeof row.status_codes === "string"
+      ? JSON.parse(row.status_codes) as Record<string, number>
+      : (row.status_codes ?? {}),
+    ethVolume: {
+      buyWei: row.eth_buy_wei ?? "0",
+      sellWei: row.eth_sell_wei ?? "0",
+      buyCount: parseCount(row.eth_buy_count),
+      sellCount: parseCount(row.eth_sell_count),
+    },
+  };
+}
+
+async function getRequestsStats(dayKey: string): Promise<ApiStatsRequests> {
+  await ensureDatabaseReady();
+  const [dailyResult, endpointResult] = await Promise.all([
+    getPool().query<{ total_requests: string; status_codes: Record<string, number> | string | null }>(
+      `SELECT total_requests, status_codes FROM api_daily_stats WHERE day_key = $1::date LIMIT 1`,
+      [dayKey],
+    ),
+    getPool().query<{ endpoint: string; request_count: string }>(
+      `SELECT endpoint, request_count FROM api_daily_endpoint_stats WHERE day_key = $1::date ORDER BY request_count DESC, endpoint ASC`,
+      [dayKey],
+    ),
+  ]);
+
+  const daily = dailyResult.rows[0];
+  const byEndpoint = Object.fromEntries(
+    endpointResult.rows.map((row) => [row.endpoint, parseCount(row.request_count)]),
+  );
+  const rawStatusCodes = daily?.status_codes;
+
+  return {
+    total: parseCount(daily?.total_requests),
+    byEndpoint,
+    byStatusCode: typeof rawStatusCodes === "string"
+      ? JSON.parse(rawStatusCodes) as Record<string, number>
+      : (rawStatusCodes ?? {}),
+  };
+}
+
+async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
+  await ensureDatabaseReady();
+  const [countsResult, itemsResult] = await Promise.all([
+    getPool().query<{
+      total_generated: string;
+      total_ever_used: string;
+      active_today: string;
+    }>(
+      `
+        SELECT
+          (SELECT COUNT(*) FROM api_keys) AS total_generated,
+          (SELECT COUNT(*) FROM api_keys WHERE total_requests > 0) AS total_ever_used,
+          (SELECT COUNT(*) FROM api_daily_key_stats WHERE day_key = $1::date) AS active_today
+      `,
+      [dayKey],
+    ),
+    getPool().query<{
+      id: string;
+      prefix: string;
+      label: string | null;
+      created_at: Date | string;
+      last_used_at: Date | string | null;
+      total_requests: string;
+      requests_today: string | null;
+    }>(
+      `
+        SELECT
+          k.id,
+          k.prefix,
+          k.label,
+          k.created_at,
+          k.last_used_at,
+          k.total_requests,
+          d.request_count AS requests_today
+        FROM api_keys k
+        LEFT JOIN api_daily_key_stats d
+          ON d.api_key_id = k.id
+         AND d.day_key = $1::date
+        ORDER BY COALESCE(d.request_count, 0) DESC, k.created_at DESC
+      `,
+      [dayKey],
+    ),
+  ]);
+
+  const counts = countsResult.rows[0];
+  const items: ApiStatsUserItem[] = itemsResult.rows.map((row) => ({
+    id: row.id,
+    prefix: row.prefix,
+    label: row.label,
+    createdAt: new Date(row.created_at).toISOString(),
+    lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+    totalRequests: parseCount(row.total_requests),
+    activeToday: parseCount(row.requests_today) > 0,
+    requestsToday: parseCount(row.requests_today),
+  }));
+
+  return {
+    totalGenerated: parseCount(counts?.total_generated),
+    totalEverUsed: parseCount(counts?.total_ever_used),
+    activeToday: parseCount(counts?.active_today),
+    items,
+  };
+}
+
+async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
+  await ensureDatabaseReady();
+  const result = await getPool().query<{
+    eth_buy_wei: string;
+    eth_sell_wei: string;
+    eth_buy_count: string | number;
+    eth_sell_count: string | number;
+  }>(
+    `
+      SELECT eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count
+      FROM api_daily_stats
+      WHERE day_key = $1::date
+      LIMIT 1
+    `,
+    [dayKey],
+  );
+
+  const row = result.rows[0];
+  const buyWei = row?.eth_buy_wei ?? "0";
+  const sellWei = row?.eth_sell_wei ?? "0";
+
+  return {
+    buyWei,
+    sellWei,
+    buyEth: formatUnits(buyWei, 18),
+    sellEth: formatUnits(sellWei, 18),
+    buyCount: parseCount(row?.eth_buy_count),
+    sellCount: parseCount(row?.eth_sell_count),
+  };
+}
+
+export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
+  const metrics = await getTodayMetrics();
+  const [requests, users, volume] = await Promise.all([
+    getRequestsStats(metrics.dayKey),
+    getUsersStats(metrics.dayKey),
+    getVolumeStats(metrics.dayKey),
+  ]);
 
   return {
     endpoint: "adminStats",
-    dayKey: state.metrics.dayKey,
-    startedAt: state.metrics.startedAt,
-    resetsAt: state.metrics.resetsAt,
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    requests,
+    users,
+    volume,
+  };
+}
+
+export async function getStatsOverview(): Promise<ApiStatsOverviewResponse> {
+  const full = await getApiRuntimeStats();
+
+  return {
+    endpoint: "stats",
+    dayKey: full.dayKey,
+    startedAt: full.startedAt,
+    resetsAt: full.resetsAt,
     requests: {
-      total: state.metrics.totalRequests,
-      byEndpoint,
-      byStatusCode: state.metrics.statusCodes,
+      total: full.requests.total,
     },
-    ethVolume: {
-      buyWei: state.metrics.ethVolume.buyWei,
-      sellWei: state.metrics.ethVolume.sellWei,
-      buyEth: formatUnits(state.metrics.ethVolume.buyWei, 18),
-      sellEth: formatUnits(state.metrics.ethVolume.sellWei, 18),
-      buyCount: state.metrics.ethVolume.buyCount,
-      sellCount: state.metrics.ethVolume.sellCount,
+    users: {
+      totalGenerated: full.users.totalGenerated,
+      activeToday: full.users.activeToday,
     },
-    apiKeys: {
-      totalGenerated: state.apiKeys.length,
-      totalEverUsed: everUsed.length,
-      activeToday: activeToday.length,
-      items: state.apiKeys.map((item) => ({
-        id: item.id,
-        prefix: item.prefix,
-        label: item.label,
-        createdAt: item.createdAt,
-        lastUsedAt: item.lastUsedAt,
-        totalRequests: item.totalRequests,
-        activeToday: item.lastUsedDay === state.metrics.dayKey,
-      })),
-    },
+    volume: full.volume,
+  };
+}
+
+export async function getStatsRequests(): Promise<ApiStatsRequestsResponse> {
+  const metrics = await getTodayMetrics();
+  return {
+    endpoint: "statsRequests",
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    requests: await getRequestsStats(metrics.dayKey),
+  };
+}
+
+export async function getStatsUsers(): Promise<ApiStatsUsersResponse> {
+  const metrics = await getTodayMetrics();
+  return {
+    endpoint: "statsUsers",
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    users: await getUsersStats(metrics.dayKey),
+  };
+}
+
+export async function getStatsVolume(): Promise<ApiStatsVolumeResponse> {
+  const metrics = await getTodayMetrics();
+  return {
+    endpoint: "statsVolume",
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    volume: await getVolumeStats(metrics.dayKey),
   };
 }

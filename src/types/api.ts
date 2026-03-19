@@ -773,36 +773,84 @@ export type ApiKeyGenerateResponse = {
   activeToday: number;
 };
 
+export type ApiStatsUserItem = {
+  id: string;
+  prefix: string;
+  label: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  totalRequests: number;
+  activeToday: boolean;
+  requestsToday: number;
+};
+
+export type ApiStatsRequests = {
+  total: number;
+  byEndpoint: Record<string, number>;
+  byStatusCode: Record<string, number>;
+};
+
+export type ApiStatsUsers = {
+  totalGenerated: number;
+  totalEverUsed: number;
+  activeToday: number;
+  items: ApiStatsUserItem[];
+};
+
+export type ApiStatsVolume = {
+  buyWei: string;
+  sellWei: string;
+  buyEth: string;
+  sellEth: string;
+  buyCount: number;
+  sellCount: number;
+};
+
 export type ApiRuntimeStatsResponse = {
   endpoint: "adminStats";
   dayKey: string;
   startedAt: string;
   resetsAt: string;
+  requests: ApiStatsRequests;
+  users: ApiStatsUsers;
+  volume: ApiStatsVolume;
+};
+
+export type ApiStatsOverviewResponse = {
+  endpoint: "stats";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
   requests: {
     total: number;
-    byEndpoint: Record<string, number>;
-    byStatusCode: Record<string, number>;
   };
-  ethVolume: {
-    buyWei: string;
-    sellWei: string;
-    buyEth: string;
-    sellEth: string;
-    buyCount: number;
-    sellCount: number;
-  };
-  apiKeys: {
+  users: {
     totalGenerated: number;
-    totalEverUsed: number;
     activeToday: number;
-    items: Array<{
-      id: string;
-      prefix: string;
-      label: string | null;
-      createdAt: string;
-      lastUsedAt: string | null;
-      totalRequests: number;
-      activeToday: boolean;
-    }>;
   };
+  volume: ApiStatsVolume;
+};
+
+export type ApiStatsRequestsResponse = {
+  endpoint: "statsRequests";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  requests: ApiStatsRequests;
+};
+
+export type ApiStatsUsersResponse = {
+  endpoint: "statsUsers";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  users: ApiStatsUsers;
+};
+
+export type ApiStatsVolumeResponse = {
+  endpoint: "statsVolume";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  volume: ApiStatsVolume;
 };
