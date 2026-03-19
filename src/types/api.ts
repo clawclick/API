@@ -737,3 +737,72 @@ export type TokenHoldersResponse = {
   holders: TokenHolderItem[];
   providers: ProviderStatus[];
 };
+
+export type HolderListItem = {
+  address: string | null;
+  label: string | null;
+  entity: string | null;
+  isContract: boolean | null;
+  balance: string | null;
+  balanceFormatted: string | null;
+  percentOfSupply: number | null;
+};
+
+export type HoldersResponse = {
+  endpoint: "holders";
+  status: "live" | "partial";
+  cached: boolean;
+  chain: string;
+  tokenAddress: string;
+  limit: number;
+  holderCount: number | null;
+  totalSupplyRaw: string | null;
+  totalSupplyFormatted: string | null;
+  holders: HolderListItem[];
+  providers: ProviderStatus[];
+};
+
+export type ApiKeyGenerateResponse = {
+  endpoint: "apiKeyGenerate";
+  apiKey: string;
+  keyId: string;
+  prefix: string;
+  label: string | null;
+  createdAt: string;
+  totalGenerated: number;
+  activeToday: number;
+};
+
+export type ApiRuntimeStatsResponse = {
+  endpoint: "adminStats";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  requests: {
+    total: number;
+    byEndpoint: Record<string, number>;
+    byStatusCode: Record<string, number>;
+  };
+  ethVolume: {
+    buyWei: string;
+    sellWei: string;
+    buyEth: string;
+    sellEth: string;
+    buyCount: number;
+    sellCount: number;
+  };
+  apiKeys: {
+    totalGenerated: number;
+    totalEverUsed: number;
+    activeToday: number;
+    items: Array<{
+      id: string;
+      prefix: string;
+      label: string | null;
+      createdAt: string;
+      lastUsedAt: string | null;
+      totalRequests: number;
+      activeToday: boolean;
+    }>;
+  };
+};

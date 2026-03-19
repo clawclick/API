@@ -9,10 +9,13 @@ import {
   getTokenPoolInfo,
   getTokenPriceHistory
 } from "#services/liveEndpoints";
+import { getApiRuntimeStats, generateApiKey } from "#services/apiRuntime";
+import { getHolders } from "#services/holders";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
 import { getApproveTx, getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { buildUnwrapTx } from "#lib/evm";
+import { isNativeIn } from "#lib/evm";
 import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
 // DISABLED — Codex paid plan only 
@@ -24,12 +27,16 @@ import { handleClient } from "#services/launchpadStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
-import { approveSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { approveSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { recordEthSwapVolume } from "#services/apiRuntime";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
 
   app.get("/providers", async () => ({ providers: getProviderHealth() }));
+
+  app.post("/admin/apiKeys/generate", async (request) => generateApiKey(parseQuery(apiKeyGenerateSchema, request.query).label ?? null));
+  app.get("/admin/stats", async () => getApiRuntimeStats());
 
   // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));
@@ -39,12 +46,41 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/isScam", async (request) => getIsScam(parseQuery(tokenQuerySchema, request.query)));
   app.get("/fullAudit", async (request) => getFullAudit(parseQuery(tokenQuerySchema, request.query)));
   app.get("/holderAnalysis", async (request) => getHolderAnalysis(parseQuery(tokenQuerySchema, request.query)));
+  app.get("/holders", async (request) => getHolders(parseQuery(holdersSchema, request.query)));
   app.get("/fudSearch", async (request) => getFudSearch(parseQuery(fudSearchSchema, request.query)));
   app.get("/marketOverview", async (request) => getMarketOverview(parseQuery(marketOverviewSchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
 
   // DEX swap routes
-  app.get("/swap", async (request) => getSwapTx(parseQuery(swapSchema, request.query)));
+  app.get("/swap", async (request) => {
+    const query = parseQuery(swapSchema, request.query);
+    const response = await getSwapTx(query);
+
+    if (response.status === "live" && response.chain === "eth") {
+      let sellWei: string | null = null;
+      if (isNativeIn(query.tokenOut)) {
+        const quote = await getSwapQuote({
+          chain: query.chain,
+          dex: query.dex,
+          tokenIn: query.tokenIn,
+          tokenOut: query.tokenOut,
+          amountIn: query.amountIn,
+          slippageBps: query.slippageBps,
+        });
+        sellWei = quote.amountOut;
+      }
+
+      await recordEthSwapVolume({
+        chain: response.chain,
+        tokenIn: query.tokenIn,
+        tokenOut: query.tokenOut,
+        buyWei: query.amountIn,
+        sellWei,
+      });
+    }
+
+    return response;
+  });
   app.get("/swapQuote", async (request) => getSwapQuote(parseQuery(swapQuoteSchema, request.query)));
   app.get("/swapDexes", async (request) => getSwapDexes(parseQuery(swapDexesSchema, request.query).chain));
   app.get("/approve", async (request) => getApproveTx(parseQuery(approveSchema, request.query)));

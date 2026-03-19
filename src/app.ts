@@ -3,12 +3,59 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
+import { AccessError, classifyPath, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
 import { registerRoutes } from "#routes/index";
+
+type AuthenticatedRequest = {
+  apiKeyId?: string;
+};
+
+function getPathname(url: string): string {
+  try {
+    return new URL(url, "http://localhost").pathname;
+  } catch {
+    return url.split("?")[0] || "/";
+  }
+}
 
 export function buildApp() {
   const app = Fastify({ logger: true });
 
   app.register(fastifyWebSocket);
+
+  app.addHook("onRequest", async (request) => {
+    const pathname = getPathname(request.raw.url ?? request.url);
+    const classification = classifyPath(pathname);
+
+    if (classification === "public" || classification === "unknown") {
+      return;
+    }
+
+    if (classification === "admin") {
+      requireAdminKey(request.headers as Record<string, unknown>);
+      return;
+    }
+
+    const resolved = await requireApiKey(request.headers as Record<string, unknown>);
+    (request as typeof request & AuthenticatedRequest).apiKeyId = resolved.id;
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    const authRequest = request as typeof request & AuthenticatedRequest;
+    const path = request.routeOptions.url || getPathname(request.raw.url ?? request.url);
+
+    try {
+      await recordRequestMetric({
+        path,
+        statusCode: reply.statusCode,
+        apiKeyId: authRequest.apiKeyId,
+      });
+    } catch (error) {
+      request.log.error({ err: error, path }, "Failed to record request metrics");
+    }
+
+    return payload;
+  });
 
   /* ── Global error handler ─────────────────────────────── */
   app.setErrorHandler((error: FastifyError | ZodError | ChainError | Error, request, reply) => {
@@ -31,6 +78,14 @@ export function buildApp() {
     if (error instanceof ChainError) {
       reply.status(400).send({
         error: "Invalid chain",
+        message: error.message,
+      });
+      return;
+    }
+
+    if (error instanceof AccessError) {
+      reply.status(error.statusCode).send({
+        error: error.statusCode === 401 ? "Unauthorized" : "Unavailable",
         message: error.message,
       });
       return;
@@ -61,7 +116,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/stats, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
     });
   });
 

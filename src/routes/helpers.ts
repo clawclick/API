@@ -211,6 +211,20 @@ export const tokenHoldersSchema = z.object({
 
 export type TokenHoldersQuery = z.output<typeof tokenHoldersSchema>;
 
+export const holdersSchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  tokenAddress: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(150).default(150),
+});
+
+export type HoldersQuery = z.output<typeof holdersSchema>;
+
+export const apiKeyGenerateSchema = z.object({
+  label: z.string().trim().min(1).max(100).optional(),
+});
+
+export type ApiKeyGenerateQuery = z.output<typeof apiKeyGenerateSchema>;
+
 /* ── Volatility Scanner Schema ──────────────────────────────── */
 
 export const volatilityScannerSchema = z.object({
