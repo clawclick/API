@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import fastifyCors from "@fastify/cors";
 import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
@@ -21,9 +22,23 @@ function getPathname(url: string): string {
 export function buildApp() {
   const app = Fastify({ logger: true });
 
+  app.register(fastifyCors, {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      const allowed =
+        /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
+        /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin) ||
+        /^https?:\/\/(www\.)?claw\.click$/.test(origin);
+      cb(null, allowed);
+    },
+    credentials: true,
+  });
+
   app.register(fastifyWebSocket);
 
   app.addHook("onRequest", async (request) => {
+    if (request.method === "OPTIONS") return;
+
     const pathname = getPathname(request.raw.url ?? request.url);
     const classification = classifyPath(pathname);
 
