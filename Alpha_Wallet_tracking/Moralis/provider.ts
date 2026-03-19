@@ -218,6 +218,13 @@ type MoralisTokenHolderStats = {
 
 /** GET /erc20/{tokenAddress}/holders – aggregated holder metrics and distribution buckets. */
 export async function getTokenHolderStats(tokenAddress: string, chain: SupportedChain): Promise<MoralisTokenHolderStats> {
+  if (chain === "sol") {
+    return requestJson<MoralisTokenHolderStats>(
+      `https://solana-gateway.moralis.io/token/mainnet/holders/${tokenAddress}`,
+      { headers: getHeaders() },
+    );
+  }
+
   return requestJson<MoralisTokenHolderStats>(
     `https://deep-index.moralis.io/api/v2.2/erc20/${tokenAddress}/holders?chain=${chain}`,
     { headers: getHeaders() },

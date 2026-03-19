@@ -595,7 +595,7 @@ async function getCachedMoralisHolderStats(
     return cached!.data;
   }
 
-  const result = await runProvider(providers, "moralisHolderStats", isEvmChain(chain) && isMoralisConfigured(), () => getMoralisTokenHolderStats(tokenAddress, chain));
+  const result = await runProvider(providers, "moralisHolderStats", isMoralisConfigured(), () => getMoralisTokenHolderStats(tokenAddress, chain));
   if (result !== null) {
     moralisHolderStatsCache.set(key, { data: result, fetchedAt: Date.now() });
   }
@@ -1302,38 +1302,16 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
 
   const moralisOwnersCached = moralisOwnersCache.get(holderCacheKey(chain, query.tokenAddress, "moralisOwners:10"));
   const moralisStatsCached = moralisHolderStatsCache.get(holderCacheKey(chain, query.tokenAddress, "moralisHolderStats"));
-  const birdeyeSecurityCached = birdeyeSecurityCache.get(holderCacheKey("sol", query.tokenAddress, "birdeyeSecurity"));
-  const birdeyeDistributionCached = birdeyeHolderDistributionCache.get(holderCacheKey("sol", query.tokenAddress, "birdeyeHolderDistribution:10"));
 
   const moralisOwners = isEvmChain(chain)
     ? await getCachedMoralisOwners(providers, chain, query.tokenAddress, 10, HOLDER_TTL_MS)
     : null;
-  const moralisHolderStats = isEvmChain(chain)
+  const moralisHolderStats = isMoralisConfigured()
     ? await getCachedMoralisHolderStats(providers, chain, query.tokenAddress, HOLDER_TTL_MS)
-    : null;
-  const birdeyeSecurity = chain === "sol"
-    ? await getCachedBirdeyeSecurity(providers, query.tokenAddress, HOLDER_TTL_MS)
-    : null;
-  const birdeyeDistribution = chain === "sol"
-    ? await getCachedBirdeyeHolderDistribution(providers, query.tokenAddress, 10, HOLDER_TTL_MS)
     : null;
 
   const topHolders = chain === "sol"
-    ? (birdeyeDistribution?.data?.holders ?? []).flatMap((holder) => {
-        if (!holder.wallet) {
-          return [];
-        }
-
-        return [{
-          address: holder.wallet,
-          label: null,
-          entity: null,
-          isContract: null,
-          balance: firstNumber(holder.holding),
-          balanceFormatted: firstNumber(holder.holding),
-          percentOfSupply: firstNumber(holder.percent_of_supply)
-        }];
-      })
+    ? []
     : (moralisOwners?.result ?? []).flatMap((owner) => {
         if (!owner.owner_address) {
           return [];
@@ -1372,7 +1350,6 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
     }
   }
   const top10Percent = sumPercentOfSupply(topHolders, 10, (holder) => holder.percentOfSupply)
-    ?? firstNumber(birdeyeSecurity?.data?.top10HolderPercent)
     ?? normalizeRatioPercent(moralisHolderStats?.holderSupply?.top10?.supplyPercent)
     ?? codexTop10Percent;
   const largestHolderPercent = topHolders[0]?.percentOfSupply ?? null;
@@ -1393,7 +1370,7 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
   });
 
   const fromCache = chain === "sol"
-    ? isCacheValid(birdeyeSecurityCached, HOLDER_TTL_MS) && isCacheValid(birdeyeDistributionCached, HOLDER_TTL_MS)
+    ? isCacheValid(moralisStatsCached, HOLDER_TTL_MS)
     : isCacheValid(moralisOwnersCached, HOLDER_TTL_MS)
       && isCacheValid(moralisStatsCached, HOLDER_TTL_MS);
 
@@ -1404,7 +1381,7 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
     tokenAddress: query.tokenAddress,
     cached: fromCache,
     summary: {
-      totalHolders: firstNumber(moralisHolderStats?.totalHolders, birdeyeDistribution?.data?.summary?.wallet_count),
+      totalHolders: firstNumber(moralisHolderStats?.totalHolders),
       analyzedHolders: topHolders.length,
       top5Percent,
       top10Percent,
@@ -1414,7 +1391,7 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
     },
     topHolders,
     holders: {
-      total: firstNumber(moralisHolderStats?.totalHolders, birdeyeDistribution?.data?.summary?.wallet_count),
+      total: firstNumber(moralisHolderStats?.totalHolders),
       analyzed: topHolders.length,
       lpHolders: null
     },
@@ -1440,11 +1417,11 @@ export async function getHolderAnalysis(query: TokenQuery): Promise<HolderAnalys
       change30dPct: normalizeRatioPercent(moralisHolderStats?.holderChange?.["30d"]?.changePercent)
     },
     concentration: {
-      top10HolderPercent: firstNumber(birdeyeSecurity?.data?.top10HolderPercent, top10Percent),
-      top10UserPercent: firstNumber(birdeyeSecurity?.data?.top10UserPercent)
+      top10HolderPercent: firstNumber(top10Percent),
+      top10UserPercent: null
     },
     supply: {
-      totalSupply: firstNumber(birdeyeSecurity?.data?.totalSupply, moralisOwners?.total_supply),
+      totalSupply: firstNumber(moralisOwners?.total_supply),
       lpTotalSupply: null
     },
     signals,

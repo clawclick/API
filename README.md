@@ -78,6 +78,10 @@ npx tsx src/server.ts   # starts on port 3000
 | `/tokenSearch` | GET | Search tokens by name/symbol/address |
 | `/filterTokens` | GET | Filter tokens by metrics (Codex, cached 5 min) |
 | `/tokenHolders` | GET | Raw token-holder ledger for EVM tokens (Sim by Dune) |
+| `/volatilityScanner` | GET | Swing-trade volatility scanner (cached 5 min) |
+| `/priceHistoryIndicators` | GET | OHLCV + technical indicators + aggregate signal (cached 60s) |
+| `/strats` | GET | List available strategy guides |
+| `/strats/:id` | GET | Fetch a strategy guide (markdown) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 
 ---
@@ -1143,6 +1147,159 @@ GET /filterTokens?network=sol&minLiquidity=50000&maxMarketCap=1000000&sortBy=tre
   "providers": [...]
 }
 ```
+
+---
+
+### `GET /volatilityScanner`
+
+Scans high-volume tokens for repeating swing patterns. Fetches top tokens by volume, computes zigzag swing detection from OHLCV candles, and returns candidates ranked by a composite swing score. Results are cached for 5 minutes.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `sol` | Chain to scan |
+| `minVolume` | number | no | `100000` | Minimum 24h volume (USD) |
+| `minSwingPct` | number | no | `10` | Minimum median swing size (%) to qualify |
+| `duration` | string | no | `hour4` | Stats window: `min5`, `hour1`, `hour4`, `hour12`, `day1` |
+| `maxResults` | number | no | `20` | Max candidates to return |
+
+```
+GET /volatilityScanner?chain=sol&minVolume=500000&minSwingPct=10&duration=hour4&maxResults=10
+```
+
+**Response:**
+```json
+{
+  "endpoint": "volatilityScanner",
+  "chain": "sol",
+  "duration": "hour4",
+  "count": 5,
+  "cached": false,
+  "scanned": 50,
+  "passedPreFilter": 18,
+  "passedStats": 7,
+  "candidates": [
+    {
+      "address": "TokenMint...",
+      "name": "ExampleToken",
+      "symbol": "EX",
+      "priceUsd": "0.00523",
+      "liquidity": "250000",
+      "volume24h": "1200000",
+      "change24h": "0.15",
+      "support": 0.0042,
+      "resistance": 0.0068,
+      "swingPct": 18.5,
+      "avgSwingPct": 21.3,
+      "swingCount": 4,
+      "currentPosition": 0.32,
+      "buyVsSellRatio": 1.15,
+      "volumeTrend": "rising",
+      "volumeChangePct": 35.2,
+      "swingScore": 85
+    }
+  ]
+}
+```
+
+**Key fields:**
+- `swingPct` — Median swing size across detected reversals (the "typical" tradeable swing)
+- `avgSwingPct` — Average swing size (can be skewed by outliers)
+- `swingCount` — Number of detected reversals (minimum 2 to qualify)
+- `currentPosition` — Where price sits in the support/resistance range (0 = at support, 1 = at resistance)
+- `volumeTrend` — `"rising"` / `"falling"` / `"flat"` based on recent vs older candle volume
+- `volumeChangePct` — Exact % change in volume (e.g., `+35.2` means recent volume is 35% higher)
+- `swingScore` — Composite 0-100 score (swing size, count, volume, buy/sell balance, position)
+
+---
+
+### `GET /priceHistoryIndicators`
+
+Returns OHLCV price history plus timeframe-adaptive technical indicators with an aggregate buy/sell signal. Indicators auto-tune their periods based on the requested timeframe. Results are cached for 60 seconds.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `eth` | Chain |
+| `tokenAddress` | string | **yes** | — | Token address |
+| `indicatorTimeFrame` | string | no | `1h` | `1m`, `5m`, `10m`, `15m`, `30m`, `1h`, `4h`, `1d` |
+
+```
+GET /priceHistoryIndicators?chain=eth&tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&indicatorTimeFrame=1h
+```
+
+**Response:**
+```json
+{
+  "endpoint": "priceHistoryIndicators",
+  "status": "live",
+  "chain": "eth",
+  "tokenAddress": "0xC02...",
+  "currency": "usd",
+  "limit": "7d",
+  "interval": "1h",
+  "indicatorTimeFrame": "1h",
+  "pointCount": 168,
+  "cached": false,
+  "points": [
+    { "timestamp": 1710000000, "priceUsd": 2350, "open": 2345, "high": 2360, "low": 2340, "close": 2350, "volume": 500000 }
+  ],
+  "indicators": {
+    "timeFrame": "1h",
+    "config": { "rsiPeriod": 14, "macdFast": 12, "macdSlow": 26, "macdSignal": 9, "emaShort": 9, "emaMedium": 21, "emaLong": 55, "..." : "..." },
+    "rsi": { "period": 14, "value": 55.3, "signal": "neutral" },
+    "macd": { "macd": 12.5, "signal": 10.2, "histogram": 2.3, "trend": "bullish" },
+    "ema": { "short": { "period": 9, "value": 2348 }, "medium": { "period": 21, "value": 2340 }, "long": { "period": 55, "value": 2310 } },
+    "sma": { "period": 20, "value": 2342 },
+    "bollingerBands": { "upper": 2400, "middle": 2342, "lower": 2284, "bandwidth": 0.049, "percentB": 0.57 },
+    "atr": { "period": 14, "value": 25.6 },
+    "stochRsi": { "k": 65, "d": 58, "signal": "neutral" },
+    "supportResistance": { "support": [2300, 2280], "resistance": [2400, 2420] },
+    "vwap": { "value": 2345, "upperBand": 2390, "lowerBand": 2300 },
+    "obv": { "value": 12500000, "trend": "accumulating" },
+    "summary": { "signal": "buy", "bullishCount": 4, "bearishCount": 1, "neutralCount": 2 }
+  },
+  "providers": [...]
+}
+```
+
+**Indicators included:** RSI, MACD, EMA (short/medium/long), SMA, Bollinger Bands (%B, bandwidth), ATR, Stochastic RSI, Support/Resistance levels, VWAP (with bands), OBV (with trend).
+
+**Aggregate signal:** `summary.signal` is one of `strong_buy`, `buy`, `neutral`, `sell`, `strong_sell` based on the count of bullish vs bearish indicator readings.
+
+---
+
+### `GET /strats`
+
+List all available strategy guides.
+
+```
+GET /strats
+```
+
+**Response:**
+```json
+{
+  "strategies": [
+    {
+      "id": "swing-trade",
+      "name": "Swing Trader",
+      "description": "Find volatile high-volume tokens with 10%+ price swings and place entries/exits at support & resistance levels.",
+      "path": "/strats/swing-trade"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /strats/:id`
+
+Fetch a strategy guide as markdown. Returns `Content-Type: text/markdown`.
+
+```
+GET /strats/swing-trade
+```
+
+**Response:** Raw markdown document describing the full strategy playbook — API endpoints used, entry/exit criteria, risk management rules, and a monitoring decision tree. Designed to be consumed by autonomous trading agents.
 
 ---
 
