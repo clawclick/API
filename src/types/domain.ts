@@ -1,5 +1,12 @@
 export type EndpointName =
+  | "apiKeyGenerate"
+  | "adminStats"
+  | "stats"
+  | "statsRequests"
+  | "statsUsers"
+  | "statsVolume"
   | "approve"
+  | "holders"
   | "walletReview"
   | "tokenPoolInfo"
   | "tokenPriceHistory"

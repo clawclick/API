@@ -57,12 +57,19 @@ npx tsx src/server.ts   # starts on port 3000
 |---|---|---|
 | `/health` | GET | Health check |
 | `/providers` | GET | List all 50+ providers and their config status |
+| `/admin/apiKeys/generate` | POST | Generate a new client API key |
+| `/admin/stats` | GET | Full daily analytics snapshot for admins |
+| `/stats` | GET | Summary daily stats: requests, users, volume |
+| `/stats/requests` | GET | Daily request totals by endpoint and status |
+| `/stats/users` | GET | API key issuance and usage totals |
+| `/stats/volume` | GET | Daily ETH buy/sell volume counters |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |
 | `/tokenPriceHistory` | GET | Historical OHLCV price data |
 | `/detailedTokenStats` | GET | Bucketed token stats from Codex (cached 30 min) |
 | `/isScam` | GET | Quick scam check with risk score |
 | `/fullAudit` | GET | Deep contract audit (taxes, ownership, trading flags) |
 | `/holderAnalysis` | GET | Holder distribution, concentration, whale tracking |
+| `/holders` | GET | Top holder rows for a token (Moralis on EVM, RPC on Solana) |
 | `/fudSearch` | GET | Search social mentions for FUD signals |
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
@@ -77,7 +84,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/gasFeed` | GET | Current gas prices (EVM chains) |
 | `/tokenSearch` | GET | Search tokens by name/symbol/address |
 | `/filterTokens` | GET | Filter tokens by metrics (Codex, cached 5 min) |
-| `/tokenHolders` | GET | Raw token-holder ledger for EVM tokens (Sim by Dune) |
+| `/tokenHolders` | GET | Raw token-holder ledger for EVM and Solana tokens |
 | `/volatilityScanner` | GET | Swing-trade volatility scanner (cached 5 min) |
 | `/priceHistoryIndicators` | GET | OHLCV + technical indicators + aggregate signal (cached 60s) |
 | `/strats` | GET | List available strategy guides |
@@ -114,6 +121,94 @@ Every endpoint returns a JSON object with:
 - **`live`**: All providers returned data.
 - **`partial`**: Some providers were skipped or errored, but usable data was returned.
 - **`providers`**: Shows which data sources contributed and their individual status.
+
+---
+
+## Auth
+
+Most data endpoints require a client API key.
+
+- Client auth: `x-api-key: <key>` or `Authorization: Bearer <key>`
+- Admin auth: `x-admin-key: <ADMIN_API_KEY>`
+- Public endpoints:
+  - `/health`
+  - `/providers`
+
+---
+
+### `POST /admin/apiKeys/generate`
+
+Generate a new client API key. Admin-only endpoint.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `label` | string | no | — | Optional label for the issued key |
+
+```
+POST /admin/apiKeys/generate?label=trading-bot
+```
+
+**Response:**
+```json
+{
+  "endpoint": "apiKeyGenerate",
+  "apiKey": "ska_...",
+  "keyId": "...",
+  "prefix": "ska_abcd1234",
+  "label": "trading-bot",
+  "createdAt": "2026-03-19T00:00:00.000Z",
+  "totalGenerated": 3,
+  "activeToday": 1
+}
+```
+
+---
+
+### `GET /stats`
+
+Admin summary endpoint. Returns the current UTC-day totals for requests, active API-key users, and ETH volume.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+```
+GET /stats
+```
+
+**Response:**
+```json
+{
+  "endpoint": "stats",
+  "dayKey": "2026-03-19",
+  "requests": { "total": 1240 },
+  "users": { "totalGenerated": 12, "activeToday": 4 },
+  "volume": {
+    "buyWei": "1000000000000000000",
+    "sellWei": "500000000000000000",
+    "buyEth": "1",
+    "sellEth": "0.5",
+    "buyCount": 3,
+    "sellCount": 2
+  }
+}
+```
+
+### `GET /stats/requests`
+
+Admin-only request analytics for the current UTC day.
+
+### `GET /stats/users`
+
+Admin-only API-key issuance and usage analytics for the current UTC day.
+
+### `GET /stats/volume`
+
+Admin-only ETH buy/sell volume counters for the current UTC day.
+
+### `GET /admin/stats`
+
+Admin-only full analytics snapshot. Returns the combined `requests`, `users`, and `volume` sections in one response.
 
 ---
 
@@ -412,13 +507,16 @@ GET /holderAnalysis?chain=eth&tokenAddress=0x...
 
 ### `GET /tokenHolders`
 
-Raw token-holder ledger for EVM tokens via Sim by Dune. This is separate from `holderAnalysis`: it returns paginated holder rows rather than a concentration/risk summary.
+Raw token-holder ledger. This is separate from `holderAnalysis`: it returns holder rows rather than a concentration/risk summary.
+
+- EVM chains use Sim by Dune and support pagination via `cursor`
+- Solana uses Solana RPC-derived holder rows, so `nextOffset` is always `null` and acquisition metadata is not available
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `tokenAddress` | string | **yes** | — | Token contract address |
-| `network` | string | no | `eth` | EVM chain: `eth`, `base`, `bsc` |
-| `cursor` | string | no | — | Pagination token from the previous response |
+| `network` | string | no | `eth` | Chain: `eth`, `base`, `bsc`, `sol` |
+| `cursor` | string | no | — | Pagination token from the previous response (EVM only) |
 | `limit` | number | no | `50` | Results per page (1–200) |
 
 ```
@@ -447,6 +545,54 @@ GET /tokenHolders?tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2&networ
     }
   ],
   "providers": [...]
+}
+```
+
+---
+
+### `GET /holders`
+
+Top-holder endpoint for a token.
+
+- EVM chains use Moralis owner rows
+- Solana uses direct Solana RPC holder scanning
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `eth` | Chain: `eth`, `base`, `bsc`, `sol` |
+| `tokenAddress` | string | **yes** | — | Token contract or mint address |
+| `limit` | number | no | `150` | Maximum rows returned (1–150) |
+
+```
+GET /holders?chain=sol&tokenAddress=Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk&limit=5
+```
+
+**Response:**
+```json
+{
+  "endpoint": "holders",
+  "status": "live",
+  "cached": false,
+  "chain": "sol",
+  "tokenAddress": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
+  "limit": 5,
+  "holderCount": 36547,
+  "totalSupplyRaw": "999111158353621",
+  "totalSupplyFormatted": "999111158.353621",
+  "holders": [
+    {
+      "address": "u6PJ8DtQuPFnfmwHbGFULQ4u4EgjDiyYKjVEsynXq2w",
+      "label": null,
+      "entity": null,
+      "isContract": null,
+      "balance": "66226101364616",
+      "balanceFormatted": "66226101.364616",
+      "percentOfSupply": 6.6286
+    }
+  ],
+  "providers": [
+    { "provider": "solRpc:holders", "status": "ok" }
+  ]
 }
 ```
 
@@ -1470,12 +1616,15 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 
 | Variable | Used By |
 |---|---|
-| `MORALIS_API_KEY` | walletReview, holderAnalysis, tokenPoolInfo |
+| `DATABASE_URL` | API key storage and analytics tables |
+| `ADMIN_API_KEY` | Admin-only endpoints: `/admin/apiKeys/generate`, `/admin/stats`, `/stats*` |
+| `MORALIS_API_KEY` | walletReview, holderAnalysis, tokenPoolInfo, holders |
 | `BIRDEYE_API_KEY` | tokenPoolInfo, priceHistory, topTraders, walletReview |
 | `ETHERSCAN_API_KEY` | gasFeed (single key for ETH/BASE/BSC via Etherscan V2) |
 | `ETH_RPC_URL` | tokenPoolInfo, holderAnalysis (on-chain calls) |
 | `BASE_RPC_URL` | tokenPoolInfo, holderAnalysis (on-chain calls) |
 | `BSC_RPC_URL` | tokenPoolInfo, holderAnalysis (on-chain calls) |
+| `SOL_RPC_URL` | Solana `/holders` and `/tokenHolders` holder scanning, Solana swaps |
 
 ### Optional — additional providers
 
@@ -1488,7 +1637,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `DEBANK_API_KEY` | walletReview (protocols, approvals) |
 | `ARKHAM_API_KEY` | walletReview, holderAnalysis |
 | `DUNE_API_KEY` + `DUNE_QUERY_ID` | holderAnalysis |
-| `SIM_API_KEY` | tokenHolders |
+| `SIM_API_KEY` | tokenHolders (EVM only) |
 | `LUNARCRUSH_API_KEY` | marketOverview (sentiment) |
 | `REDDIT_CLIENT_ID` + `SECRET` + `USER_AGENT` | fudSearch, marketOverview |
 | `X_BEARER_TOKEN` | fudSearch, marketOverview |

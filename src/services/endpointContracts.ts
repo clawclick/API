@@ -2,7 +2,14 @@ import { getProviderHealth } from "#services/providerHealth";
 import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
+  apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals.",
+  adminStats: "Returns the full daily analytics snapshot, including requests, users, and ETH volume counters.",
+  stats: "Returns the top-level daily summary: requests, API-key users, and ETH volume.",
+  statsRequests: "Returns daily request totals broken down by endpoint and HTTP status code.",
+  statsUsers: "Returns API-key issuance and activity totals, plus per-key daily usage rows.",
+  statsVolume: "Returns aggregated ETH buy and sell volume counters for the current UTC day.",
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
+  holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
   tokenPoolInfo: "Returns market cap, price, liquidity, holder summary, and 24h movement for a token or pool.",
   tokenPriceHistory: "Returns normalized price history for a token using an adjustable timeframe.",
@@ -16,7 +23,7 @@ const descriptions: Record<EndpointName, string> = {
   filterWallets: "Discovers wallets by realized PnL, win rate, volume, and swap count across configurable time frames via Codex.",
   tokenWallets: "Lists wallets trading a specific token with PnL, balance, and buy/sell stats via Codex.",
   walletStats: "Returns detailed PnL and trading stats for a wallet across 1d/1w/30d/1y time periods via Codex.",
-  tokenHolders: "Returns raw holder rows for EVM tokens via Sim by Dune, including first-acquired time and whether each wallet has initiated transfers.",
+  tokenHolders: "Returns raw holder rows for tokens: Sim by Dune on EVM chains and Solana RPC-derived holder rows on Solana.",
   unwrap: "Builds an unsigned wrapped-native withdraw transaction so a wallet can unwrap WETH/WBNB back into native gas token.",
   swap: "Executes a token swap on the best available DEX route for the specified chain.",
   swapQuote: "Returns a price quote for a swap without executing it.",
@@ -31,10 +38,17 @@ const descriptions: Record<EndpointName, string> = {
 };
 
 const cacheHints: Record<EndpointName, number> = {
+  apiKeyGenerate: 0,
+  adminStats: 0,
+  stats: 0,
+  statsRequests: 0,
+  statsUsers: 0,
+  statsVolume: 0,
   approve: 0,
+  holders: 120,
   walletReview: 180,
   tokenPoolInfo: 60,
-  tokenPriceHistory: 300,
+  tokenPriceHistory: 120,
   detailedTokenStats: 1800,
   isScam: 120,
   fullAudit: 900,

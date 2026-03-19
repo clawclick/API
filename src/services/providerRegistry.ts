@@ -3,7 +3,7 @@ import type { ProviderRecord } from "#types/domain";
 export const providerRegistry: ProviderRecord[] = [
   { id: "arkham", label: "Arkham", category: "walletTracking", folder: "Alpha_Wallet_tracking/Arkham", env: ["ARKHAM_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
   { id: "debank", label: "DeBank", category: "walletTracking", folder: "Alpha_Wallet_tracking/Debank", env: ["DEBANK_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
-  { id: "moralis", label: "Moralis", category: "walletTracking", folder: "Alpha_Wallet_tracking/Moralis", env: ["MORALIS_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
+  { id: "moralis", label: "Moralis", category: "walletTracking", folder: "Alpha_Wallet_tracking/Moralis", env: ["MORALIS_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "holders", "marketOverview"] },
   { id: "nansen", label: "Nansen", category: "walletTracking", folder: "Alpha_Wallet_tracking/Nansen", env: ["NANSEN_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
   { id: "aerodromeV2", label: "Aerodrome V2", category: "dex", folder: "DEX/Chain/BASE/AERODOME_V2", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "baseGasFeed", label: "Base Gas Feed", category: "chainInfra", folder: "DEX/Chain/BASE/GAS_FEED", env: ["ETHERSCAN_API_KEY"], endpoints: ["marketOverview"] },
@@ -24,7 +24,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "meteora", label: "Meteora", category: "dex", folder: "DEX/Chain/SOL/METEORA", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "pumpfun", label: "PumpFun", category: "dex", folder: "DEX/Chain/SOL/PUMPFUN", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "raydium", label: "Raydium", category: "dex", folder: "DEX/Chain/SOL/RADYUM", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
-  { id: "solRpc", label: "Solana RPC", category: "chainInfra", folder: "DEX/Chain/SOL/RPC", env: ["SOL_RPC_URL"], endpoints: ["tokenPoolInfo", "holderAnalysis", "marketOverview"] },
+  { id: "solRpc", label: "Solana RPC", category: "chainInfra", folder: "DEX/Chain/SOL/RPC", env: ["SOL_RPC_URL"], endpoints: ["tokenPoolInfo", "holderAnalysis", "holders", "tokenHolders", "marketOverview"] },
   { id: "defiLlama", label: "DefiLlama", category: "marketData", folder: "Market_data/DeFi/DefiLlama", env: [], endpoints: ["marketOverview"] },
   { id: "dune", label: "Dune Analytics", category: "marketData", folder: "Market_data/DeFi/DuneAnalytics", env: ["DUNE_API_KEY", "DUNE_QUERY_ID"], endpoints: ["holderAnalysis", "marketOverview"] },
   { id: "simDune", label: "Sim by Dune", category: "marketData", folder: "Market_data/DeFi/DuneAnalytics", env: ["SIM_API_KEY"], endpoints: ["tokenHolders"] },
