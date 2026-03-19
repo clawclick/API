@@ -57,7 +57,7 @@ const cacheHints: Record<EndpointName, number> = {
   marketOverview: 120,
   filterTokens: 300,
   filterWallets: 1800,
-  tokenWallets: 1800,
+  tokenWallets: 180,
   walletStats: 180,
   tokenHolders: 120,
   unwrap: 0,
