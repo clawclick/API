@@ -51,8 +51,7 @@ export function buildApp() {
       return;
     }
 
-    const resolved = await requireApiKey(request.headers as Record<string, unknown>);
-    (request as typeof request & AuthenticatedRequest).apiKeyId = resolved.id;
+    // Client API key auth disabled for now — only admin key is enforced
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
