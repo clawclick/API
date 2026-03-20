@@ -9,7 +9,7 @@ import {
   getTokenPoolInfo,
   getTokenPriceHistory
 } from "#services/liveEndpoints";
-import { getApiRuntimeStats, generateApiKey, getStatsOverview, getStatsRequests, getStatsUsers, getStatsVolume } from "#services/apiRuntime";
+import { getApiRuntimeStats, getRequests, generateApiKey, getStatsOverview, getStatsRequests, getStatsUsers, getStatsVolume, getVolume } from "#services/apiRuntime";
 import { getHolders } from "#services/holders";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
@@ -36,11 +36,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/providers", async () => ({ providers: getProviderHealth() }));
 
   app.post("/admin/apiKeys/generate", async (request) => generateApiKey(parseQuery(apiKeyGenerateSchema, request.query).label ?? null));
+  app.get("/admin/stats/requests", async () => getRequests());
   app.get("/admin/stats", async () => getApiRuntimeStats());
   app.get("/stats", async () => getStatsOverview());
   app.get("/stats/requests", async () => getStatsRequests());
   app.get("/stats/users", async () => getStatsUsers());
   app.get("/stats/volume", async () => getStatsVolume());
+  app.get("/admin/stats/volume", async () => getVolume());
 
   // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));

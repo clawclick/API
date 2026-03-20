@@ -5,7 +5,10 @@ import { getOptionalEnv, getRequiredEnv, isConfigured } from "#config/env";
 import { isNativeIn } from "#lib/evm";
 import type {
   ApiKeyGenerateResponse,
+  ApiRequestsResponse,
   ApiRuntimeStatsResponse,
+  ApiVolumeResponse,
+  ApiAllTimeVolume,
   ApiStatsOverviewResponse,
   ApiStatsRequests,
   ApiStatsRequestsResponse,
@@ -61,6 +64,8 @@ const PUBLIC_PATHS = new Set(["/health", "/providers"]);
 const ADMIN_PATHS = new Set([
   "/admin/apiKeys/generate",
   "/admin/stats",
+  "/admin/stats/requests",
+  "/admin/stats/volume",
   "/stats",
   "/stats/requests",
   "/stats/users",
@@ -95,8 +100,11 @@ const PROTECTED_PREFIXES = [
   "/ws/launchpadEvents",
   "/admin/",
 ];
+const ALL_TIME_REQUESTS_CACHE_TTL_MS = 5 * 60 * 1000;
+
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
+let allTimeRequestsCache: { expiresAt: number; value: ApiStatsRequests } | null = null;
 
 function getDayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
@@ -586,6 +594,57 @@ async function getRequestsStats(dayKey: string): Promise<ApiStatsRequests> {
   };
 }
 
+async function getAllTimeRequestsStats(): Promise<ApiStatsRequests> {
+  const now = Date.now();
+  if (allTimeRequestsCache && allTimeRequestsCache.expiresAt > now) {
+    return allTimeRequestsCache.value;
+  }
+
+  await ensureDatabaseReady();
+  const [totalResult, endpointResult, statusResult] = await Promise.all([
+    getPool().query<{ total_requests: string }>(
+      `SELECT COALESCE(SUM(total_requests), 0)::text AS total_requests FROM api_daily_stats`,
+    ),
+    getPool().query<{ endpoint: string; request_count: string }>(
+      `
+        SELECT endpoint, COALESCE(SUM(request_count), 0)::text AS request_count
+        FROM api_daily_endpoint_stats
+        GROUP BY endpoint
+        ORDER BY COALESCE(SUM(request_count), 0) DESC, endpoint ASC
+      `,
+    ),
+    getPool().query<{ status_code: string; request_count: string }>(
+      `
+        SELECT status_code, COALESCE(SUM(request_count), 0)::text AS request_count
+        FROM (
+          SELECT key AS status_code, value::bigint AS request_count
+          FROM api_daily_stats
+          CROSS JOIN LATERAL jsonb_each_text(status_codes)
+        ) counts
+        GROUP BY status_code
+        ORDER BY status_code ASC
+      `,
+    ),
+  ]);
+
+  const result = {
+    total: parseCount(totalResult.rows[0]?.total_requests),
+    byEndpoint: Object.fromEntries(
+      endpointResult.rows.map((row) => [row.endpoint, parseCount(row.request_count)]),
+    ),
+    byStatusCode: Object.fromEntries(
+      statusResult.rows.map((row) => [row.status_code, parseCount(row.request_count)]),
+    ),
+  };
+
+  allTimeRequestsCache = {
+    expiresAt: now + ALL_TIME_REQUESTS_CACHE_TTL_MS,
+    value: result,
+  };
+
+  return result;
+}
+
 async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
   await ensureDatabaseReady();
   const [countsResult, itemsResult] = await Promise.all([
@@ -681,12 +740,56 @@ async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
   };
 }
 
+async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
+  await ensureDatabaseReady();
+  const result = await getPool().query<{
+    eth_buy_wei: string;
+    eth_sell_wei: string;
+    eth_buy_count: string;
+    eth_sell_count: string;
+  }>(
+    `
+      SELECT
+        COALESCE(SUM(eth_buy_wei), 0)::text AS eth_buy_wei,
+        COALESCE(SUM(eth_sell_wei), 0)::text AS eth_sell_wei,
+        COALESCE(SUM(eth_buy_count), 0)::text AS eth_buy_count,
+        COALESCE(SUM(eth_sell_count), 0)::text AS eth_sell_count
+      FROM api_daily_stats
+    `,
+  );
+
+  const row = result.rows[0];
+  const buyWei = row?.eth_buy_wei ?? "0";
+  const sellWei = row?.eth_sell_wei ?? "0";
+
+  return {
+    buyWei,
+    sellWei,
+    buyEth: formatUnits(buyWei, 18),
+    sellEth: formatUnits(sellWei, 18),
+    buyCount: parseCount(row?.eth_buy_count),
+    sellCount: parseCount(row?.eth_sell_count),
+  };
+}
+
+function summarizeAllTimeVolume(volume: ApiStatsVolume): ApiAllTimeVolume {
+  const totalWei = (BigInt(volume.buyWei) + BigInt(volume.sellWei)).toString();
+  return {
+    ...volume,
+    totalWei,
+    totalEth: formatUnits(totalWei, 18),
+    totalCount: volume.buyCount + volume.sellCount,
+  };
+}
+
 export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
   const metrics = await getTodayMetrics();
-  const [requests, users, volume] = await Promise.all([
+  const [requests, users, volume, allTimeRequests, allTimeVolume] = await Promise.all([
     getRequestsStats(metrics.dayKey),
     getUsersStats(metrics.dayKey),
     getVolumeStats(metrics.dayKey),
+    getAllTimeRequestsStats(),
+    getAllTimeVolumeStats(),
   ]);
 
   return {
@@ -697,6 +800,10 @@ export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
     requests,
     users,
     volume,
+    allTime: {
+      requests: allTimeRequests,
+      volume: allTimeVolume,
+    },
   };
 }
 
@@ -710,12 +817,15 @@ export async function getStatsOverview(): Promise<ApiStatsOverviewResponse> {
     resetsAt: full.resetsAt,
     requests: {
       total: full.requests.total,
+      allTimeTotal: full.allTime.requests.total,
     },
     users: {
       totalGenerated: full.users.totalGenerated,
+      totalEverUsed: full.users.totalEverUsed,
       activeToday: full.users.activeToday,
     },
     volume: full.volume,
+    allTime: full.allTime,
   };
 }
 
@@ -727,6 +837,7 @@ export async function getStatsRequests(): Promise<ApiStatsRequestsResponse> {
     startedAt: metrics.startedAt,
     resetsAt: metrics.resetsAt,
     requests: await getRequestsStats(metrics.dayKey),
+    allTime: await getAllTimeRequestsStats(),
   };
 }
 
@@ -749,5 +860,21 @@ export async function getStatsVolume(): Promise<ApiStatsVolumeResponse> {
     startedAt: metrics.startedAt,
     resetsAt: metrics.resetsAt,
     volume: await getVolumeStats(metrics.dayKey),
+    allTime: await getAllTimeVolumeStats(),
+  };
+}
+
+export async function getRequests(): Promise<ApiRequestsResponse> {
+  return {
+    endpoint: "requests",
+    requests: await getAllTimeRequestsStats(),
+  };
+}
+
+export async function getVolume(): Promise<ApiVolumeResponse> {
+  const volume = await getAllTimeVolumeStats();
+  return {
+    endpoint: "volume",
+    volume: summarizeAllTimeVolume(volume),
   };
 }

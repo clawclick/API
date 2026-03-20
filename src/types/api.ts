@@ -806,6 +806,17 @@ export type ApiStatsVolume = {
   sellCount: number;
 };
 
+export type ApiAllTimeVolume = ApiStatsVolume & {
+  totalWei: string;
+  totalEth: string;
+  totalCount: number;
+};
+
+export type ApiStatsAllTime = {
+  requests: ApiStatsRequests;
+  volume: ApiStatsVolume;
+};
+
 export type ApiRuntimeStatsResponse = {
   endpoint: "adminStats";
   dayKey: string;
@@ -814,6 +825,7 @@ export type ApiRuntimeStatsResponse = {
   requests: ApiStatsRequests;
   users: ApiStatsUsers;
   volume: ApiStatsVolume;
+  allTime: ApiStatsAllTime;
 };
 
 export type ApiStatsOverviewResponse = {
@@ -823,12 +835,15 @@ export type ApiStatsOverviewResponse = {
   resetsAt: string;
   requests: {
     total: number;
+    allTimeTotal: number;
   };
   users: {
     totalGenerated: number;
+    totalEverUsed: number;
     activeToday: number;
   };
   volume: ApiStatsVolume;
+  allTime: ApiStatsAllTime;
 };
 
 export type ApiStatsRequestsResponse = {
@@ -837,6 +852,7 @@ export type ApiStatsRequestsResponse = {
   startedAt: string;
   resetsAt: string;
   requests: ApiStatsRequests;
+  allTime: ApiStatsRequests;
 };
 
 export type ApiStatsUsersResponse = {
@@ -853,4 +869,15 @@ export type ApiStatsVolumeResponse = {
   startedAt: string;
   resetsAt: string;
   volume: ApiStatsVolume;
+  allTime: ApiStatsVolume;
+};
+
+export type ApiRequestsResponse = {
+  endpoint: "requests";
+  requests: ApiStatsRequests;
+};
+
+export type ApiVolumeResponse = {
+  endpoint: "volume";
+  volume: ApiAllTimeVolume;
 };

@@ -3,11 +3,13 @@ import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
   apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals.",
-  adminStats: "Returns the full daily analytics snapshot, including requests, users, and ETH volume counters.",
-  stats: "Returns the top-level daily summary: requests, API-key users, and ETH volume.",
-  statsRequests: "Returns daily request totals broken down by endpoint and HTTP status code.",
+  requests: "Returns all-time request totals, including per-endpoint and per-status-code breakdowns.",
+  volume: "Returns all-time ETH buy and sell volume with a combined total across both directions.",
+  adminStats: "Returns the full analytics snapshot with current-day stats plus all-time request and ETH volume aggregates.",
+  stats: "Returns the top-level current-day summary plus all-time request totals and ETH volume aggregates.",
+  statsRequests: "Returns current-day request totals broken down by endpoint and HTTP status code, plus matching all-time aggregates.",
   statsUsers: "Returns API-key issuance and activity totals, plus per-key daily usage rows.",
-  statsVolume: "Returns aggregated ETH buy and sell volume counters for the current UTC day.",
+  statsVolume: "Returns aggregated ETH buy and sell volume counters for the current UTC day, plus all-time totals.",
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
@@ -39,6 +41,8 @@ const descriptions: Record<EndpointName, string> = {
 
 const cacheHints: Record<EndpointName, number> = {
   apiKeyGenerate: 0,
+  requests: 0,
+  volume: 0,
   adminStats: 0,
   stats: 0,
   statsRequests: 0,
