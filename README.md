@@ -157,9 +157,9 @@ POST /admin/apiKeys/generate?label=trading-bot&agentId=arb-bot-01&agentWalletEvm
 ```json
 {
   "endpoint": "apiKeyGenerate",
-  "apiKey": "ska_...",
+  "apiKey": "click_...",
   "keyId": "...",
-  "prefix": "ska_abcd1234",
+  "prefix": "click_abcd12",
   "label": "trading-bot",
   "agentId": "arb-bot-01",
   "agentWalletEvm": "0x1234...",

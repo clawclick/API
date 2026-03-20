@@ -390,7 +390,7 @@ export async function generateApiKey(
 ): Promise<ApiKeyGenerateResponse> {
   return withTransaction(async (client) => {
     const now = new Date().toISOString();
-    const apiKey = `ska_${randomBytes(24).toString("hex")}`;
+    const apiKey = `click_${randomBytes(24).toString("hex")}`;
     const prefix = apiKey.slice(0, 12);
     const recordId = randomBytes(12).toString("hex");
     const normalizedLabel = normalizeNullableText(label);
