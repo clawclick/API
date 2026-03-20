@@ -4,11 +4,12 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
-import { AccessError, classifyPath, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
+import { AccessError, classifyPath, enterRequestMetricsContext, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
   apiKeyId?: string;
+  metricsStartedAtNs?: bigint;
 };
 
 function getPathname(url: string): string {
@@ -39,6 +40,8 @@ export function buildApp() {
   app.addHook("onRequest", async (request) => {
     if (request.method === "OPTIONS") return;
 
+    (request as unknown as AuthenticatedRequest).metricsStartedAtNs = process.hrtime.bigint();
+
     const pathname = getPathname(request.raw.url ?? request.url);
     const classification = classifyPath(pathname);
 
@@ -64,18 +67,28 @@ export function buildApp() {
   app.addHook("onSend", async (request, reply, payload) => {
     const authRequest = request as typeof request & AuthenticatedRequest;
     const path = request.routeOptions.url || getPathname(request.raw.url ?? request.url);
+    const durationMs = authRequest.metricsStartedAtNs
+      ? Number(process.hrtime.bigint() - authRequest.metricsStartedAtNs) / 1_000_000
+      : undefined;
 
     try {
       await recordRequestMetric({
         path,
         statusCode: reply.statusCode,
+        durationMs,
         apiKeyId: authRequest.apiKeyId,
       });
+      await flushProviderMetrics();
     } catch (error) {
       request.log.error({ err: error, path }, "Failed to record request metrics");
     }
 
     return payload;
+  });
+
+  app.addHook("preHandler", async (request) => {
+    const endpoint = request.routeOptions.url || getPathname(request.raw.url ?? request.url);
+    enterRequestMetricsContext(endpoint);
   });
 
   /* ── Global error handler ─────────────────────────────── */

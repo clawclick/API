@@ -3,12 +3,12 @@ import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
   apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals and optional agent metadata attachments.",
-  requests: "Returns all-time request totals, including per-endpoint and per-status-code breakdowns. Backed by a 5-minute in-memory aggregate cache.",
+  requests: "Returns all-time request totals, explicit success/client-error/server-error counters, latency summaries, per-endpoint leaderboards, and provider-level failure breakdowns. Backed by a 5-minute in-memory aggregate cache.",
   volume: "Returns all-time ETH buy and sell volume with a combined total across both directions. Backed by a 5-minute in-memory aggregate cache.",
-  adminStats: "Returns the full analytics snapshot with current-day stats plus all-time request and ETH volume aggregates.",
-  stats: "Returns the top-level current-day summary plus all-time request totals and ETH volume aggregates.",
-  statsRequests: "Returns current-day request totals broken down by endpoint and HTTP status code, plus matching all-time aggregates.",
-  statsUsers: "Returns API-key issuance and activity totals, plus per-key daily usage rows.",
+  adminStats: "Returns the full analytics snapshot with current-day stats, request latency, provider health leaderboards, and all-time request, user, agent, and ETH volume aggregates.",
+  stats: "Returns the top-level current-day summary plus explicit success/client-error/server-error request counters, latency summaries, all-time request totals, and ETH volume aggregates.",
+  statsRequests: "Returns current-day request totals broken down by success/client-error/server-error, latency, endpoint rates, provider failures, and HTTP status code, plus matching all-time aggregates.",
+  statsUsers: "Returns API-key issuance and activity totals, plus per-key and per-agent daily usage, error, and latency rows.",
   statsVolume: "Returns aggregated ETH buy and sell volume counters for the current UTC day, plus all-time totals.",
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",

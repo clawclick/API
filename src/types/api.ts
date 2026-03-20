@@ -788,18 +788,125 @@ export type ApiStatsUserItem = {
   totalRequests: number;
   activeToday: boolean;
   requestsToday: number;
+  successfulToday: number;
+  failedToday: number;
+  clientErrorsToday: number;
+  serverErrorsToday: number;
+  successRatePctToday: number;
+  failureRatePctToday: number;
+  latencyToday: ApiStatsLatency;
+};
+
+export type ApiStatsAgentItem = {
+  agentId: string;
+  keyCount: number;
+  activeKeysToday: number;
+  totalRequests: number;
+  requestsToday: number;
+  successfulToday: number;
+  failedToday: number;
+  clientErrorsToday: number;
+  serverErrorsToday: number;
+  successRatePctToday: number;
+  failureRatePctToday: number;
+  latencyToday: ApiStatsLatency;
+};
+
+export type ApiAllTimeUserItem = {
+  id: string;
+  prefix: string;
+  label: string | null;
+  agentId: string | null;
+  agentWalletEvm: string | null;
+  agentWalletSol: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  totalRequests: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
+};
+
+export type ApiAllTimeAgentItem = {
+  agentId: string;
+  keyCount: number;
+  totalRequests: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
+};
+
+export type ApiAllTimeUsers = {
+  totalGenerated: number;
+  totalEverUsed: number;
+  totalAgents: number;
+  totalEverUsedAgents: number;
+  agents: ApiAllTimeAgentItem[];
+  items: ApiAllTimeUserItem[];
 };
 
 export type ApiStatsRequests = {
   total: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
   byEndpoint: Record<string, number>;
   byStatusCode: Record<string, number>;
+  endpointBreakdown: ApiStatsRequestBreakdown[];
+  providers: ApiStatsRequestProviderBreakdown[];
+};
+
+export type ApiStatsLatency = {
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+};
+
+export type ApiStatsRequestBreakdown = {
+  key: string;
+  total: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
+};
+
+export type ApiStatsRequestProviderBreakdown = {
+  provider: string;
+  total: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
+  endpoints: ApiStatsRequestBreakdown[];
 };
 
 export type ApiStatsUsers = {
   totalGenerated: number;
   totalEverUsed: number;
   activeToday: number;
+  totalAgents: number;
+  activeAgentsToday: number;
+  agents: ApiStatsAgentItem[];
   items: ApiStatsUserItem[];
 };
 
@@ -820,6 +927,7 @@ export type ApiAllTimeVolume = ApiStatsVolume & {
 
 export type ApiStatsAllTime = {
   requests: ApiStatsRequests;
+  users: ApiAllTimeUsers;
   volume: ApiStatsVolume;
 };
 
@@ -841,12 +949,28 @@ export type ApiStatsOverviewResponse = {
   resetsAt: string;
   requests: {
     total: number;
+    successful: number;
+    failed: number;
+    clientErrors: number;
+    serverErrors: number;
+    successRatePct: number;
+    failureRatePct: number;
+    latency: ApiStatsLatency;
     allTimeTotal: number;
+    allTimeSuccessful: number;
+    allTimeFailed: number;
+    allTimeClientErrors: number;
+    allTimeServerErrors: number;
+    allTimeSuccessRatePct: number;
+    allTimeFailureRatePct: number;
+    allTimeLatency: ApiStatsLatency;
   };
   users: {
     totalGenerated: number;
     totalEverUsed: number;
     activeToday: number;
+    totalAgents: number;
+    activeAgentsToday: number;
   };
   volume: ApiStatsVolume;
   allTime: ApiStatsAllTime;

@@ -1,4 +1,5 @@
 import type { ProviderStatus } from "#types/api";
+import { recordProviderMetric } from "#services/apiRuntime";
 
 export function addStatus(
   statuses: ProviderStatus[],
@@ -29,13 +30,17 @@ export async function runProvider<T>(
     return null;
   }
 
+  const startedAt = Date.now();
+
   try {
     const result = await task();
     addStatus(statuses, provider, "ok");
+    await recordProviderMetric({ provider, successful: true, durationMs: Date.now() - startedAt });
     return result;
   } catch (error: unknown) {
     const detail = formatProviderError(error);
     addStatus(statuses, provider, "error", detail);
+    await recordProviderMetric({ provider, successful: false, error, durationMs: Date.now() - startedAt });
     return null;
   }
 }

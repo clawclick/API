@@ -174,7 +174,7 @@ POST /admin/apiKeys/generate?label=trading-bot&agentId=arb-bot-01&agentWalletEvm
 
 ### `GET /stats`
 
-Admin summary endpoint. Returns the current UTC-day totals plus all-time request and ETH volume aggregates.
+Admin summary endpoint. Returns the current UTC-day totals plus all-time request, user, agent, and ETH volume aggregates.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
@@ -187,7 +187,24 @@ GET /stats
 {
   "endpoint": "stats",
   "dayKey": "2026-03-19",
-  "requests": { "total": 1240, "allTimeTotal": 98765 },
+  "requests": {
+    "total": 1240,
+    "successful": 1218,
+    "failed": 22,
+    "clientErrors": 14,
+    "serverErrors": 8,
+    "successRatePct": 98.23,
+    "failureRatePct": 1.77,
+    "latency": { "avgMs": 142.6, "p50Ms": 100, "p95Ms": 500, "p99Ms": 1000 },
+    "allTimeTotal": 98765,
+    "allTimeSuccessful": 98000,
+    "allTimeFailed": 765,
+    "allTimeClientErrors": 500,
+    "allTimeServerErrors": 265,
+    "allTimeSuccessRatePct": 99.23,
+    "allTimeFailureRatePct": 0.77,
+    "allTimeLatency": { "avgMs": 188.2, "p50Ms": 100, "p95Ms": 1000, "p99Ms": 2000 }
+  },
   "users": { "totalGenerated": 12, "totalEverUsed": 9, "activeToday": 4 },
   "volume": {
     "buyWei": "1000000000000000000",
@@ -202,6 +219,46 @@ GET /stats
       "total": 98765,
       "byEndpoint": { "/holders": 25000, "/swap": 12000 },
       "byStatusCode": { "200": 98000, "400": 500, "500": 265 }
+    },
+    "users": {
+      "totalGenerated": 12,
+      "totalEverUsed": 9,
+      "totalAgents": 3,
+      "totalEverUsedAgents": 3,
+      "agents": [
+        {
+          "agentId": "scanner-alpha",
+          "keyCount": 2,
+          "totalRequests": 18200,
+          "successful": 17610,
+          "failed": 590,
+          "clientErrors": 410,
+          "serverErrors": 180,
+          "successRatePct": 96.76,
+          "failureRatePct": 3.24,
+          "latency": { "avgMs": 201.7, "p50Ms": 100, "p95Ms": 1000, "p99Ms": 2000 }
+        }
+      ],
+      "items": [
+        {
+          "id": "6295b1195cefddaa6fc02bbf",
+          "prefix": "click_30f0a1",
+          "label": "test-client",
+          "agentId": "scanner-alpha",
+          "agentWalletEvm": null,
+          "agentWalletSol": null,
+          "createdAt": "2026-03-19T01:48:44.465Z",
+          "lastUsedAt": "2026-03-19T03:12:18.110Z",
+          "totalRequests": 9400,
+          "successful": 9110,
+          "failed": 290,
+          "clientErrors": 210,
+          "serverErrors": 80,
+          "successRatePct": 96.91,
+          "failureRatePct": 3.09,
+          "latency": { "avgMs": 189.4, "p50Ms": 100, "p95Ms": 1000, "p99Ms": 2000 }
+        }
+      ]
     },
     "volume": {
       "buyWei": "123000000000000000000",
@@ -231,8 +288,54 @@ GET /admin/stats/requests
   "endpoint": "requests",
   "requests": {
     "total": 98765,
+    "successful": 98000,
+    "failed": 765,
+    "clientErrors": 500,
+    "serverErrors": 265,
+    "successRatePct": 99.23,
+    "failureRatePct": 0.77,
+    "latency": { "avgMs": 188.2, "p50Ms": 100, "p95Ms": 1000, "p99Ms": 2000 },
     "byEndpoint": { "/holders": 25000, "/swap": 12000 },
-    "byStatusCode": { "200": 98000, "400": 500, "500": 265 }
+    "byStatusCode": { "200": 98000, "400": 500, "500": 265 },
+    "endpointBreakdown": [
+      {
+        "key": "/holders",
+        "total": 25000,
+        "successful": 24880,
+        "failed": 120,
+        "clientErrors": 90,
+        "serverErrors": 30,
+        "successRatePct": 99.52,
+        "failureRatePct": 0.48,
+        "latency": { "avgMs": 121.4, "p50Ms": 100, "p95Ms": 250, "p99Ms": 500 }
+      }
+    ],
+    "providers": [
+      {
+        "provider": "moralisOwners",
+        "total": 12000,
+        "successful": 11820,
+        "failed": 180,
+        "clientErrors": 120,
+        "serverErrors": 60,
+        "successRatePct": 98.5,
+        "failureRatePct": 1.5,
+        "latency": { "avgMs": 241.1, "p50Ms": 250, "p95Ms": 1000, "p99Ms": 2000 },
+        "endpoints": [
+          {
+            "key": "/holders",
+            "total": 9000,
+            "successful": 8870,
+            "failed": 130,
+            "clientErrors": 100,
+            "serverErrors": 30,
+            "successRatePct": 98.56,
+            "failureRatePct": 1.44,
+            "latency": { "avgMs": 215.8, "p50Ms": 250, "p95Ms": 500, "p99Ms": 1000 }
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -243,7 +346,66 @@ Admin-only request analytics for the current UTC day, plus a matching all-time b
 
 ### `GET /stats/users`
 
-Admin-only API-key issuance and usage analytics for the current UTC day.
+Admin-only API-key issuance and usage analytics for the current UTC day, including per-key and per-agent request quality and latency.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+```http
+GET /stats/users
+```
+
+**Response:**
+```json
+{
+  "endpoint": "statsUsers",
+  "dayKey": "2026-03-19",
+  "users": {
+    "totalGenerated": 12,
+    "totalEverUsed": 9,
+    "activeToday": 4,
+    "totalAgents": 3,
+    "activeAgentsToday": 2,
+    "agents": [
+      {
+        "agentId": "scanner-alpha",
+        "keyCount": 2,
+        "activeKeysToday": 2,
+        "totalRequests": 18200,
+        "requestsToday": 740,
+        "successfulToday": 712,
+        "failedToday": 28,
+        "clientErrorsToday": 21,
+        "serverErrorsToday": 7,
+        "successRatePctToday": 96.22,
+        "failureRatePctToday": 3.78,
+        "latencyToday": { "avgMs": 188.4, "p50Ms": 100, "p95Ms": 500, "p99Ms": 1000 }
+      }
+    ],
+    "items": [
+      {
+        "id": "6295b1195cefddaa6fc02bbf",
+        "prefix": "click_30f0a1",
+        "label": "test-client",
+        "agentId": "scanner-alpha",
+        "agentWalletEvm": null,
+        "agentWalletSol": null,
+        "createdAt": "2026-03-19T01:48:44.465Z",
+        "lastUsedAt": "2026-03-19T03:12:18.110Z",
+        "totalRequests": 9400,
+        "activeToday": true,
+        "requestsToday": 410,
+        "successfulToday": 396,
+        "failedToday": 14,
+        "clientErrorsToday": 11,
+        "serverErrorsToday": 3,
+        "successRatePctToday": 96.59,
+        "failureRatePctToday": 3.41,
+        "latencyToday": { "avgMs": 171.8, "p50Ms": 100, "p95Ms": 500, "p99Ms": 1000 }
+      }
+    ]
+  }
+}
+```
 
 ### `GET /admin/stats/volume`
 
