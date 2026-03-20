@@ -506,6 +506,8 @@ Admin-only ETH buy/sell volume counters for the current UTC day, plus matching a
 
 Admin-only full analytics snapshot. Returns the combined `requests`, `users`, and `volume` sections for today, plus an `allTime` aggregate block.
 
+Analytics writes are buffered in memory and flushed to Postgres in batches, currently every 5 minutes or after roughly 100 tracked requests. That keeps normal API requests off the database path, while stats endpoints may reflect a small delay and can take longer because they force a flush before reading.
+
 ---
 
 ## Endpoint Details

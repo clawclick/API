@@ -4,7 +4,7 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
-import { AccessError, classifyPath, enterRequestMetricsContext, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
+import { AccessError, classifyPath, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
@@ -89,6 +89,10 @@ export function buildApp() {
   app.addHook("preHandler", async (request) => {
     const endpoint = request.routeOptions.url || getPathname(request.raw.url ?? request.url);
     enterRequestMetricsContext(endpoint);
+  });
+
+  app.addHook("onClose", async () => {
+    await flushBufferedAnalytics();
   });
 
   /* ── Global error handler ─────────────────────────────── */
