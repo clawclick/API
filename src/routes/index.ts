@@ -35,7 +35,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/providers", async () => ({ providers: getProviderHealth() }));
 
-  app.post("/admin/apiKeys/generate", async (request) => generateApiKey(parseQuery(apiKeyGenerateSchema, request.query).label ?? null));
+  app.post("/admin/apiKeys/generate", async (request) => {
+    const query = parseQuery(apiKeyGenerateSchema, request.query);
+    return generateApiKey(
+      query.label ?? null,
+      query.agentId ?? null,
+      query.agentWalletEvm ?? null,
+      query.agentWalletSol ?? null,
+    );
+  });
   app.get("/admin/stats/requests", async () => getRequests());
   app.get("/admin/stats", async () => getApiRuntimeStats());
   app.get("/stats", async () => getStatsOverview());

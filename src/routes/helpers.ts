@@ -221,6 +221,9 @@ export type HoldersQuery = z.output<typeof holdersSchema>;
 
 export const apiKeyGenerateSchema = z.object({
   label: z.string().trim().min(1).max(100).optional(),
+  agentId: z.string().trim().min(1).max(120).optional(),
+  agentWalletEvm: z.string().trim().min(1).max(120).optional(),
+  agentWalletSol: z.string().trim().min(1).max(120).optional(),
 });
 
 export type ApiKeyGenerateQuery = z.output<typeof apiKeyGenerateSchema>;

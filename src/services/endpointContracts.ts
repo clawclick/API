@@ -2,9 +2,9 @@ import { getProviderHealth } from "#services/providerHealth";
 import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
-  apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals.",
-  requests: "Returns all-time request totals, including per-endpoint and per-status-code breakdowns.",
-  volume: "Returns all-time ETH buy and sell volume with a combined total across both directions.",
+  apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals and optional agent metadata attachments.",
+  requests: "Returns all-time request totals, including per-endpoint and per-status-code breakdowns. Backed by a 5-minute in-memory aggregate cache.",
+  volume: "Returns all-time ETH buy and sell volume with a combined total across both directions. Backed by a 5-minute in-memory aggregate cache.",
   adminStats: "Returns the full analytics snapshot with current-day stats plus all-time request and ETH volume aggregates.",
   stats: "Returns the top-level current-day summary plus all-time request totals and ETH volume aggregates.",
   statsRequests: "Returns current-day request totals broken down by endpoint and HTTP status code, plus matching all-time aggregates.",
@@ -41,8 +41,8 @@ const descriptions: Record<EndpointName, string> = {
 
 const cacheHints: Record<EndpointName, number> = {
   apiKeyGenerate: 0,
-  requests: 0,
-  volume: 0,
+  requests: 300,
+  volume: 300,
   adminStats: 0,
   stats: 0,
   statsRequests: 0,

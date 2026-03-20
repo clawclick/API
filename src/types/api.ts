@@ -768,6 +768,9 @@ export type ApiKeyGenerateResponse = {
   keyId: string;
   prefix: string;
   label: string | null;
+  agentId: string | null;
+  agentWalletEvm: string | null;
+  agentWalletSol: string | null;
   createdAt: string;
   totalGenerated: number;
   activeToday: number;
@@ -777,6 +780,9 @@ export type ApiStatsUserItem = {
   id: string;
   prefix: string;
   label: string | null;
+  agentId: string | null;
+  agentWalletEvm: string | null;
+  agentWalletSol: string | null;
   createdAt: string;
   lastUsedAt: string | null;
   totalRequests: number;

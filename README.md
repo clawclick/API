@@ -145,9 +145,12 @@ Generate a new client API key. Admin-only endpoint.
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `label` | string | no | — | Optional label for the issued key |
+| `agentId` | string | no | — | Optional agent identifier to attach to the key |
+| `agentWalletEvm` | string | no | — | Optional EVM wallet address to attach to the key |
+| `agentWalletSol` | string | no | — | Optional Solana wallet address to attach to the key |
 
 ```
-POST /admin/apiKeys/generate?label=trading-bot
+POST /admin/apiKeys/generate?label=trading-bot&agentId=arb-bot-01&agentWalletEvm=0x1234...&agentWalletSol=So1111...
 ```
 
 **Response:**
@@ -158,6 +161,9 @@ POST /admin/apiKeys/generate?label=trading-bot
   "keyId": "...",
   "prefix": "ska_abcd1234",
   "label": "trading-bot",
+  "agentId": "arb-bot-01",
+  "agentWalletEvm": "0x1234...",
+  "agentWalletSol": "So1111...",
   "createdAt": "2026-03-19T00:00:00.000Z",
   "totalGenerated": 3,
   "activeToday": 1
@@ -168,7 +174,7 @@ POST /admin/apiKeys/generate?label=trading-bot
 
 ### `GET /stats`
 
-Admin summary endpoint. Returns the current UTC-day totals for requests, active API-key users, and ETH volume.
+Admin summary endpoint. Returns the current UTC-day totals plus all-time request and ETH volume aggregates.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
@@ -181,8 +187,8 @@ GET /stats
 {
   "endpoint": "stats",
   "dayKey": "2026-03-19",
-  "requests": { "total": 1240 },
-  "users": { "totalGenerated": 12, "activeToday": 4 },
+  "requests": { "total": 1240, "allTimeTotal": 98765 },
+  "users": { "totalGenerated": 12, "totalEverUsed": 9, "activeToday": 4 },
   "volume": {
     "buyWei": "1000000000000000000",
     "sellWei": "500000000000000000",
@@ -190,25 +196,90 @@ GET /stats
     "sellEth": "0.5",
     "buyCount": 3,
     "sellCount": 2
+  },
+  "allTime": {
+    "requests": {
+      "total": 98765,
+      "byEndpoint": { "/holders": 25000, "/swap": 12000 },
+      "byStatusCode": { "200": 98000, "400": 500, "500": 265 }
+    },
+    "volume": {
+      "buyWei": "123000000000000000000",
+      "sellWei": "45000000000000000000",
+      "buyEth": "123",
+      "sellEth": "45",
+      "buyCount": 120,
+      "sellCount": 44
+    }
+  }
+}
+```
+
+### `GET /admin/stats/requests`
+
+Admin-only all-time request analytics with per-endpoint and per-status-code breakdowns. Aggregates are cached in-memory for 5 minutes.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+```
+GET /admin/stats/requests
+```
+
+**Response:**
+```json
+{
+  "endpoint": "requests",
+  "requests": {
+    "total": 98765,
+    "byEndpoint": { "/holders": 25000, "/swap": 12000 },
+    "byStatusCode": { "200": 98000, "400": 500, "500": 265 }
   }
 }
 ```
 
 ### `GET /stats/requests`
 
-Admin-only request analytics for the current UTC day.
+Admin-only request analytics for the current UTC day, plus a matching all-time breakdown.
 
 ### `GET /stats/users`
 
 Admin-only API-key issuance and usage analytics for the current UTC day.
 
+### `GET /admin/stats/volume`
+
+Admin-only all-time ETH buy/sell volume totals with a combined sum across both directions. Aggregates are cached in-memory for 5 minutes.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+```
+GET /admin/stats/volume
+```
+
+**Response:**
+```json
+{
+  "endpoint": "volume",
+  "volume": {
+    "buyWei": "123000000000000000000",
+    "sellWei": "45000000000000000000",
+    "totalWei": "168000000000000000000",
+    "buyEth": "123",
+    "sellEth": "45",
+    "totalEth": "168",
+    "buyCount": 120,
+    "sellCount": 44,
+    "totalCount": 164
+  }
+}
+```
+
 ### `GET /stats/volume`
 
-Admin-only ETH buy/sell volume counters for the current UTC day.
+Admin-only ETH buy/sell volume counters for the current UTC day, plus matching all-time totals.
 
 ### `GET /admin/stats`
 
-Admin-only full analytics snapshot. Returns the combined `requests`, `users`, and `volume` sections in one response.
+Admin-only full analytics snapshot. Returns the combined `requests`, `users`, and `volume` sections for today, plus an `allTime` aggregate block.
 
 ---
 

@@ -24,6 +24,9 @@ type StoredApiKey = {
   label: string | null;
   prefix: string;
   keyHash: string;
+  agentId: string | null;
+  agentWalletEvm: string | null;
+  agentWalletSol: string | null;
   createdAt: string;
   lastUsedAt: string | null;
   lastUsedDay: string | null;
@@ -101,10 +104,12 @@ const PROTECTED_PREFIXES = [
   "/admin/",
 ];
 const ALL_TIME_REQUESTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const ALL_TIME_VOLUME_CACHE_TTL_MS = 5 * 60 * 1000;
 
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
 let allTimeRequestsCache: { expiresAt: number; value: ApiStatsRequests } | null = null;
+let allTimeVolumeCache: { expiresAt: number; value: ApiStatsVolume } | null = null;
 
 function getDayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
@@ -172,11 +177,18 @@ async function ensureTables(client: Pool | PoolClient): Promise<void> {
       label TEXT,
       prefix TEXT NOT NULL,
       key_hash TEXT NOT NULL UNIQUE,
+      agent_id TEXT,
+      agent_wallet_evm TEXT,
+      agent_wallet_sol TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_used_at TIMESTAMPTZ,
       total_requests BIGINT NOT NULL DEFAULT 0
     )
   `);
+
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_id TEXT`);
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_evm TEXT`);
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_sol TEXT`);
 
   await client.query(
     `
@@ -273,6 +285,11 @@ function parseCount(value: string | number | null | undefined): number {
   return Number(value ?? 0);
 }
 
+function normalizeNullableText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function formatUnits(raw: string, decimals: number): string {
   const value = raw.replace(/^0+/, "") || "0";
   if (decimals <= 0) return value;
@@ -365,19 +382,47 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
   return { id: match.id, prefix: match.prefix };
 }
 
-export async function generateApiKey(label?: string | null): Promise<ApiKeyGenerateResponse> {
+export async function generateApiKey(
+  label?: string | null,
+  agentId?: string | null,
+  agentWalletEvm?: string | null,
+  agentWalletSol?: string | null,
+): Promise<ApiKeyGenerateResponse> {
   return withTransaction(async (client) => {
     const now = new Date().toISOString();
     const apiKey = `ska_${randomBytes(24).toString("hex")}`;
     const prefix = apiKey.slice(0, 12);
     const recordId = randomBytes(12).toString("hex");
+    const normalizedLabel = normalizeNullableText(label);
+    const normalizedAgentId = normalizeNullableText(agentId);
+    const normalizedAgentWalletEvm = normalizeNullableText(agentWalletEvm);
+    const normalizedAgentWalletSol = normalizeNullableText(agentWalletSol);
 
     await client.query(
       `
-        INSERT INTO api_keys (id, label, prefix, key_hash, created_at, total_requests)
-        VALUES ($1, $2, $3, $4, $5::timestamptz, 0)
+        INSERT INTO api_keys (
+          id,
+          label,
+          prefix,
+          key_hash,
+          agent_id,
+          agent_wallet_evm,
+          agent_wallet_sol,
+          created_at,
+          total_requests
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, 0)
       `,
-      [recordId, label?.trim() ? label.trim() : null, prefix, hashApiKey(apiKey), now],
+      [
+        recordId,
+        normalizedLabel,
+        prefix,
+        hashApiKey(apiKey),
+        normalizedAgentId,
+        normalizedAgentWalletEvm,
+        normalizedAgentWalletSol,
+        now,
+      ],
     );
 
     const metrics = createDailyMetrics();
@@ -401,7 +446,10 @@ export async function generateApiKey(label?: string | null): Promise<ApiKeyGener
       apiKey,
       keyId: recordId,
       prefix,
-      label: label?.trim() ? label.trim() : null,
+      label: normalizedLabel,
+      agentId: normalizedAgentId,
+      agentWalletEvm: normalizedAgentWalletEvm,
+      agentWalletSol: normalizedAgentWalletSol,
       createdAt: now,
       totalGenerated: parseCount(summary?.total_generated),
       activeToday: parseCount(summary?.active_today),
@@ -665,6 +713,9 @@ async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
       id: string;
       prefix: string;
       label: string | null;
+      agent_id: string | null;
+      agent_wallet_evm: string | null;
+      agent_wallet_sol: string | null;
       created_at: Date | string;
       last_used_at: Date | string | null;
       total_requests: string;
@@ -675,6 +726,9 @@ async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
           k.id,
           k.prefix,
           k.label,
+          k.agent_id,
+          k.agent_wallet_evm,
+          k.agent_wallet_sol,
           k.created_at,
           k.last_used_at,
           k.total_requests,
@@ -694,6 +748,9 @@ async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
     id: row.id,
     prefix: row.prefix,
     label: row.label,
+    agentId: row.agent_id,
+    agentWalletEvm: row.agent_wallet_evm,
+    agentWalletSol: row.agent_wallet_sol,
     createdAt: new Date(row.created_at).toISOString(),
     lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
     totalRequests: parseCount(row.total_requests),
@@ -741,6 +798,11 @@ async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
 }
 
 async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
+  const now = Date.now();
+  if (allTimeVolumeCache && allTimeVolumeCache.expiresAt > now) {
+    return allTimeVolumeCache.value;
+  }
+
   await ensureDatabaseReady();
   const result = await getPool().query<{
     eth_buy_wei: string;
@@ -762,7 +824,7 @@ async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
   const buyWei = row?.eth_buy_wei ?? "0";
   const sellWei = row?.eth_sell_wei ?? "0";
 
-  return {
+  const volume = {
     buyWei,
     sellWei,
     buyEth: formatUnits(buyWei, 18),
@@ -770,6 +832,13 @@ async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
     buyCount: parseCount(row?.eth_buy_count),
     sellCount: parseCount(row?.eth_sell_count),
   };
+
+  allTimeVolumeCache = {
+    expiresAt: now + ALL_TIME_VOLUME_CACHE_TTL_MS,
+    value: volume,
+  };
+
+  return volume;
 }
 
 function summarizeAllTimeVolume(volume: ApiStatsVolume): ApiAllTimeVolume {
