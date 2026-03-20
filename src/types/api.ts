@@ -853,6 +853,16 @@ export type ApiAllTimeUsers = {
   items: ApiAllTimeUserItem[];
 };
 
+export type ApiStatsAgentAnalyticsItem = {
+  agentId: string;
+  daily: ApiStatsAgentItem;
+  allTime: ApiAllTimeAgentItem;
+  keys?: {
+    daily: ApiStatsUserItem[];
+    allTime: ApiAllTimeUserItem[];
+  };
+};
+
 export type ApiStatsRequests = {
   total: number;
   successful: number;
@@ -991,6 +1001,24 @@ export type ApiStatsUsersResponse = {
   startedAt: string;
   resetsAt: string;
   users: ApiStatsUsers;
+};
+
+export type ApiStatsAgentsResponse = {
+  endpoint: "statsAgents";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  filter: {
+    agentId: string | null;
+    includeKeys: boolean;
+  };
+  summary: {
+    matchedAgents: number;
+    totalAgents: number;
+    activeAgentsToday: number;
+    totalEverUsedAgents: number;
+  };
+  agents: ApiStatsAgentAnalyticsItem[];
 };
 
 export type ApiStatsVolumeResponse = {

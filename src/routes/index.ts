@@ -9,7 +9,7 @@ import {
   getTokenPoolInfo,
   getTokenPriceHistory
 } from "#services/liveEndpoints";
-import { getApiRuntimeStats, getRequests, generateApiKey, getStatsOverview, getStatsRequests, getStatsUsers, getStatsVolume, getVolume } from "#services/apiRuntime";
+import { getApiRuntimeStats, getRequests, generateApiKey, getStatsAgents, getStatsOverview, getStatsRequests, getStatsUsers, getStatsVolume, getVolume } from "#services/apiRuntime";
 import { getHolders } from "#services/holders";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
@@ -27,7 +27,7 @@ import { handleClient } from "#services/launchpadStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
-import { approveSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { approveSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, statsAgentsSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
 import { recordEthSwapVolume } from "#services/apiRuntime";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -49,6 +49,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/stats", async () => getStatsOverview());
   app.get("/stats/requests", async () => getStatsRequests());
   app.get("/stats/users", async () => getStatsUsers());
+  app.get("/admin/stats/agents", async (request) => getStatsAgents(parseQuery(statsAgentsSchema, request.query)));
   app.get("/stats/volume", async () => getStatsVolume());
   app.get("/admin/stats/volume", async () => getVolume());
 

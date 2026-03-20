@@ -11,6 +11,8 @@ import type {
   ApiAllTimeUsers,
   ApiRequestsResponse,
   ApiRuntimeStatsResponse,
+  ApiStatsAgentAnalyticsItem,
+  ApiStatsAgentsResponse,
   ApiVolumeResponse,
   ApiAllTimeVolume,
   ApiStatsAgentItem,
@@ -1925,6 +1927,93 @@ export async function getStatsUsers(): Promise<ApiStatsUsersResponse> {
     startedAt: metrics.startedAt,
     resetsAt: metrics.resetsAt,
     users: await getUsersStats(metrics.dayKey),
+  };
+}
+
+export async function getStatsAgents(input?: { agentId?: string | null; includeKeys?: boolean }): Promise<ApiStatsAgentsResponse> {
+  const metrics = await getTodayMetrics();
+  const [users, allTimeUsers] = await Promise.all([
+    getUsersStats(metrics.dayKey),
+    getAllTimeUsersStats(),
+  ]);
+
+  const filterAgentId = input?.agentId?.trim() || null;
+  const includeKeys = input?.includeKeys ?? false;
+  const dailyAgents = users.agents.filter((agent) => !filterAgentId || agent.agentId === filterAgentId);
+  const allTimeAgents = allTimeUsers.agents.filter((agent) => !filterAgentId || agent.agentId === filterAgentId);
+  const agentIds = new Set<string>([
+    ...dailyAgents.map((agent) => agent.agentId),
+    ...allTimeAgents.map((agent) => agent.agentId),
+  ]);
+
+  const defaultLatency = { avgMs: 0, p50Ms: 0, p95Ms: 0, p99Ms: 0 };
+  const defaultDaily = (agentId: string): ApiStatsAgentItem => ({
+    agentId,
+    keyCount: 0,
+    activeKeysToday: 0,
+    totalRequests: 0,
+    requestsToday: 0,
+    successfulToday: 0,
+    failedToday: 0,
+    clientErrorsToday: 0,
+    serverErrorsToday: 0,
+    successRatePctToday: 0,
+    failureRatePctToday: 0,
+    latencyToday: defaultLatency,
+  });
+  const defaultAllTime = (agentId: string): ApiAllTimeAgentItem => ({
+    agentId,
+    keyCount: 0,
+    totalRequests: 0,
+    successful: 0,
+    failed: 0,
+    clientErrors: 0,
+    serverErrors: 0,
+    successRatePct: 0,
+    failureRatePct: 0,
+    latency: defaultLatency,
+  });
+
+  const agents: ApiStatsAgentAnalyticsItem[] = [...agentIds]
+    .sort((left, right) => left.localeCompare(right))
+    .map((agentId) => {
+      const daily = users.agents.find((agent) => agent.agentId === agentId) ?? defaultDaily(agentId);
+      const allTime = allTimeUsers.agents.find((agent) => agent.agentId === agentId) ?? defaultAllTime(agentId);
+
+      return {
+        agentId,
+        daily,
+        allTime,
+        ...(includeKeys ? {
+          keys: {
+            daily: users.items.filter((item) => item.agentId === agentId),
+            allTime: allTimeUsers.items.filter((item) => item.agentId === agentId),
+          },
+        } : {}),
+      };
+    })
+    .sort((left, right) => {
+      if (right.allTime.failed !== left.allTime.failed) return right.allTime.failed - left.allTime.failed;
+      if (right.allTime.totalRequests !== left.allTime.totalRequests) return right.allTime.totalRequests - left.allTime.totalRequests;
+      return left.agentId.localeCompare(right.agentId);
+    });
+
+  return {
+    endpoint: "statsAgents",
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    filter: {
+      agentId: filterAgentId,
+      includeKeys,
+    },
+    summary: {
+      matchedAgents: agents.length,
+      totalAgents: allTimeUsers.totalAgents,
+      activeAgentsToday: users.activeAgentsToday,
+      totalEverUsedAgents: allTimeUsers.totalEverUsedAgents,
+    },
+    agents,
   };
 }
 

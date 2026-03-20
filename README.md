@@ -407,6 +407,69 @@ GET /stats/users
 }
 ```
 
+### `GET /admin/stats/agents`
+
+Admin-only agent analytics endpoint for dashboards. Returns daily and all-time request quality and latency per agent, with optional per-key detail.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+```http
+GET /admin/stats/agents?agentId=scanner-alpha&includeKeys=true
+```
+
+**Response:**
+```json
+{
+  "endpoint": "statsAgents",
+  "dayKey": "2026-03-20",
+  "filter": {
+    "agentId": "scanner-alpha",
+    "includeKeys": true
+  },
+  "summary": {
+    "matchedAgents": 1,
+    "totalAgents": 3,
+    "activeAgentsToday": 2,
+    "totalEverUsedAgents": 3
+  },
+  "agents": [
+    {
+      "agentId": "scanner-alpha",
+      "daily": {
+        "agentId": "scanner-alpha",
+        "keyCount": 2,
+        "activeKeysToday": 2,
+        "totalRequests": 18200,
+        "requestsToday": 740,
+        "successfulToday": 712,
+        "failedToday": 28,
+        "clientErrorsToday": 21,
+        "serverErrorsToday": 7,
+        "successRatePctToday": 96.22,
+        "failureRatePctToday": 3.78,
+        "latencyToday": { "avgMs": 188.4, "p50Ms": 100, "p95Ms": 500, "p99Ms": 1000 }
+      },
+      "allTime": {
+        "agentId": "scanner-alpha",
+        "keyCount": 2,
+        "totalRequests": 18200,
+        "successful": 17610,
+        "failed": 590,
+        "clientErrors": 410,
+        "serverErrors": 180,
+        "successRatePct": 96.76,
+        "failureRatePct": 3.24,
+        "latency": { "avgMs": 201.7, "p50Ms": 100, "p95Ms": 1000, "p99Ms": 2000 }
+      },
+      "keys": {
+        "daily": [],
+        "allTime": []
+      }
+    }
+  ]
+}
+```
+
 ### `GET /admin/stats/volume`
 
 Admin-only all-time ETH buy/sell volume totals with a combined sum across both directions. Aggregates are cached in-memory for 5 minutes.

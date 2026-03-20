@@ -6,6 +6,7 @@ export type EndpointName =
   | "stats"
   | "statsRequests"
   | "statsUsers"
+  | "statsAgents"
   | "statsVolume"
   | "approve"
   | "holders"
