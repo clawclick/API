@@ -51,7 +51,14 @@ export function buildApp() {
       return;
     }
 
-    // Client API key auth disabled for now — only admin key is enforced
+    // Require API key for all non-public routes (protected and other non-public)
+    try {
+      const resolved = await requireApiKey(request.headers as Record<string, unknown>);
+      // attach apiKeyId to request for later use in metrics
+      (request as unknown as AuthenticatedRequest).apiKeyId = resolved.id;
+    } catch (err) {
+      throw err;
+    }
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
