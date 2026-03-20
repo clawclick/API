@@ -171,6 +171,10 @@ function getPool(): Pool {
 }
 
 async function ensureTables(client: Pool | PoolClient): Promise<void> {
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_id TEXT`);
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_evm TEXT`);
+  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_sol TEXT`);
+  
   await client.query(`
     CREATE TABLE IF NOT EXISTS api_keys (
       id TEXT PRIMARY KEY,
@@ -185,10 +189,6 @@ async function ensureTables(client: Pool | PoolClient): Promise<void> {
       total_requests BIGINT NOT NULL DEFAULT 0
     )
   `);
-
-  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_id TEXT`);
-  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_evm TEXT`);
-  await client.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS agent_wallet_sol TEXT`);
 
   await client.query(
     `
