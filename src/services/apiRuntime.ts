@@ -160,6 +160,11 @@ type ResolvedApiKey = {
   prefix: string;
 };
 
+type ApiKeyAuthCacheEntry = {
+  resolved: ResolvedApiKey | null;
+  expiresAt: number;
+};
+
 type StatsUserFilter = {
   agentId?: string | null;
   agentWalletEvm?: string | null;
@@ -233,6 +238,9 @@ const RATE_LIMIT_MINUTE_MS = 60 * 1000;
 const RATE_LIMIT_HOUR_MS = 60 * 60 * 1000;
 const RATE_LIMIT_STATE_TTL_MS = 2 * RATE_LIMIT_HOUR_MS;
 const RATE_LIMIT_CLEANUP_THRESHOLD = 5000;
+const API_KEY_AUTH_CACHE_TTL_MS = 60 * 1000;
+const API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS = 10 * 1000;
+const API_KEY_AUTH_CACHE_MAX_SIZE = 10000;
 
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
@@ -248,6 +256,7 @@ let apiKeyRateLimitStates = new Map<string, {
   hour: { windowStartMs: number; count: number };
   lastSeenAt: number;
 }>();
+let apiKeyAuthCache = new Map<string, ApiKeyAuthCacheEntry>();
 const requestMetricsContext = new AsyncLocalStorage<RequestMetricsContext>();
 
 function getWindowStartMs(nowMs: number, durationMs: number): number {
@@ -269,6 +278,61 @@ function cleanupApiKeyRateLimitStates(nowMs: number): void {
   for (const [apiKeyId, state] of apiKeyRateLimitStates.entries()) {
     if (nowMs - state.lastSeenAt > RATE_LIMIT_STATE_TTL_MS) {
       apiKeyRateLimitStates.delete(apiKeyId);
+    }
+  }
+}
+
+function cleanupApiKeyAuthCache(nowMs: number): void {
+  if (apiKeyAuthCache.size <= API_KEY_AUTH_CACHE_MAX_SIZE) {
+    return;
+  }
+
+  for (const [keyHash, entry] of apiKeyAuthCache.entries()) {
+    if (entry.expiresAt <= nowMs) {
+      apiKeyAuthCache.delete(keyHash);
+    }
+  }
+
+  if (apiKeyAuthCache.size <= API_KEY_AUTH_CACHE_MAX_SIZE) {
+    return;
+  }
+
+  // Trim oldest inserted entries if still oversized after removing expired rows.
+  const overflow = apiKeyAuthCache.size - API_KEY_AUTH_CACHE_MAX_SIZE;
+  let removed = 0;
+  for (const keyHash of apiKeyAuthCache.keys()) {
+    apiKeyAuthCache.delete(keyHash);
+    removed += 1;
+    if (removed >= overflow) {
+      break;
+    }
+  }
+}
+
+function getCachedResolvedApiKey(keyHash: string, nowMs: number): ResolvedApiKey | null | undefined {
+  const cached = apiKeyAuthCache.get(keyHash);
+  if (!cached) {
+    return undefined;
+  }
+  if (cached.expiresAt <= nowMs) {
+    apiKeyAuthCache.delete(keyHash);
+    return undefined;
+  }
+  return cached.resolved;
+}
+
+function setCachedResolvedApiKey(keyHash: string, resolved: ResolvedApiKey | null, ttlMs: number, nowMs: number): void {
+  cleanupApiKeyAuthCache(nowMs);
+  apiKeyAuthCache.set(keyHash, {
+    resolved,
+    expiresAt: nowMs + ttlMs,
+  });
+}
+
+function dropAuthCacheByApiKeyId(apiKeyId: string): void {
+  for (const [keyHash, entry] of apiKeyAuthCache.entries()) {
+    if (entry.resolved?.id === apiKeyId) {
+      apiKeyAuthCache.delete(keyHash);
     }
   }
 }
@@ -1414,6 +1478,15 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
   }
 
   const keyHash = hashApiKey(presented);
+  const nowMs = Date.now();
+  const cached = getCachedResolvedApiKey(keyHash, nowMs);
+  if (cached !== undefined) {
+    if (!cached) {
+      throw new AccessError(401, "Invalid API key.");
+    }
+    return cached;
+  }
+
   await ensureDatabaseReady();
   const result = await getPool().query<{ id: string; prefix: string }>(
     `
@@ -1426,10 +1499,13 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
   );
   const match = result.rows[0];
   if (!match) {
+    setCachedResolvedApiKey(keyHash, null, API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS, nowMs);
     throw new AccessError(401, "Invalid API key.");
   }
 
-  return { id: match.id, prefix: match.prefix };
+  const resolved = { id: match.id, prefix: match.prefix };
+  setCachedResolvedApiKey(keyHash, resolved, API_KEY_AUTH_CACHE_TTL_MS, nowMs);
+  return resolved;
 }
 
 export async function generateApiKey(
@@ -1576,6 +1652,7 @@ export async function deleteApiKey(keyId: string): Promise<ApiKeyDeleteResponse>
     }
 
     apiKeyRateLimitStates.delete(row.id);
+    dropAuthCacheByApiKeyId(row.id);
 
     return {
       endpoint: "apiKeyDelete",
@@ -1739,56 +1816,80 @@ export async function recordEthSwapVolume(input: { chain: string; tokenIn: strin
 }
 
 async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayAnalytics): Promise<void> {
-  await ensureDailyStatsRow(client, {
-    dayKey: state.dayKey,
-    startedAt: state.startedAt,
-    resetsAt: state.resetsAt,
-    totalRequests: 0,
-    requestsByEndpoint: {},
-    statusCodes: {},
-    totalLatencyMs: 0,
-    latencyBuckets: {},
-    ethVolume: {
-      buyWei: "0",
-      sellWei: "0",
-      buyCount: 0,
-      sellCount: 0,
-    },
-  });
-
-  const dailyStats = await client.query<{ status_codes: Record<string, number> | string | null; latency_buckets: Record<string, number> | string | null }>(
-    `
-      SELECT status_codes, latency_buckets
-      FROM api_daily_stats
-      WHERE day_key = $1::date
-      FOR UPDATE
-    `,
-    [state.dayKey],
-  );
-
-  const mergedStatusCodes = mergeCountMaps(parseCountMap(dailyStats.rows[0]?.status_codes), state.statusCodes);
-  const mergedDailyLatencyBuckets = mergeCountMaps(parseCountMap(dailyStats.rows[0]?.latency_buckets), state.latencyBuckets);
-
   await client.query(
     `
-      UPDATE api_daily_stats
-      SET total_requests = total_requests + $2,
-          status_codes = $3::jsonb,
-          total_latency_ms = total_latency_ms + $4,
-          latency_buckets = $5::jsonb,
-          eth_buy_wei = eth_buy_wei + $6::numeric,
-          eth_sell_wei = eth_sell_wei + $7::numeric,
-          eth_buy_count = eth_buy_count + $8,
-          eth_sell_count = eth_sell_count + $9,
-          updated_at = NOW()
-      WHERE day_key = $1::date
+      INSERT INTO api_daily_stats (
+        day_key,
+        started_at,
+        resets_at,
+        total_requests,
+        status_codes,
+        total_latency_ms,
+        latency_buckets,
+        eth_buy_wei,
+        eth_sell_wei,
+        eth_buy_count,
+        eth_sell_count
+      )
+      VALUES (
+        $1::date,
+        $2::timestamptz,
+        $3::timestamptz,
+        $4,
+        $5::jsonb,
+        $6,
+        $7::jsonb,
+        $8::numeric,
+        $9::numeric,
+        $10,
+        $11
+      )
+      ON CONFLICT (day_key)
+      DO UPDATE SET
+        total_requests = api_daily_stats.total_requests + EXCLUDED.total_requests,
+        status_codes = (
+          SELECT COALESCE(jsonb_object_agg(merged.key, to_jsonb(merged.value_sum)), '{}'::jsonb)
+          FROM (
+            SELECT key, SUM(value)::bigint AS value_sum
+            FROM (
+              SELECT key, value::bigint AS value
+              FROM jsonb_each_text(COALESCE(api_daily_stats.status_codes, '{}'::jsonb))
+              UNION ALL
+              SELECT key, value::bigint AS value
+              FROM jsonb_each_text(COALESCE(EXCLUDED.status_codes, '{}'::jsonb))
+            ) counts
+            GROUP BY key
+          ) merged
+        ),
+        total_latency_ms = api_daily_stats.total_latency_ms + EXCLUDED.total_latency_ms,
+        latency_buckets = (
+          SELECT COALESCE(jsonb_object_agg(merged.key, to_jsonb(merged.value_sum)), '{}'::jsonb)
+          FROM (
+            SELECT key, SUM(value)::bigint AS value_sum
+            FROM (
+              SELECT key, value::bigint AS value
+              FROM jsonb_each_text(COALESCE(api_daily_stats.latency_buckets, '{}'::jsonb))
+              UNION ALL
+              SELECT key, value::bigint AS value
+              FROM jsonb_each_text(COALESCE(EXCLUDED.latency_buckets, '{}'::jsonb))
+            ) counts
+            GROUP BY key
+          ) merged
+        ),
+        eth_buy_wei = api_daily_stats.eth_buy_wei + EXCLUDED.eth_buy_wei,
+        eth_sell_wei = api_daily_stats.eth_sell_wei + EXCLUDED.eth_sell_wei,
+        eth_buy_count = api_daily_stats.eth_buy_count + EXCLUDED.eth_buy_count,
+        eth_sell_count = api_daily_stats.eth_sell_count + EXCLUDED.eth_sell_count,
+        updated_at = NOW()
     `,
     [
       state.dayKey,
+      state.startedAt,
+      state.resetsAt,
       state.totalRequests,
-      JSON.stringify(mergedStatusCodes),
+      JSON.stringify(state.statusCodes),
       state.totalLatencyMs,
-      JSON.stringify(mergedDailyLatencyBuckets),
+      JSON.stringify(state.latencyBuckets),
       state.ethVolume.buyWei.toString(),
       state.ethVolume.sellWei.toString(),
       state.ethVolume.buyCount,
@@ -1796,18 +1897,17 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
     ],
   );
 
-  for (const [endpoint, aggregate] of state.endpointStats.entries()) {
-    const endpointExisting = await client.query<{ latency_buckets: Record<string, number> | string | null }>(
-      `
-        SELECT latency_buckets
-        FROM api_daily_endpoint_stats
-        WHERE day_key = $1::date AND endpoint = $2
-        FOR UPDATE
-      `,
-      [state.dayKey, endpoint],
-    );
-    const mergedLatencyBuckets = mergeCountMaps(parseCountMap(endpointExisting.rows[0]?.latency_buckets), aggregate.latencyBuckets);
+  const endpointRows = [...state.endpointStats.entries()].map(([endpoint, aggregate]) => ({
+    endpoint,
+    requestCount: aggregate.requestCount,
+    successfulRequests: aggregate.successfulRequests,
+    clientErrorRequests: aggregate.clientErrorRequests,
+    serverErrorRequests: aggregate.serverErrorRequests,
+    totalLatencyMs: aggregate.totalLatencyMs,
+    latencyBuckets: aggregate.latencyBuckets,
+  }));
 
+  if (endpointRows.length > 0) {
     await client.query(
       `
         INSERT INTO api_daily_endpoint_stats (
@@ -1820,50 +1920,76 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
           total_latency_ms,
           latency_buckets
         )
-        VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        SELECT
+          $1::date,
+          row.endpoint,
+          row.request_count,
+          row.successful_requests,
+          row.client_error_requests,
+          row.server_error_requests,
+          row.total_latency_ms,
+          row.latency_buckets
+        FROM jsonb_to_recordset($2::jsonb) AS row(
+          endpoint text,
+          request_count bigint,
+          successful_requests bigint,
+          client_error_requests bigint,
+          server_error_requests bigint,
+          total_latency_ms bigint,
+          latency_buckets jsonb
+        )
         ON CONFLICT (day_key, endpoint)
         DO UPDATE SET
-          request_count = api_daily_endpoint_stats.request_count + $3,
-          successful_requests = api_daily_endpoint_stats.successful_requests + $4,
-          client_error_requests = api_daily_endpoint_stats.client_error_requests + $5,
-          server_error_requests = api_daily_endpoint_stats.server_error_requests + $6,
-          total_latency_ms = api_daily_endpoint_stats.total_latency_ms + $7,
-          latency_buckets = $8::jsonb,
+          request_count = api_daily_endpoint_stats.request_count + EXCLUDED.request_count,
+          successful_requests = api_daily_endpoint_stats.successful_requests + EXCLUDED.successful_requests,
+          client_error_requests = api_daily_endpoint_stats.client_error_requests + EXCLUDED.client_error_requests,
+          server_error_requests = api_daily_endpoint_stats.server_error_requests + EXCLUDED.server_error_requests,
+          total_latency_ms = api_daily_endpoint_stats.total_latency_ms + EXCLUDED.total_latency_ms,
+          latency_buckets = (
+            SELECT COALESCE(jsonb_object_agg(merged.key, to_jsonb(merged.value_sum)), '{}'::jsonb)
+            FROM (
+              SELECT key, SUM(value)::bigint AS value_sum
+              FROM (
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(api_daily_endpoint_stats.latency_buckets, '{}'::jsonb))
+                UNION ALL
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(EXCLUDED.latency_buckets, '{}'::jsonb))
+              ) counts
+              GROUP BY key
+            ) merged
+          ),
           updated_at = NOW()
       `,
-      [
-        state.dayKey,
-        endpoint,
-        aggregate.requestCount,
-        aggregate.successfulRequests,
-        aggregate.clientErrorRequests,
-        aggregate.serverErrorRequests,
-        aggregate.totalLatencyMs,
-        JSON.stringify(mergedLatencyBuckets),
-      ],
+      [state.dayKey, JSON.stringify(endpointRows)],
     );
   }
 
-  for (const [apiKeyId, aggregate] of state.keyStats.entries()) {
-    const keyExisting = await client.query<{ latency_buckets: Record<string, number> | string | null }>(
-      `
-        SELECT latency_buckets
-        FROM api_daily_key_stats
-        WHERE day_key = $1::date AND api_key_id = $2
-        FOR UPDATE
-      `,
-      [state.dayKey, apiKeyId],
-    );
-    const mergedLatencyBuckets = mergeCountMaps(parseCountMap(keyExisting.rows[0]?.latency_buckets), aggregate.latencyBuckets);
+  const keyRows = [...state.keyStats.entries()].map(([apiKeyId, aggregate]) => ({
+    apiKeyId,
+    requestCount: aggregate.requestCount,
+    successfulRequests: aggregate.successfulRequests,
+    clientErrorRequests: aggregate.clientErrorRequests,
+    serverErrorRequests: aggregate.serverErrorRequests,
+    totalLatencyMs: aggregate.totalLatencyMs,
+    latencyBuckets: aggregate.latencyBuckets,
+    lastUsedAt: aggregate.lastUsedAt,
+  }));
 
+  if (keyRows.length > 0) {
     await client.query(
       `
-        UPDATE api_keys
-        SET last_used_at = $2::timestamptz,
-            total_requests = total_requests + $3
-        WHERE id = $1
+        UPDATE api_keys k
+        SET last_used_at = GREATEST(COALESCE(k.last_used_at, to_timestamp(0)), row.last_used_at),
+            total_requests = k.total_requests + row.request_count
+        FROM jsonb_to_recordset($1::jsonb) AS row(
+          api_key_id text,
+          request_count bigint,
+          last_used_at timestamptz
+        )
+        WHERE k.id = row.api_key_id
       `,
-      [apiKeyId, aggregate.lastUsedAt, aggregate.requestCount],
+      [JSON.stringify(keyRows)],
     );
 
     await client.query(
@@ -1879,44 +2005,66 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
           latency_buckets,
           last_used_at
         )
-        VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::timestamptz)
+        SELECT
+          $1::date,
+          row.api_key_id,
+          row.request_count,
+          row.successful_requests,
+          row.client_error_requests,
+          row.server_error_requests,
+          row.total_latency_ms,
+          row.latency_buckets,
+          row.last_used_at
+        FROM jsonb_to_recordset($2::jsonb) AS row(
+          api_key_id text,
+          request_count bigint,
+          successful_requests bigint,
+          client_error_requests bigint,
+          server_error_requests bigint,
+          total_latency_ms bigint,
+          latency_buckets jsonb,
+          last_used_at timestamptz
+        )
         ON CONFLICT (day_key, api_key_id)
         DO UPDATE SET
-          request_count = api_daily_key_stats.request_count + $3,
-          successful_requests = api_daily_key_stats.successful_requests + $4,
-          client_error_requests = api_daily_key_stats.client_error_requests + $5,
-          server_error_requests = api_daily_key_stats.server_error_requests + $6,
-          total_latency_ms = api_daily_key_stats.total_latency_ms + $7,
-          latency_buckets = $8::jsonb,
-          last_used_at = EXCLUDED.last_used_at,
+          request_count = api_daily_key_stats.request_count + EXCLUDED.request_count,
+          successful_requests = api_daily_key_stats.successful_requests + EXCLUDED.successful_requests,
+          client_error_requests = api_daily_key_stats.client_error_requests + EXCLUDED.client_error_requests,
+          server_error_requests = api_daily_key_stats.server_error_requests + EXCLUDED.server_error_requests,
+          total_latency_ms = api_daily_key_stats.total_latency_ms + EXCLUDED.total_latency_ms,
+          latency_buckets = (
+            SELECT COALESCE(jsonb_object_agg(merged.key, to_jsonb(merged.value_sum)), '{}'::jsonb)
+            FROM (
+              SELECT key, SUM(value)::bigint AS value_sum
+              FROM (
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(api_daily_key_stats.latency_buckets, '{}'::jsonb))
+                UNION ALL
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(EXCLUDED.latency_buckets, '{}'::jsonb))
+              ) counts
+              GROUP BY key
+            ) merged
+          ),
+          last_used_at = GREATEST(api_daily_key_stats.last_used_at, EXCLUDED.last_used_at),
           updated_at = NOW()
       `,
-      [
-        state.dayKey,
-        apiKeyId,
-        aggregate.requestCount,
-        aggregate.successfulRequests,
-        aggregate.clientErrorRequests,
-        aggregate.serverErrorRequests,
-        aggregate.totalLatencyMs,
-        JSON.stringify(mergedLatencyBuckets),
-        aggregate.lastUsedAt,
-      ],
+      [state.dayKey, JSON.stringify(keyRows)],
     );
   }
 
-  for (const providerAggregate of state.providerStats.values()) {
-    const providerExisting = await client.query<{ latency_buckets: Record<string, number> | string | null }>(
-      `
-        SELECT latency_buckets
-        FROM api_daily_provider_stats
-        WHERE day_key = $1::date AND endpoint = $2 AND provider = $3
-        FOR UPDATE
-      `,
-      [state.dayKey, providerAggregate.endpoint, providerAggregate.provider],
-    );
-    const mergedLatencyBuckets = mergeCountMaps(parseCountMap(providerExisting.rows[0]?.latency_buckets), providerAggregate.stats.latencyBuckets);
+  const providerRows = [...state.providerStats.values()].map((providerAggregate) => ({
+    endpoint: providerAggregate.endpoint,
+    provider: providerAggregate.provider,
+    requestCount: providerAggregate.stats.requestCount,
+    successfulRequests: providerAggregate.stats.successfulRequests,
+    clientErrorRequests: providerAggregate.stats.clientErrorRequests,
+    serverErrorRequests: providerAggregate.stats.serverErrorRequests,
+    totalLatencyMs: providerAggregate.stats.totalLatencyMs,
+    latencyBuckets: providerAggregate.stats.latencyBuckets,
+  }));
 
+  if (providerRows.length > 0) {
     await client.query(
       `
         INSERT INTO api_daily_provider_stats (
@@ -1930,28 +2078,50 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
           total_latency_ms,
           latency_buckets
         )
-        VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+        SELECT
+          $1::date,
+          row.endpoint,
+          row.provider,
+          row.request_count,
+          row.successful_requests,
+          row.client_error_requests,
+          row.server_error_requests,
+          row.total_latency_ms,
+          row.latency_buckets
+        FROM jsonb_to_recordset($2::jsonb) AS row(
+          endpoint text,
+          provider text,
+          request_count bigint,
+          successful_requests bigint,
+          client_error_requests bigint,
+          server_error_requests bigint,
+          total_latency_ms bigint,
+          latency_buckets jsonb
+        )
         ON CONFLICT (day_key, endpoint, provider)
         DO UPDATE SET
-          request_count = api_daily_provider_stats.request_count + $4,
-          successful_requests = api_daily_provider_stats.successful_requests + $5,
-          client_error_requests = api_daily_provider_stats.client_error_requests + $6,
-          server_error_requests = api_daily_provider_stats.server_error_requests + $7,
-          total_latency_ms = api_daily_provider_stats.total_latency_ms + $8,
-          latency_buckets = $9::jsonb,
+          request_count = api_daily_provider_stats.request_count + EXCLUDED.request_count,
+          successful_requests = api_daily_provider_stats.successful_requests + EXCLUDED.successful_requests,
+          client_error_requests = api_daily_provider_stats.client_error_requests + EXCLUDED.client_error_requests,
+          server_error_requests = api_daily_provider_stats.server_error_requests + EXCLUDED.server_error_requests,
+          total_latency_ms = api_daily_provider_stats.total_latency_ms + EXCLUDED.total_latency_ms,
+          latency_buckets = (
+            SELECT COALESCE(jsonb_object_agg(merged.key, to_jsonb(merged.value_sum)), '{}'::jsonb)
+            FROM (
+              SELECT key, SUM(value)::bigint AS value_sum
+              FROM (
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(api_daily_provider_stats.latency_buckets, '{}'::jsonb))
+                UNION ALL
+                SELECT key, value::bigint AS value
+                FROM jsonb_each_text(COALESCE(EXCLUDED.latency_buckets, '{}'::jsonb))
+              ) counts
+              GROUP BY key
+            ) merged
+          ),
           updated_at = NOW()
       `,
-      [
-        state.dayKey,
-        providerAggregate.endpoint,
-        providerAggregate.provider,
-        providerAggregate.stats.requestCount,
-        providerAggregate.stats.successfulRequests,
-        providerAggregate.stats.clientErrorRequests,
-        providerAggregate.stats.serverErrorRequests,
-        providerAggregate.stats.totalLatencyMs,
-        JSON.stringify(mergedLatencyBuckets),
-      ],
+      [state.dayKey, JSON.stringify(providerRows)],
     );
   }
 }
@@ -2000,14 +2170,6 @@ export async function flushBufferedAnalytics(): Promise<void> {
   })();
 
   return analyticsFlushPromise;
-}
-
-async function flushBufferedAnalyticsForRead(): Promise<void> {
-  try {
-    await flushBufferedAnalytics();
-  } catch {
-    // Read endpoints can tolerate stale persisted analytics if a flush attempt fails.
-  }
 }
 
 async function getTodayMetrics(): Promise<DailyMetrics> {
@@ -2649,7 +2811,6 @@ function summarizeAllTimeVolume(volume: ApiStatsVolume): ApiAllTimeVolume {
 }
 
 export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   const [requests, users, volume, allTimeRequests, allTimeUsers, allTimeVolume] = await Promise.all([
     getRequestsStats(metrics.dayKey),
@@ -2715,7 +2876,6 @@ export async function getStatsOverview(): Promise<ApiStatsOverviewResponse> {
 }
 
 export async function getStatsRequests(): Promise<ApiStatsRequestsResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   return {
     endpoint: "statsRequests",
@@ -2728,7 +2888,6 @@ export async function getStatsRequests(): Promise<ApiStatsRequestsResponse> {
 }
 
 export async function getStatsUsers(): Promise<ApiStatsUsersResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   return {
     endpoint: "statsUsers",
@@ -2740,7 +2899,6 @@ export async function getStatsUsers(): Promise<ApiStatsUsersResponse> {
 }
 
 export async function getStatsUser(input: StatsUserFilter): Promise<ApiStatsUserResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   const filter = buildStatsUserFilter(input);
   const [daily, allTime] = await Promise.all([
@@ -2760,7 +2918,6 @@ export async function getStatsUser(input: StatsUserFilter): Promise<ApiStatsUser
 }
 
 export async function getStatsAgents(input?: { agentId?: string | null; includeKeys?: boolean }): Promise<ApiStatsAgentsResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   const [users, allTimeUsers] = await Promise.all([
     getUsersStats(metrics.dayKey),
@@ -2848,7 +3005,6 @@ export async function getStatsAgents(input?: { agentId?: string | null; includeK
 }
 
 export async function getStatsVolume(): Promise<ApiStatsVolumeResponse> {
-  await flushBufferedAnalyticsForRead();
   const metrics = await getTodayMetrics();
   return {
     endpoint: "statsVolume",
@@ -2861,7 +3017,6 @@ export async function getStatsVolume(): Promise<ApiStatsVolumeResponse> {
 }
 
 export async function getRequests(): Promise<ApiRequestsResponse> {
-  await flushBufferedAnalyticsForRead();
   return {
     endpoint: "requests",
     requests: await getAllTimeRequestsStats(),
@@ -2869,7 +3024,6 @@ export async function getRequests(): Promise<ApiRequestsResponse> {
 }
 
 export async function getVolume(): Promise<ApiVolumeResponse> {
-  await flushBufferedAnalyticsForRead();
   const volume = await getAllTimeVolumeStats();
   return {
     endpoint: "volume",
