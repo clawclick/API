@@ -218,7 +218,6 @@ const PROTECTED_PREFIXES = [
   "/tokenHolders",
   "/filterTokens",
   "/volatilityScanner",
-  "/strats",
   "/ws/launchpadEvents",
   "/admin/",
 ];
