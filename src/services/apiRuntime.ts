@@ -172,12 +172,9 @@ const ADMIN_PATHS = new Set([
   "/admin/apiKeys/generate",
   "/admin/stats",
   "/admin/stats/requests",
+  "/admin/stats/users",
   "/admin/stats/agents",
   "/admin/stats/volume",
-  "/stats",
-  "/stats/requests",
-  "/stats/users",
-  "/stats/volume",
 ]);
 const PROTECTED_PREFIXES = [
   "/tokenPoolInfo",

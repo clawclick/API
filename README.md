@@ -59,10 +59,10 @@ npx tsx src/server.ts   # starts on port 3000
 | `/providers` | GET | List all 50+ providers and their config status |
 | `/admin/apiKeys/generate` | POST | Generate a new client API key |
 | `/admin/stats` | GET | Full daily analytics snapshot for admins |
-| `/stats` | GET | Summary daily stats: requests, users, volume |
-| `/stats/requests` | GET | Daily request totals by endpoint and status |
-| `/stats/users` | GET | API key issuance and usage totals |
-| `/stats/volume` | GET | Daily ETH buy/sell volume counters |
+| `/admin/stats/requests` | GET | Daily request totals by endpoint and status |
+| `/admin/stats/users` | GET | API key issuance and usage totals |
+| `/admin/stats/agents` | GET | Per-agent request quality and latency analytics |
+| `/admin/stats/volume` | GET | Daily ETH buy/sell volume counters |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |
 | `/tokenPriceHistory` | GET | Historical OHLCV price data |
 | `/detailedTokenStats` | GET | Bucketed token stats from Codex (cached 30 min) |
@@ -172,14 +172,14 @@ POST /admin/apiKeys/generate?label=trading-bot&agentId=arb-bot-01&agentWalletEvm
 
 ---
 
-### `GET /stats`
+### `GET /admin/stats`
 
 Admin summary endpoint. Returns the current UTC-day totals plus all-time request, user, agent, and ETH volume aggregates.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
 ```
-GET /stats
+GET /admin/stats
 ```
 
 **Response:**
@@ -274,7 +274,7 @@ GET /stats
 
 ### `GET /admin/stats/requests`
 
-Admin-only all-time request analytics with per-endpoint and per-status-code breakdowns. Aggregates are cached in-memory for 5 minutes.
+Admin-only request analytics for the current UTC day, plus a matching all-time breakdown.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
@@ -285,8 +285,62 @@ GET /admin/stats/requests
 **Response:**
 ```json
 {
-  "endpoint": "requests",
+  "endpoint": "statsRequests",
+  "dayKey": "2026-03-19",
+  "startedAt": "2026-03-19T00:00:00.000Z",
+  "resetsAt": "2026-03-20T00:00:00.000Z",
   "requests": {
+    "total": 1240,
+    "successful": 1218,
+    "failed": 22,
+    "clientErrors": 14,
+    "serverErrors": 8,
+    "successRatePct": 98.23,
+    "failureRatePct": 1.77,
+    "latency": { "avgMs": 142.6, "p50Ms": 100, "p95Ms": 500, "p99Ms": 1000 },
+    "byEndpoint": { "/holders": 240, "/swap": 120 },
+    "byStatusCode": { "200": 1218, "400": 14, "500": 8 },
+    "endpointBreakdown": [
+      {
+        "key": "/holders",
+        "total": 240,
+        "successful": 236,
+        "failed": 4,
+        "clientErrors": 3,
+        "serverErrors": 1,
+        "successRatePct": 98.33,
+        "failureRatePct": 1.67,
+        "latency": { "avgMs": 121.4, "p50Ms": 100, "p95Ms": 250, "p99Ms": 500 }
+      }
+    ],
+    "providers": [
+      {
+        "provider": "moralisOwners",
+        "total": 120,
+        "successful": 118,
+        "failed": 2,
+        "clientErrors": 1,
+        "serverErrors": 1,
+        "successRatePct": 98.33,
+        "failureRatePct": 1.67,
+        "latency": { "avgMs": 241.1, "p50Ms": 250, "p95Ms": 1000, "p99Ms": 2000 },
+        "endpoints": [
+          {
+            "key": "/holders",
+            "total": 90,
+            "successful": 89,
+            "failed": 1,
+            "clientErrors": 1,
+            "serverErrors": 0,
+            "successRatePct": 98.89,
+            "failureRatePct": 1.11,
+            "latency": { "avgMs": 215.8, "p50Ms": 250, "p95Ms": 500, "p99Ms": 1000 }
+          }
+        ]
+      }
+    ]
+  },
+  "allTime": {
     "total": 98765,
     "successful": 98000,
     "failed": 765,
@@ -340,18 +394,14 @@ GET /admin/stats/requests
 }
 ```
 
-### `GET /stats/requests`
-
-Admin-only request analytics for the current UTC day, plus a matching all-time breakdown.
-
-### `GET /stats/users`
+### `GET /admin/stats/users`
 
 Admin-only API-key issuance and usage analytics for the current UTC day, including per-key and per-agent request quality and latency.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
 ```http
-GET /stats/users
+GET /admin/stats/users
 ```
 
 **Response:**
@@ -472,7 +522,7 @@ GET /admin/stats/agents?agentId=scanner-alpha&includeKeys=true
 
 ### `GET /admin/stats/volume`
 
-Admin-only all-time ETH buy/sell volume totals with a combined sum across both directions. Aggregates are cached in-memory for 5 minutes.
+Admin-only ETH buy/sell volume counters for the current UTC day, plus matching all-time totals.
 
 **Header:** `x-admin-key: <ADMIN_API_KEY>`
 
@@ -483,28 +533,28 @@ GET /admin/stats/volume
 **Response:**
 ```json
 {
-  "endpoint": "volume",
+  "endpoint": "statsVolume",
+  "dayKey": "2026-03-19",
+  "startedAt": "2026-03-19T00:00:00.000Z",
+  "resetsAt": "2026-03-20T00:00:00.000Z",
   "volume": {
+    "buyWei": "1000000000000000000",
+    "sellWei": "500000000000000000",
+    "buyEth": "1",
+    "sellEth": "0.5",
+    "buyCount": 3,
+    "sellCount": 2
+  },
+  "allTime": {
     "buyWei": "123000000000000000000",
     "sellWei": "45000000000000000000",
-    "totalWei": "168000000000000000000",
     "buyEth": "123",
     "sellEth": "45",
-    "totalEth": "168",
     "buyCount": 120,
-    "sellCount": 44,
-    "totalCount": 164
+    "sellCount": 44
   }
 }
 ```
-
-### `GET /stats/volume`
-
-Admin-only ETH buy/sell volume counters for the current UTC day, plus matching all-time totals.
-
-### `GET /admin/stats`
-
-Admin-only full analytics snapshot. Returns the combined `requests`, `users`, and `volume` sections for today, plus an `allTime` aggregate block.
 
 Analytics writes are buffered in memory and flushed to Postgres in batches, currently every 5 minutes or after roughly 100 tracked requests. That keeps normal API requests off the database path, while stats endpoints may reflect a small delay and can take longer because they force a flush before reading.
 
@@ -1915,7 +1965,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | Variable | Used By |
 |---|---|
 | `DATABASE_URL` | API key storage and analytics tables |
-| `ADMIN_API_KEY` | Admin-only endpoints: `/admin/apiKeys/generate`, `/admin/stats`, `/stats*` |
+| `ADMIN_API_KEY` | Admin-only endpoints: `/admin/apiKeys/generate`, `/admin/stats`, `/admin/stats/*` |
 | `MORALIS_API_KEY` | walletReview, holderAnalysis, tokenPoolInfo, holders |
 | `BIRDEYE_API_KEY` | tokenPoolInfo, priceHistory, topTraders, walletReview |
 | `ETHERSCAN_API_KEY` | gasFeed (single key for ETH/BASE/BSC via Etherscan V2) |

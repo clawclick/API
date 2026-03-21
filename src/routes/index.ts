@@ -9,7 +9,7 @@ import {
   getTokenPoolInfo,
   getTokenPriceHistory
 } from "#services/liveEndpoints";
-import { getApiRuntimeStats, getRequests, generateApiKey, getStatsAgents, getStatsOverview, getStatsRequests, getStatsUsers, getStatsVolume, getVolume } from "#services/apiRuntime";
+import { generateApiKey, getApiRuntimeStats, getStatsAgents, getStatsRequests, getStatsUsers, getStatsVolume } from "#services/apiRuntime";
 import { getHolders } from "#services/holders";
 import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
@@ -44,14 +44,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       body.agentWalletSol ?? null,
     );
   });
-  app.get("/admin/stats/requests", async () => getRequests());
   app.get("/admin/stats", async () => getApiRuntimeStats());
-  app.get("/stats", async () => getStatsOverview());
-  app.get("/stats/requests", async () => getStatsRequests());
-  app.get("/stats/users", async () => getStatsUsers());
+  app.get("/admin/stats/requests", async () => getStatsRequests());
+  app.get("/admin/stats/users", async () => getStatsUsers());
   app.get("/admin/stats/agents", async (request) => getStatsAgents(parseQuery(statsAgentsSchema, request.query)));
-  app.get("/stats/volume", async () => getStatsVolume());
-  app.get("/admin/stats/volume", async () => getVolume());
+  app.get("/admin/stats/volume", async () => getStatsVolume());
 
   // Info routes 
   app.get("/tokenPoolInfo", async (request) => getTokenPoolInfo(parseQuery(tokenQuerySchema, request.query)));
