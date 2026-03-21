@@ -217,6 +217,113 @@ Place the sell:
 GET /swap?chain=sol&dex=raydium&walletAddress=<wallet>&tokenIn=<target_token>&tokenOut=So11111111111111111111111111111111111111112&amountIn=<token_balance>&slippageBps=100
 ```
 
+### API-first execution notes for Base / EVM memecoins
+
+For Base memecoins and other non-standard ERC-20s, prefer an **API-first exit path** over local router assumptions:
+
+1. Check balance on-chain first.
+2. Call `/approve` with `approvalMode=auto`.
+3. Submit the returned approval tx if any step is returned.
+4. Call `/swap` for the sell route and sign/send that tx.
+5. Re-check token balance after the sell.
+
+Do **not** rely on a local allowance pre-check as the source of truth. Some tokens revert on `allowance()` calls even though the API-provided approval + swap path works.
+
+If local price watchers disagree with API quotes or report zero / nonsense prices:
+- trust `/swapQuote` and `/priceHistoryIndicators` over the local watcher
+- do not auto-trigger stop-loss from a zero price read
+- fall back to manual/API-driven exit handling
+
+Suggested Base sell sequence:
+
+```
+GET /approve?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenOut=native&amount=<raw_token_amount>&approvalMode=auto
+GET /swap?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenOut=native&amountIn=<raw_token_amount>&slippageBps=200
+```
+
+## Autonomous operation bootstrap
+
+If the owner wants the agent to run autonomously, do **not** start trading immediately unless these owner-defined limits are explicitly known.
+
+### First questions the agent must ask the owner
+
+Before autonomous trading begins, ask for all of the following:
+
+1. **Max trade size**
+   - maximum dollar amount per trade
+   - optionally also maximum % of wallet per trade
+2. **Max daily loss / max loss before stopping entirely**
+   - e.g. "$500 daily loss cap" or "stop forever if down $2,000 until owner resets"
+3. **Profit lock / stop-after-profit threshold**
+   - e.g. "if profit reaches $5,000 total, stop trading and wait for owner"
+4. **Allowed chains and token types**
+   - e.g. Base only, no brand-new launches, no illiquid tokens, no leveraged products
+5. **Position limits**
+   - max concurrent positions
+   - whether overnight holds are allowed
+6. **Risk controls**
+   - default stop loss
+   - target take profit
+   - max slippage
+7. **Autonomy mode**
+   - scan only / propose only / fully auto-execute
+
+If any of these are missing, the agent should ask the owner first and avoid autonomous execution.
+
+### After the owner answers
+
+The agent should immediately write the confirmed rules into workspace control files so future heartbeat runs stay consistent:
+
+- `HEARTBEAT.md` → short recurring checklist + hard stop conditions
+- `MYRULES.md` → durable trading policy and risk limits
+- optionally `USER.md` → owner preferences / allowed scope
+
+Keep `HEARTBEAT.md` short and action-oriented. Put detailed rules in `MYRULES.md`.
+
+### Required behavior once autonomous mode is enabled
+
+On heartbeat or scheduled wakeups, the agent should:
+
+1. Check whether autonomy settings are present in workspace files.
+2. Refuse to trade if max trade size / max loss / stop-after-profit rules are missing.
+3. Check current wallet balances and open positions first.
+4. Check whether any stop condition has already been hit:
+   - loss cap hit
+   - profit cap hit
+   - owner pause flag
+   - too many open positions
+5. Only then scan for swing setups.
+6. Only execute trades that fit the stored owner constraints.
+7. After each trade, update local state / notes so the next run knows:
+   - amount spent
+   - token bought
+   - stop / target
+   - realized P&L if closed
+8. If a hard stop is reached, stop trading and alert the owner instead of continuing.
+
+### Hard safety rules for autonomous swing trading
+
+- Never assume risk limits.
+- Never increase trade size after losses to "win it back".
+- Never continue trading after hitting the owner-defined max loss threshold.
+- Never continue trading after hitting the owner-defined stop-after-profit threshold.
+- Never bypass missing settings by inventing defaults unless the owner explicitly authorized defaults.
+- Prefer no trade over a low-quality trade.
+
+### Heartbeat writing rule
+
+When owner limits are collected, the agent should rewrite `HEARTBEAT.md` into a compact checklist that includes:
+
+- autonomy enabled / disabled
+- allowed trading mode
+- max trade size
+- max loss stop condition
+- profit stop condition
+- max open positions
+- current required actions: manage positions first, then scan, then trade only if valid
+
+If `HEARTBEAT.md` becomes stale or no longer matches the owner rules, update it.
+
 ---
 
 ## Phase 4: Risk Management & Hold-Off Rules
