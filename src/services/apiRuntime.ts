@@ -1898,12 +1898,12 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
 
   const endpointRows = [...state.endpointStats.entries()].map(([endpoint, aggregate]) => ({
     endpoint,
-    requestCount: aggregate.requestCount,
-    successfulRequests: aggregate.successfulRequests,
-    clientErrorRequests: aggregate.clientErrorRequests,
-    serverErrorRequests: aggregate.serverErrorRequests,
-    totalLatencyMs: aggregate.totalLatencyMs,
-    latencyBuckets: aggregate.latencyBuckets,
+    request_count: aggregate.requestCount,
+    successful_requests: aggregate.successfulRequests,
+    client_error_requests: aggregate.clientErrorRequests,
+    server_error_requests: aggregate.serverErrorRequests,
+    total_latency_ms: aggregate.totalLatencyMs,
+    latency_buckets: aggregate.latencyBuckets,
   }));
 
   if (endpointRows.length > 0) {
@@ -1965,14 +1965,14 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
   }
 
   const keyRows = [...state.keyStats.entries()].map(([apiKeyId, aggregate]) => ({
-    apiKeyId,
-    requestCount: aggregate.requestCount,
-    successfulRequests: aggregate.successfulRequests,
-    clientErrorRequests: aggregate.clientErrorRequests,
-    serverErrorRequests: aggregate.serverErrorRequests,
-    totalLatencyMs: aggregate.totalLatencyMs,
-    latencyBuckets: aggregate.latencyBuckets,
-    lastUsedAt: aggregate.lastUsedAt,
+    api_key_id: apiKeyId,
+    request_count: aggregate.requestCount,
+    successful_requests: aggregate.successfulRequests,
+    client_error_requests: aggregate.clientErrorRequests,
+    server_error_requests: aggregate.serverErrorRequests,
+    total_latency_ms: aggregate.totalLatencyMs,
+    latency_buckets: aggregate.latencyBuckets,
+    last_used_at: aggregate.lastUsedAt,
   }));
 
   if (keyRows.length > 0) {
@@ -2055,12 +2055,12 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
   const providerRows = [...state.providerStats.values()].map((providerAggregate) => ({
     endpoint: providerAggregate.endpoint,
     provider: providerAggregate.provider,
-    requestCount: providerAggregate.stats.requestCount,
-    successfulRequests: providerAggregate.stats.successfulRequests,
-    clientErrorRequests: providerAggregate.stats.clientErrorRequests,
-    serverErrorRequests: providerAggregate.stats.serverErrorRequests,
-    totalLatencyMs: providerAggregate.stats.totalLatencyMs,
-    latencyBuckets: providerAggregate.stats.latencyBuckets,
+    request_count: providerAggregate.stats.requestCount,
+    successful_requests: providerAggregate.stats.successfulRequests,
+    client_error_requests: providerAggregate.stats.clientErrorRequests,
+    server_error_requests: providerAggregate.stats.serverErrorRequests,
+    total_latency_ms: providerAggregate.stats.totalLatencyMs,
+    latency_buckets: providerAggregate.stats.latencyBuckets,
   }));
 
   if (providerRows.length > 0) {
@@ -2153,6 +2153,8 @@ export async function flushBufferedAnalytics(): Promise<void> {
       allTimeVolumeCache = null;
     } catch (error) {
       requeueBufferedAnalytics(snapshot, snapshotRequestCount);
+      // Surface flush failures so ops can diagnose stale analytics quickly.
+      console.error("[apiRuntime] Failed to flush buffered analytics", error);
       throw error;
     } finally {
       analyticsFlushPromise = null;
