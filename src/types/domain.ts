@@ -1,5 +1,6 @@
 export type EndpointName =
   | "apiKeyGenerate"
+  | "apiKeyDelete"
   | "requests"
   | "volume"
   | "adminStats"

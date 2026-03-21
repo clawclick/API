@@ -3,6 +3,7 @@ import type { EndpointName } from "#types/domain";
 
 const descriptions: Record<EndpointName, string> = {
   apiKeyGenerate: "Generates a new client API key and returns it once, along with current issuance totals and optional agent metadata attachments.",
+  apiKeyDelete: "Deletes an existing client API key by id and returns the deleted key metadata so admins can revoke access cleanly.",
   requests: "Returns all-time request totals, explicit success/client-error/server-error counters, latency summaries, per-endpoint leaderboards, and provider-level failure breakdowns. Backed by a 5-minute in-memory aggregate cache.",
   volume: "Returns all-time ETH buy and sell volume with a combined total across both directions. Backed by a 5-minute in-memory aggregate cache.",
   adminStats: "Returns the full analytics snapshot with current-day stats, request latency, provider health leaderboards, and all-time request, user, agent, and ETH volume aggregates.",
@@ -43,6 +44,7 @@ const descriptions: Record<EndpointName, string> = {
 
 const cacheHints: Record<EndpointName, number> = {
   apiKeyGenerate: 0,
+  apiKeyDelete: 0,
   requests: 300,
   volume: 300,
   adminStats: 0,

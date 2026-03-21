@@ -776,6 +776,20 @@ export type ApiKeyGenerateResponse = {
   activeToday: number;
 };
 
+export type ApiKeyDeleteResponse = {
+  endpoint: "apiKeyDelete";
+  keyId: string;
+  prefix: string;
+  label: string | null;
+  agentId: string | null;
+  agentWalletEvm: string | null;
+  agentWalletSol: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  totalRequests: number;
+  deletedAt: string;
+};
+
 export type ApiStatsUserItem = {
   id: string;
   prefix: string;

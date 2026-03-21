@@ -5,6 +5,7 @@ import { Pool, type PoolClient } from "pg";
 import { getOptionalEnv, getRequiredEnv, isConfigured } from "#config/env";
 import { isNativeIn } from "#lib/evm";
 import type {
+  ApiKeyDeleteResponse,
   ApiKeyGenerateResponse,
   ApiAllTimeAgentItem,
   ApiAllTimeUserItem,
@@ -166,16 +167,19 @@ type StatsUserFilter = {
 
 export class AccessError extends Error {
   statusCode: number;
+  details?: Record<string, unknown>;
 
-  constructor(statusCode: number, message: string) {
+  constructor(statusCode: number, message: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "AccessError";
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
 const PUBLIC_PATHS = new Set(["/health", "/providers"]);
 const ADMIN_PATHS = new Set([
+  "/admin/apiKeys",
   "/admin/apiKeys/generate",
   "/admin/stats",
   "/admin/stats/requests",
@@ -219,6 +223,16 @@ const ANALYTICS_FLUSH_INTERVAL_MS = 5 * 60 * 1000;
 const ANALYTICS_FLUSH_REQUEST_THRESHOLD = 100;
 const LATENCY_BUCKET_BOUNDS_MS = [50, 100, 250, 500, 1000, 2000, 5000, 10000] as const;
 const LATENCY_BUCKET_INF_KEY = "inf";
+const API_KEY_RATE_LIMITS = {
+  perSecond: 5,
+  perMinute: 120,
+  perHour: 3000,
+} as const;
+const RATE_LIMIT_SECOND_MS = 1000;
+const RATE_LIMIT_MINUTE_MS = 60 * 1000;
+const RATE_LIMIT_HOUR_MS = 60 * 60 * 1000;
+const RATE_LIMIT_STATE_TTL_MS = 2 * RATE_LIMIT_HOUR_MS;
+const RATE_LIMIT_CLEANUP_THRESHOLD = 5000;
 
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
@@ -228,7 +242,95 @@ let bufferedAnalyticsByDay = new Map<string, BufferedDayAnalytics>();
 let bufferedRequestCount = 0;
 let analyticsFlushPromise: Promise<void> | null = null;
 let analyticsFlushTimer: NodeJS.Timeout | null = null;
+let apiKeyRateLimitStates = new Map<string, {
+  second: { windowStartMs: number; count: number };
+  minute: { windowStartMs: number; count: number };
+  hour: { windowStartMs: number; count: number };
+  lastSeenAt: number;
+}>();
 const requestMetricsContext = new AsyncLocalStorage<RequestMetricsContext>();
+
+function getWindowStartMs(nowMs: number, durationMs: number): number {
+  return Math.floor(nowMs / durationMs) * durationMs;
+}
+
+function refreshRateLimitBucket(bucket: { windowStartMs: number; count: number }, windowStartMs: number): void {
+  if (bucket.windowStartMs !== windowStartMs) {
+    bucket.windowStartMs = windowStartMs;
+    bucket.count = 0;
+  }
+}
+
+function cleanupApiKeyRateLimitStates(nowMs: number): void {
+  if (apiKeyRateLimitStates.size < RATE_LIMIT_CLEANUP_THRESHOLD) {
+    return;
+  }
+
+  for (const [apiKeyId, state] of apiKeyRateLimitStates.entries()) {
+    if (nowMs - state.lastSeenAt > RATE_LIMIT_STATE_TTL_MS) {
+      apiKeyRateLimitStates.delete(apiKeyId);
+    }
+  }
+}
+
+export function enforceApiKeyRateLimit(apiKeyId: string): void {
+  const nowMs = Date.now();
+  cleanupApiKeyRateLimitStates(nowMs);
+
+  const secondWindowStartMs = getWindowStartMs(nowMs, RATE_LIMIT_SECOND_MS);
+  const minuteWindowStartMs = getWindowStartMs(nowMs, RATE_LIMIT_MINUTE_MS);
+  const hourWindowStartMs = getWindowStartMs(nowMs, RATE_LIMIT_HOUR_MS);
+
+  const state = apiKeyRateLimitStates.get(apiKeyId) ?? {
+    second: { windowStartMs: secondWindowStartMs, count: 0 },
+    minute: { windowStartMs: minuteWindowStartMs, count: 0 },
+    hour: { windowStartMs: hourWindowStartMs, count: 0 },
+    lastSeenAt: nowMs,
+  };
+
+  refreshRateLimitBucket(state.second, secondWindowStartMs);
+  refreshRateLimitBucket(state.minute, minuteWindowStartMs);
+  refreshRateLimitBucket(state.hour, hourWindowStartMs);
+
+  const checks = [
+    {
+      bucket: state.second,
+      label: "second",
+      limit: API_KEY_RATE_LIMITS.perSecond,
+      durationMs: RATE_LIMIT_SECOND_MS,
+    },
+    {
+      bucket: state.minute,
+      label: "minute",
+      limit: API_KEY_RATE_LIMITS.perMinute,
+      durationMs: RATE_LIMIT_MINUTE_MS,
+    },
+    {
+      bucket: state.hour,
+      label: "hour",
+      limit: API_KEY_RATE_LIMITS.perHour,
+      durationMs: RATE_LIMIT_HOUR_MS,
+    },
+  ] as const;
+
+  for (const check of checks) {
+    if (check.bucket.count >= check.limit) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((check.bucket.windowStartMs + check.durationMs - nowMs) / 1000));
+      throw new AccessError(429, `API key rate limit exceeded: ${check.limit} requests per ${check.label}.`, {
+        retryAfterSeconds,
+        scope: check.label,
+        limit: check.limit,
+        rateLimits: API_KEY_RATE_LIMITS,
+      });
+    }
+  }
+
+  state.second.count += 1;
+  state.minute.count += 1;
+  state.hour.count += 1;
+  state.lastSeenAt = nowMs;
+  apiKeyRateLimitStates.set(apiKeyId, state);
+}
 
 function getDayKey(date = new Date()): string {
   return date.toISOString().slice(0, 10);
@@ -1343,8 +1445,50 @@ export async function generateApiKey(
     const recordId = randomBytes(12).toString("hex");
     const normalizedLabel = normalizeNullableText(label);
     const normalizedAgentId = normalizeNullableText(agentId);
-    const normalizedAgentWalletEvm = normalizeNullableText(agentWalletEvm);
+    const normalizedAgentWalletEvm = normalizeWallet(agentWalletEvm);
     const normalizedAgentWalletSol = normalizeNullableText(agentWalletSol);
+
+    if (normalizedAgentWalletEvm) {
+      const existingEvmKey = await client.query<{ id: string; prefix: string }>(
+        `
+          SELECT id, prefix
+          FROM api_keys
+          WHERE LOWER(agent_wallet_evm) = $1
+          LIMIT 1
+        `,
+        [normalizedAgentWalletEvm],
+      );
+      const match = existingEvmKey.rows[0];
+      if (match) {
+        throw new AccessError(409, "An API key already exists for that EVM wallet address. Delete it before generating a replacement.", {
+          keyId: match.id,
+          prefix: match.prefix,
+          walletField: "agentWalletEvm",
+          walletAddress: normalizedAgentWalletEvm,
+        });
+      }
+    }
+
+    if (normalizedAgentWalletSol) {
+      const existingSolKey = await client.query<{ id: string; prefix: string }>(
+        `
+          SELECT id, prefix
+          FROM api_keys
+          WHERE agent_wallet_sol = $1
+          LIMIT 1
+        `,
+        [normalizedAgentWalletSol],
+      );
+      const match = existingSolKey.rows[0];
+      if (match) {
+        throw new AccessError(409, "An API key already exists for that Solana wallet address. Delete it before generating a replacement.", {
+          keyId: match.id,
+          prefix: match.prefix,
+          walletField: "agentWalletSol",
+          walletAddress: normalizedAgentWalletSol,
+        });
+      }
+    }
 
     await client.query(
       `
@@ -1401,6 +1545,50 @@ export async function generateApiKey(
       createdAt: now,
       totalGenerated: parseCount(summary?.total_generated),
       activeToday: parseCount(summary?.active_today),
+    };
+  });
+}
+
+export async function deleteApiKey(keyId: string): Promise<ApiKeyDeleteResponse> {
+  return withTransaction(async (client) => {
+    const result = await client.query<{
+      id: string;
+      prefix: string;
+      label: string | null;
+      agent_id: string | null;
+      agent_wallet_evm: string | null;
+      agent_wallet_sol: string | null;
+      created_at: Date | string;
+      last_used_at: Date | string | null;
+      total_requests: string;
+    }>(
+      `
+        DELETE FROM api_keys
+        WHERE id = $1
+        RETURNING id, prefix, label, agent_id, agent_wallet_evm, agent_wallet_sol, created_at, last_used_at, total_requests
+      `,
+      [keyId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new AccessError(404, "API key not found.");
+    }
+
+    apiKeyRateLimitStates.delete(row.id);
+
+    return {
+      endpoint: "apiKeyDelete",
+      keyId: row.id,
+      prefix: row.prefix,
+      label: row.label,
+      agentId: row.agent_id,
+      agentWalletEvm: row.agent_wallet_evm,
+      agentWalletSol: row.agent_wallet_sol,
+      createdAt: new Date(row.created_at).toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+      totalRequests: parseCount(row.total_requests),
+      deletedAt: new Date().toISOString(),
     };
   });
 }

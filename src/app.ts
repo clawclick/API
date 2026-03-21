@@ -4,7 +4,7 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
-import { AccessError, classifyPath, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
+import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
@@ -57,6 +57,7 @@ export function buildApp() {
     // Require API key for all non-public routes (protected and other non-public)
     try {
       const resolved = await requireApiKey(request.headers as Record<string, unknown>);
+      enforceApiKeyRateLimit(resolved.id);
       // attach apiKeyId to request for later use in metrics
       (request as unknown as AuthenticatedRequest).apiKeyId = resolved.id;
     } catch (err) {
@@ -122,9 +123,21 @@ export function buildApp() {
     }
 
     if (error instanceof AccessError) {
+      const errorLabel = error.statusCode === 401
+        ? "Unauthorized"
+        : error.statusCode === 403
+          ? "Forbidden"
+          : error.statusCode === 404
+            ? "Not found"
+            : error.statusCode === 409
+              ? "Conflict"
+              : error.statusCode === 429
+                ? "Too many requests"
+                : "Unavailable";
       reply.status(error.statusCode).send({
-        error: error.statusCode === 401 ? "Unauthorized" : "Unavailable",
+        error: errorLabel,
         message: error.message,
+        ...(error.details ?? {}),
       });
       return;
     }
@@ -154,7 +167,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
     });
   });
 

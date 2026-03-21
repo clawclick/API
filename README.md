@@ -58,6 +58,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/health` | GET | Health check |
 | `/providers` | GET | List all 50+ providers and their config status |
 | `/admin/apiKeys/generate` | POST | Generate a new client API key |
+| `/admin/apiKeys` | DELETE | Delete an existing client API key by id |
 | `/admin/stats` | GET | Full daily analytics snapshot for admins |
 | `/admin/stats/requests` | GET | Daily request totals by endpoint and status |
 | `/admin/stats/users` | GET | API key issuance and usage totals |
@@ -131,6 +132,7 @@ Most data endpoints require a client API key.
 
 - Client auth: `x-api-key: <key>` or `Authorization: Bearer <key>`
 - Admin auth: `x-admin-key: <ADMIN_API_KEY>`
+- Client rate limits: `5 req/sec`, `120 req/min`, `3000 req/hour` per API key
 - Public endpoints:
   - `/health`
   - `/providers`
@@ -168,6 +170,41 @@ POST /admin/apiKeys/generate?label=trading-bot&agentId=arb-bot-01&agentWalletEvm
   "createdAt": "2026-03-19T00:00:00.000Z",
   "totalGenerated": 3,
   "activeToday": 1
+}
+```
+
+If `agentWalletEvm` or `agentWalletSol` already has a key attached, the endpoint returns `409 Conflict`. Only one active key can exist per wallet address.
+
+---
+
+### `DELETE /admin/apiKeys`
+
+Delete an existing client API key by id. Admin-only endpoint.
+
+**Header:** `x-admin-key: <ADMIN_API_KEY>`
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `keyId` | string | yes | The internal API key id returned at generation time |
+
+```
+DELETE /admin/apiKeys?keyId=abc123
+```
+
+**Response:**
+```json
+{
+  "endpoint": "apiKeyDelete",
+  "keyId": "abc123",
+  "prefix": "click_abcd12",
+  "label": "trading-bot",
+  "agentId": "arb-bot-01",
+  "agentWalletEvm": "0x1234...",
+  "agentWalletSol": null,
+  "createdAt": "2026-03-19T00:00:00.000Z",
+  "lastUsedAt": "2026-03-20T13:10:00.000Z",
+  "totalRequests": 421,
+  "deletedAt": "2026-03-21T08:45:00.000Z"
 }
 ```
 

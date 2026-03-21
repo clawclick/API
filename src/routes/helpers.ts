@@ -228,6 +228,12 @@ export const apiKeyGenerateSchema = z.object({
 
 export type ApiKeyGenerateQuery = z.output<typeof apiKeyGenerateSchema>;
 
+export const apiKeyDeleteSchema = z.object({
+  keyId: z.string().trim().min(1).max(120),
+});
+
+export type ApiKeyDeleteQuery = z.output<typeof apiKeyDeleteSchema>;
+
 export const statsAgentsSchema = z.object({
   agentId: z.string().trim().min(1).max(120).optional(),
   includeKeys: z.preprocess((value) => value === "true" || value === true, z.boolean().default(false)),
