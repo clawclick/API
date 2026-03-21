@@ -235,6 +235,15 @@ export const statsAgentsSchema = z.object({
 
 export type StatsAgentsQuery = z.output<typeof statsAgentsSchema>;
 
+export const statsUserSchema = z.object({
+  agentId: z.string().trim().min(1).max(120).optional(),
+  agentWalletEvm: z.string().trim().min(1).max(120).optional(),
+}).refine((value) => Boolean(value.agentId || value.agentWalletEvm), {
+  message: "Provide agentId and/or agentWalletEvm.",
+});
+
+export type StatsUserQuery = z.output<typeof statsUserSchema>;
+
 /* ── Volatility Scanner Schema ──────────────────────────────── */
 
 export const volatilityScannerSchema = z.object({

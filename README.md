@@ -61,6 +61,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/admin/stats` | GET | Full daily analytics snapshot for admins |
 | `/admin/stats/requests` | GET | Daily request totals by endpoint and status |
 | `/admin/stats/users` | GET | API key issuance and usage totals |
+| `/admin/stats/user` | GET | Filtered single-user analytics by `agentId` and/or `agentWalletEvm` |
 | `/admin/stats/agents` | GET | Per-agent request quality and latency analytics |
 | `/admin/stats/volume` | GET | Daily ETH buy/sell volume counters |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |

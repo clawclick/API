@@ -853,6 +853,18 @@ export type ApiAllTimeUsers = {
   items: ApiAllTimeUserItem[];
 };
 
+export type ApiStatsSingleUserSummary = {
+  matchedKeys: number;
+  totalRequests: number;
+  successful: number;
+  failed: number;
+  clientErrors: number;
+  serverErrors: number;
+  successRatePct: number;
+  failureRatePct: number;
+  latency: ApiStatsLatency;
+};
+
 export type ApiStatsAgentAnalyticsItem = {
   agentId: string;
   daily: ApiStatsAgentItem;
@@ -1001,6 +1013,27 @@ export type ApiStatsUsersResponse = {
   startedAt: string;
   resetsAt: string;
   users: ApiStatsUsers;
+};
+
+export type ApiStatsUserResponse = {
+  endpoint: "statsUser";
+  dayKey: string;
+  startedAt: string;
+  resetsAt: string;
+  filter: {
+    agentId: string | null;
+    agentWalletEvm: string | null;
+  };
+  daily: {
+    summary: ApiStatsSingleUserSummary;
+    keys: ApiStatsUserItem[];
+    apiKeys: Record<string, ApiStatsUserItem>;
+  };
+  allTime: {
+    summary: ApiStatsSingleUserSummary;
+    keys: ApiAllTimeUserItem[];
+    apiKeys: Record<string, ApiAllTimeUserItem>;
+  };
 };
 
 export type ApiStatsAgentsResponse = {

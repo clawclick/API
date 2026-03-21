@@ -13,6 +13,8 @@ import type {
   ApiRuntimeStatsResponse,
   ApiStatsAgentAnalyticsItem,
   ApiStatsAgentsResponse,
+  ApiStatsSingleUserSummary,
+  ApiStatsUserResponse,
   ApiVolumeResponse,
   ApiAllTimeVolume,
   ApiStatsAgentItem,
@@ -157,6 +159,11 @@ type ResolvedApiKey = {
   prefix: string;
 };
 
+type StatsUserFilter = {
+  agentId?: string | null;
+  agentWalletEvm?: string | null;
+};
+
 export class AccessError extends Error {
   statusCode: number;
 
@@ -173,6 +180,7 @@ const ADMIN_PATHS = new Set([
   "/admin/stats",
   "/admin/stats/requests",
   "/admin/stats/users",
+  "/admin/stats/user",
   "/admin/stats/agents",
   "/admin/stats/volume",
 ]);
@@ -1169,6 +1177,67 @@ function normalizeNullableText(value: string | null | undefined): string | null 
   return trimmed ? trimmed : null;
 }
 
+function normalizeWallet(value: string | null | undefined): string | null {
+  const normalized = normalizeNullableText(value);
+  return normalized ? normalized.toLowerCase() : null;
+}
+
+function buildStatsUserFilter(input?: StatsUserFilter): { agentId: string | null; agentWalletEvm: string | null } {
+  return {
+    agentId: normalizeNullableText(input?.agentId),
+    agentWalletEvm: normalizeWallet(input?.agentWalletEvm),
+  };
+}
+
+function buildApiKeyWhereClause(filter: { agentId: string | null; agentWalletEvm: string | null }, alias: string, startIndex = 1): { clause: string; params: string[] } {
+  const clauses: string[] = [];
+  const params: string[] = [];
+  let index = startIndex;
+
+  if (filter.agentId) {
+    clauses.push(`${alias}.agent_id = $${index}`);
+    params.push(filter.agentId);
+    index += 1;
+  }
+
+  if (filter.agentWalletEvm) {
+    clauses.push(`LOWER(${alias}.agent_wallet_evm) = $${index}`);
+    params.push(filter.agentWalletEvm);
+  }
+
+  return {
+    clause: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "",
+    params,
+  };
+}
+
+function buildSingleUserSummary(input: {
+  matchedKeys: number;
+  totalRequests: number;
+  successful: number;
+  clientErrors: number;
+  serverErrors: number;
+  totalLatencyMs: number;
+  latencyBuckets: Record<string, number>;
+}): ApiStatsSingleUserSummary {
+  const outcomeSummary = buildOutcomeSummary(input.totalRequests, input.successful, input.clientErrors, input.serverErrors);
+  return {
+    matchedKeys: input.matchedKeys,
+    totalRequests: input.totalRequests,
+    successful: input.successful,
+    failed: outcomeSummary.failed,
+    clientErrors: input.clientErrors,
+    serverErrors: input.serverErrors,
+    successRatePct: outcomeSummary.successRatePct,
+    failureRatePct: outcomeSummary.failureRatePct,
+    latency: buildLatencySummary(input.totalRequests, input.totalLatencyMs, input.latencyBuckets),
+  };
+}
+
+function buildApiKeysRecord<TItem extends { id: string }>(items: TItem[]): Record<string, TItem> {
+  return Object.fromEntries(items.map((item) => [item.id, item])) as Record<string, TItem>;
+}
+
 function formatUnits(raw: string, decimals: number): string {
   const value = raw.replace(/^0+/, "") || "0";
   if (decimals <= 0) return value;
@@ -2084,6 +2153,228 @@ async function getUsersStats(dayKey: string): Promise<ApiStatsUsers> {
   };
 }
 
+async function getFilteredDailyUserStats(dayKey: string, filter: { agentId: string | null; agentWalletEvm: string | null }): Promise<{ summary: ApiStatsSingleUserSummary; keys: ApiStatsUserItem[]; apiKeys: Record<string, ApiStatsUserItem> }> {
+  await ensureDatabaseReady();
+  const where = buildApiKeyWhereClause(filter, "k", 2);
+  const result = await getPool().query<{
+    id: string;
+    prefix: string;
+    label: string | null;
+    agent_id: string | null;
+    agent_wallet_evm: string | null;
+    agent_wallet_sol: string | null;
+    created_at: Date | string;
+    last_used_at: Date | string | null;
+    total_requests: string;
+    requests_today: string | null;
+    successful_requests_today: string | null;
+    client_error_requests_today: string | null;
+    server_error_requests_today: string | null;
+    total_latency_ms_today: string | null;
+    latency_buckets_today: Record<string, number> | string | null;
+  }>(
+    `
+      SELECT
+        k.id,
+        k.prefix,
+        k.label,
+        k.agent_id,
+        k.agent_wallet_evm,
+        k.agent_wallet_sol,
+        k.created_at,
+        k.last_used_at,
+        k.total_requests,
+        d.request_count AS requests_today,
+        d.successful_requests AS successful_requests_today,
+        d.client_error_requests AS client_error_requests_today,
+        d.server_error_requests AS server_error_requests_today,
+        d.total_latency_ms AS total_latency_ms_today,
+        d.latency_buckets AS latency_buckets_today
+      FROM api_keys k
+      LEFT JOIN api_daily_key_stats d
+        ON d.api_key_id = k.id
+       AND d.day_key = $1::date
+      ${where.clause}
+      ORDER BY COALESCE(d.request_count, 0) DESC, k.created_at DESC
+    `,
+    [dayKey, ...where.params],
+  );
+
+  let totalRequests = 0;
+  let successful = 0;
+  let clientErrors = 0;
+  let serverErrors = 0;
+  let totalLatencyMs = 0;
+  let latencyBuckets: Record<string, number> = {};
+
+  const keys = result.rows.map((row) => {
+    const requestsToday = parseCount(row.requests_today);
+    const successfulToday = parseCount(row.successful_requests_today);
+    const clientErrorsToday = parseCount(row.client_error_requests_today);
+    const serverErrorsToday = parseCount(row.server_error_requests_today);
+    const rowLatencyBuckets = parseCountMap(row.latency_buckets_today);
+    const outcomeSummary = buildOutcomeSummary(requestsToday, successfulToday, clientErrorsToday, serverErrorsToday);
+
+    totalRequests += requestsToday;
+    successful += successfulToday;
+    clientErrors += clientErrorsToday;
+    serverErrors += serverErrorsToday;
+    totalLatencyMs += parseCount(row.total_latency_ms_today);
+    latencyBuckets = mergeCountMaps(latencyBuckets, rowLatencyBuckets);
+
+    return {
+      id: row.id,
+      prefix: row.prefix,
+      label: row.label,
+      agentId: row.agent_id,
+      agentWalletEvm: row.agent_wallet_evm,
+      agentWalletSol: row.agent_wallet_sol,
+      createdAt: new Date(row.created_at).toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+      totalRequests: parseCount(row.total_requests),
+      activeToday: requestsToday > 0,
+      requestsToday,
+      successfulToday,
+      failedToday: outcomeSummary.failed,
+      clientErrorsToday,
+      serverErrorsToday,
+      successRatePctToday: outcomeSummary.successRatePct,
+      failureRatePctToday: outcomeSummary.failureRatePct,
+      latencyToday: buildLatencySummary(requestsToday, parseCount(row.total_latency_ms_today), rowLatencyBuckets),
+    };
+  });
+
+  return {
+    summary: buildSingleUserSummary({
+      matchedKeys: keys.length,
+      totalRequests,
+      successful,
+      clientErrors,
+      serverErrors,
+      totalLatencyMs,
+      latencyBuckets,
+    }),
+    keys,
+    apiKeys: buildApiKeysRecord(keys),
+  };
+}
+
+async function getFilteredAllTimeUserStats(filter: { agentId: string | null; agentWalletEvm: string | null }): Promise<{ summary: ApiStatsSingleUserSummary; keys: ApiAllTimeUserItem[]; apiKeys: Record<string, ApiAllTimeUserItem> }> {
+  await ensureDatabaseReady();
+  const where = buildApiKeyWhereClause(filter, "k", 1);
+  const result = await getPool().query<{
+    id: string;
+    prefix: string;
+    label: string | null;
+    agent_id: string | null;
+    agent_wallet_evm: string | null;
+    agent_wallet_sol: string | null;
+    created_at: Date | string;
+    last_used_at: Date | string | null;
+    total_requests: string;
+    successful_requests: string | null;
+    client_error_requests: string | null;
+    server_error_requests: string | null;
+    total_latency_ms: string | null;
+    latency_buckets: Record<string, number> | string | null;
+  }>(
+    `
+      SELECT
+        k.id,
+        k.prefix,
+        k.label,
+        k.agent_id,
+        k.agent_wallet_evm,
+        k.agent_wallet_sol,
+        k.created_at,
+        k.last_used_at,
+        k.total_requests,
+        COALESCE(SUM(d.successful_requests), 0)::text AS successful_requests,
+        COALESCE(SUM(d.client_error_requests), 0)::text AS client_error_requests,
+        COALESCE(SUM(d.server_error_requests), 0)::text AS server_error_requests,
+        COALESCE(SUM(d.total_latency_ms), 0)::text AS total_latency_ms,
+        COALESCE(jsonb_object_agg(bucket_counts.key, bucket_counts.value_sum) FILTER (WHERE bucket_counts.key IS NOT NULL), '{}'::jsonb) AS latency_buckets
+      FROM api_keys k
+      LEFT JOIN api_daily_key_stats d
+        ON d.api_key_id = k.id
+      LEFT JOIN LATERAL (
+        SELECT key, SUM(value::bigint)::text AS value_sum
+        FROM jsonb_each_text(COALESCE(d.latency_buckets, '{}'::jsonb))
+        GROUP BY key
+      ) bucket_counts ON true
+      ${where.clause}
+      GROUP BY
+        k.id,
+        k.prefix,
+        k.label,
+        k.agent_id,
+        k.agent_wallet_evm,
+        k.agent_wallet_sol,
+        k.created_at,
+        k.last_used_at,
+        k.total_requests
+      ORDER BY k.total_requests DESC, k.created_at DESC
+    `,
+    where.params,
+  );
+
+  let totalRequests = 0;
+  let successful = 0;
+  let clientErrors = 0;
+  let serverErrors = 0;
+  let totalLatencyMs = 0;
+  let latencyBuckets: Record<string, number> = {};
+
+  const keys = result.rows.map((row) => {
+    const parsedTotalRequests = parseCount(row.total_requests);
+    const parsedSuccessful = parseCount(row.successful_requests);
+    const parsedClientErrors = parseCount(row.client_error_requests);
+    const parsedServerErrors = parseCount(row.server_error_requests);
+    const rowLatencyBuckets = parseCountMap(row.latency_buckets);
+    const outcomeSummary = buildOutcomeSummary(parsedTotalRequests, parsedSuccessful, parsedClientErrors, parsedServerErrors);
+
+    totalRequests += parsedTotalRequests;
+    successful += parsedSuccessful;
+    clientErrors += parsedClientErrors;
+    serverErrors += parsedServerErrors;
+    totalLatencyMs += parseCount(row.total_latency_ms);
+    latencyBuckets = mergeCountMaps(latencyBuckets, rowLatencyBuckets);
+
+    return {
+      id: row.id,
+      prefix: row.prefix,
+      label: row.label,
+      agentId: row.agent_id,
+      agentWalletEvm: row.agent_wallet_evm,
+      agentWalletSol: row.agent_wallet_sol,
+      createdAt: new Date(row.created_at).toISOString(),
+      lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null,
+      totalRequests: parsedTotalRequests,
+      successful: parsedSuccessful,
+      failed: outcomeSummary.failed,
+      clientErrors: parsedClientErrors,
+      serverErrors: parsedServerErrors,
+      successRatePct: outcomeSummary.successRatePct,
+      failureRatePct: outcomeSummary.failureRatePct,
+      latency: buildLatencySummary(parsedTotalRequests, parseCount(row.total_latency_ms), rowLatencyBuckets),
+    };
+  });
+
+  return {
+    summary: buildSingleUserSummary({
+      matchedKeys: keys.length,
+      totalRequests,
+      successful,
+      clientErrors,
+      serverErrors,
+      totalLatencyMs,
+      latencyBuckets,
+    }),
+    keys,
+    apiKeys: buildApiKeysRecord(keys),
+  };
+}
+
 async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
   await ensureDatabaseReady();
   const result = await getPool().query<{
@@ -2257,6 +2548,26 @@ export async function getStatsUsers(): Promise<ApiStatsUsersResponse> {
     startedAt: metrics.startedAt,
     resetsAt: metrics.resetsAt,
     users: await getUsersStats(metrics.dayKey),
+  };
+}
+
+export async function getStatsUser(input: StatsUserFilter): Promise<ApiStatsUserResponse> {
+  await flushBufferedAnalyticsForRead();
+  const metrics = await getTodayMetrics();
+  const filter = buildStatsUserFilter(input);
+  const [daily, allTime] = await Promise.all([
+    getFilteredDailyUserStats(metrics.dayKey, filter),
+    getFilteredAllTimeUserStats(filter),
+  ]);
+
+  return {
+    endpoint: "statsUser",
+    dayKey: metrics.dayKey,
+    startedAt: metrics.startedAt,
+    resetsAt: metrics.resetsAt,
+    filter,
+    daily,
+    allTime,
   };
 }
 
