@@ -427,6 +427,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     chainId: CHAIN_ID,
     from: walletAddress,
     gasLimit: "0x1e8480",  // 2 000 000
+    amountOutMin: amountOutMin.toString(),
   };
 }
 

@@ -12,7 +12,7 @@ const descriptions: Record<EndpointName, string> = {
   statsUsers: "Returns API-key issuance and activity totals, plus per-key and per-agent daily usage, error, and latency rows.",
   statsUser: "Returns filtered single-user API-key analytics by agentId and/or agentWalletEvm, with current-day and all-time request quality and matching key rows.",
   statsAgents: "Returns dashboard-ready per-agent analytics with daily and all-time request quality, latency, and optional per-key rollups.",
-  statsVolume: "Returns aggregated ETH buy and sell volume counters for the current UTC day, plus all-time totals.",
+  statsVolume: "Returns aggregated native buy and sell volume counters for ETH, Base, BSC, and Solana, plus all-time totals and all-time USD-equivalent volume.",
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",

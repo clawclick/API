@@ -25,6 +25,7 @@ export type UnsignedSwapTx = {
   chainId: number;
   from: string;
   gasLimit?: string;     // hex – optional estimate
+  amountOutMin?: string;
 };
 
 export type SwapParams = {

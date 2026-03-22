@@ -33,6 +33,7 @@ export type UnsignedSolTx = {
   serializedTx: string;
   chainId: "solana";
   from: string;
+  amountOutMin?: string;
 };
 
 type JupiterQuoteRoute = {
@@ -213,6 +214,7 @@ async function composeVersionedTx(
   payer: PublicKey,
   instructions: TransactionInstruction[],
   lookupTableAddresses: string[],
+  amountOutMin?: string,
 ): Promise<UnsignedSolTx> {
   const lookupTables = await getAddressLookupTables(lookupTableAddresses);
   const { blockhash } = await getConnection().getLatestBlockhash("confirmed");
@@ -227,6 +229,7 @@ async function composeVersionedTx(
     serializedTx: Buffer.from(transaction.serialize()).toString("base64"),
     chainId: "solana",
     from: payer.toBase58(),
+    amountOutMin,
   };
 }
 
@@ -360,7 +363,7 @@ export async function buildFeeAwareSwapTx(params: SolanaSwapParams, options: Sol
       instructions.push(toInstruction(instructionsResponse.cleanupInstruction));
     }
 
-    return composeVersionedTx(wallet, instructions, instructionsResponse.addressLookupTableAddresses);
+    return composeVersionedTx(wallet, instructions, instructionsResponse.addressLookupTableAddresses, quote.otherAmountThreshold);
   }
 
   const quote = validateQuote(await getJupiterQuote({
@@ -373,7 +376,7 @@ export async function buildFeeAwareSwapTx(params: SolanaSwapParams, options: Sol
     wrapAndUnwrapSol: true,
   });
 
-  return composeVersionedTx(wallet, buildInstructionList(instructionsResponse), instructionsResponse.addressLookupTableAddresses);
+  return composeVersionedTx(wallet, buildInstructionList(instructionsResponse), instructionsResponse.addressLookupTableAddresses, quote.otherAmountThreshold);
 }
 
 export async function buildSwapTxWithoutProtocolFee(
@@ -392,5 +395,5 @@ export async function buildSwapTxWithoutProtocolFee(
     wrapAndUnwrapSol: true,
   });
 
-  return composeVersionedTx(wallet, buildInstructionList(instructionsResponse), instructionsResponse.addressLookupTableAddresses);
+  return composeVersionedTx(wallet, buildInstructionList(instructionsResponse), instructionsResponse.addressLookupTableAddresses, quote.otherAmountThreshold);
 }

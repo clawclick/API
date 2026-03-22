@@ -4,6 +4,7 @@ import { buildErc20ApproveTx, buildPermit2ApproveTx, getEvmFeeWrapperAddress, is
 import type { ApproveQuery, SwapQuery, SwapQuoteQuery } from "#routes/helpers";
 import type { ApproveResponse, ProviderStatus, SwapTxResponse, SwapQuoteResponse } from "#types/api";
 import type { UnsignedSwapTx } from "#lib/evm";
+import type { UnsignedSolTx } from "#lib/solanaSwap";
 
 /* ── EVM providers ────────────────────────────────────────── */
 import { buildSwapTx as ethUniV2Swap, getQuote as ethUniV2Quote } from "#providers/dex/ethUniswapV2";
@@ -36,6 +37,10 @@ type DexId =
 
 type SwapFn = (params: { walletAddress: string; tokenIn: string; tokenOut: string; amountIn: string; slippageBps: number; deadline?: number; recipient?: string }) => Promise<unknown>;
 type QuoteFn = (tokenIn: string, tokenOut: string, amountIn: string, slippageBps: number) => Promise<{ amountOut: string; amountOutMin: string }>;
+
+type BuiltSwapTx = (UnsignedSwapTx | UnsignedSolTx) & {
+  amountOutMin?: string;
+};
 
 type DexEntry = {
   id: DexId;
@@ -169,6 +174,7 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
       tokenOut: query.tokenOut,
       amountIn: query.amountIn,
       slippageBps: query.slippageBps,
+      amountOutMin: null,
       tx: null,
       providers: [{ provider: query.dex, status: "error", detail: `Unknown dex "${query.dex}". Available: ${DEX_REGISTRY.map((d) => d.id).join(", ")}` }],
     };
@@ -192,13 +198,13 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
     `${entry.label} is not available on ${chain}. Supported chains: ${entry.chains.join(", ")}`,
   );
 
-  let wrappedResult = result;
+  let wrappedResult = result as BuiltSwapTx | null;
   if (nativeInBuy && feeWrapperAddress && result) {
-    wrappedResult = wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn);
+    wrappedResult = wrapNativeBuyTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.amountIn) as BuiltSwapTx;
   } else if (wrapSellWithPermit2 && feeWrapperAddress && result) {
-    wrappedResult = wrapTokenSellTxWithPermit2FeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn);
+    wrappedResult = wrapTokenSellTxWithPermit2FeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn) as BuiltSwapTx;
   } else if (wrapSellWithLegacy && feeWrapperAddress && result) {
-    wrappedResult = wrapTokenSellTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn);
+    wrappedResult = wrapTokenSellTxWithFeeWrapper(result as UnsignedSwapTx, chain, query.walletAddress, query.tokenIn, query.amountIn) as BuiltSwapTx;
   }
 
   return {
@@ -210,6 +216,7 @@ export async function getSwapTx(query: SwapQuery): Promise<SwapTxResponse> {
     tokenOut: query.tokenOut,
     amountIn: query.amountIn,
     slippageBps: query.slippageBps,
+    amountOutMin: wrappedResult?.amountOutMin ?? null,
     tx: wrappedResult as SwapTxResponse["tx"],
     providers,
   };

@@ -140,6 +140,7 @@ export async function buildSwapTx(params: SwapParams, tickSpacing?: number): Pro
     value: nativeIn ? "0x" + amtIn.toString(16) : "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
+    amountOutMin: amountOutMin.toString(),
   };
 }
 

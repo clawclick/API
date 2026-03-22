@@ -172,6 +172,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
     value: nativeIn ? "0x" + amtIn.toString(16) : "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
+    amountOutMin: amountOutMin.toString(),
   };
 }
 

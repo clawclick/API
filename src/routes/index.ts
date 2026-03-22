@@ -15,7 +15,6 @@ import { getWalletReview } from "#services/walletReview";
 import { getProviderHealth } from "#services/providerHealth";
 import { getApproveTx, getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { buildUnwrapTx } from "#lib/evm";
-import { isNativeIn } from "#lib/evm";
 import { getTrendingTokens, getTopEthTokens, getNewEthTradableTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
 // DISABLED — Codex paid plan only 
@@ -29,7 +28,7 @@ import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
 import { approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
-import { recordEthSwapVolume } from "#services/apiRuntime";
+import { recordSwapVolume } from "#services/apiRuntime";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
@@ -71,26 +70,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const query = parseQuery(swapSchema, request.query);
     const response = await getSwapTx(query);
 
-    if (response.status === "live" && response.chain === "eth") {
-      let sellWei: string | null = null;
-      if (isNativeIn(query.tokenOut)) {
-        const quote = await getSwapQuote({
-          chain: query.chain,
-          dex: query.dex,
-          tokenIn: query.tokenIn,
-          tokenOut: query.tokenOut,
-          amountIn: query.amountIn,
-          slippageBps: query.slippageBps,
-        });
-        sellWei = quote.amountOut;
-      }
-
-      await recordEthSwapVolume({
+    if (response.status === "live") {
+      await recordSwapVolume({
         chain: response.chain,
         tokenIn: query.tokenIn,
         tokenOut: query.tokenOut,
         buyWei: query.amountIn,
-        sellWei,
+        sellWei: response.amountOutMin,
       });
     }
 

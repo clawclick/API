@@ -9,7 +9,7 @@ import {
 import type { FilterWalletsQuery } from "#routes/helpers";
 import type { FilterWalletsResponse, FilteredWallet, ProviderStatus } from "#types/api";
 
-/* ── 5-minute cache ──────────────────────────────────────── */
+/* ── 30-minute cache ──────────────────────────────────────── */
 
 type CacheEntry = { data: FilterWalletsResponse; expiresAt: number };
 const cache = new Map<string, CacheEntry>();

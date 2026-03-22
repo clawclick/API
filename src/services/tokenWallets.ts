@@ -8,7 +8,7 @@ import {
 import type { TokenWalletsQuery } from "#routes/helpers";
 import type { TokenWalletsResponse, TokenWalletItem, ProviderStatus } from "#types/api";
 
-/* ── 3-minute cache ──────────────────────────────────────── */
+/* ── 30-minute cache ──────────────────────────────────────── */
 
 type CacheEntry = { data: TokenWalletsResponse; expiresAt: number };
 const cache = new Map<string, CacheEntry>();

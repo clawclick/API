@@ -369,6 +369,7 @@ export type SwapTxResponse = {
   tokenOut: string;
   amountIn: string;
   slippageBps: number;
+  amountOutMin: string | null;
   tx: {
     to: string;
     data: string;
@@ -1010,24 +1011,78 @@ export type ApiStatsUsers = {
 };
 
 export type ApiStatsVolume = {
-  buyWei: string;
-  sellWei: string;
-  buyEth: string;
-  sellEth: string;
+  chains: {
+    eth: {
+      unit: "wei";
+      symbol: "ETH";
+      buyRaw: string;
+      sellRaw: string;
+      buyNative: string;
+      sellNative: string;
+      totalRaw: string;
+      totalNative: string;
+      buyCount: number;
+      sellCount: number;
+      totalCount: number;
+    };
+    base: {
+      unit: "wei";
+      symbol: "ETH";
+      buyRaw: string;
+      sellRaw: string;
+      buyNative: string;
+      sellNative: string;
+      totalRaw: string;
+      totalNative: string;
+      buyCount: number;
+      sellCount: number;
+      totalCount: number;
+    };
+    bsc: {
+      unit: "wei";
+      symbol: "BNB";
+      buyRaw: string;
+      sellRaw: string;
+      buyNative: string;
+      sellNative: string;
+      totalRaw: string;
+      totalNative: string;
+      buyCount: number;
+      sellCount: number;
+      totalCount: number;
+    };
+    sol: {
+      unit: "lamports";
+      symbol: "SOL";
+      buyRaw: string;
+      sellRaw: string;
+      buyNative: string;
+      sellNative: string;
+      totalRaw: string;
+      totalNative: string;
+      buyCount: number;
+      sellCount: number;
+      totalCount: number;
+    };
+  };
   buyCount: number;
   sellCount: number;
+  totalCount: number;
 };
 
 export type ApiAllTimeVolume = ApiStatsVolume & {
-  totalWei: string;
-  totalEth: string;
-  totalCount: number;
+  pricesUsd: {
+    eth: number | null;
+    bnb: number | null;
+    sol: number | null;
+  };
+  totalVolumeUsd: number | null;
 };
 
 export type ApiStatsAllTime = {
   requests: ApiStatsRequests;
   users: ApiAllTimeUsers;
-  volume: ApiStatsVolume;
+  volume: ApiAllTimeVolume;
 };
 
 export type ApiRuntimeStatsResponse = {
@@ -1137,7 +1192,7 @@ export type ApiStatsVolumeResponse = {
   startedAt: string;
   resetsAt: string;
   volume: ApiStatsVolume;
-  allTime: ApiStatsVolume;
+  allTime: ApiAllTimeVolume;
 };
 
 export type ApiRequestsResponse = {

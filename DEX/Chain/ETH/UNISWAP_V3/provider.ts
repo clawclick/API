@@ -192,6 +192,7 @@ export async function buildSwapTx(params: SwapParams, fee = 3000): Promise<Unsig
     value: nativeIn ? "0x" + amtIn.toString(16) : "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
+    amountOutMin: amountOutMin.toString(),
   };
 }
 

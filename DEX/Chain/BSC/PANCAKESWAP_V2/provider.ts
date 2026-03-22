@@ -88,6 +88,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
       value: "0x" + amtIn.toString(16),
       chainId: CHAIN_ID,
       from: walletAddress,
+      amountOutMin: amountOutMin.toString(),
     };
   }
 
@@ -109,6 +110,7 @@ export async function buildSwapTx(params: SwapParams): Promise<UnsignedSwapTx> {
     value: "0x0",
     chainId: CHAIN_ID,
     from: walletAddress,
+    amountOutMin: amountOutMin.toString(),
   };
 }
 

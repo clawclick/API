@@ -4,6 +4,8 @@ import { Pool, type PoolClient } from "pg";
 
 import { getOptionalEnv, getRequiredEnv, isConfigured } from "#config/env";
 import { isNativeIn } from "#lib/evm";
+import { getCoinsMarkets } from "#providers/market/coinGecko";
+import { normalizeChain, type SupportedChain } from "#providers/shared/chains";
 import type {
   ApiKeyDeleteResponse,
   ApiKeyGenerateResponse,
@@ -32,6 +34,33 @@ import type {
   ApiStatsVolumeResponse,
 } from "#types/api";
 
+type TrackedVolumeChain = "eth" | "base" | "bsc" | "sol";
+type NativePriceKey = "eth" | "bnb" | "sol";
+
+type VolumeCounterSnapshot = {
+  buyRaw: string;
+  sellRaw: string;
+  buyCount: number;
+  sellCount: number;
+};
+
+type VolumeCounter = {
+  buyRaw: bigint;
+  sellRaw: bigint;
+  buyCount: number;
+  sellCount: number;
+};
+
+type NativePriceSnapshot = {
+  eth: number | null;
+  bnb: number | null;
+  sol: number | null;
+};
+
+const TRACKED_VOLUME_CHAINS: TrackedVolumeChain[] = ["eth", "base", "bsc", "sol"];
+const SOL_NATIVE_MINT = "so11111111111111111111111111111111111111112";
+const NATIVE_PRICE_CACHE_TTL_MS = 30 * 60 * 1000;
+
 type StoredApiKey = {
   id: string;
   label: string | null;
@@ -55,12 +84,7 @@ type DailyMetrics = {
   statusCodes: Record<string, number>;
   totalLatencyMs: number;
   latencyBuckets: Record<string, number>;
-  ethVolume: {
-    buyWei: string;
-    sellWei: string;
-    buyCount: number;
-    sellCount: number;
-  };
+  volumes: Record<TrackedVolumeChain, VolumeCounterSnapshot>;
 };
 
 type RequestMetricsContext = {
@@ -112,12 +136,7 @@ type BufferedDayAnalytics = {
   endpointStats: Map<string, AggregateCounter>;
   keyStats: Map<string, BufferedKeyAggregate>;
   providerStats: Map<string, BufferedProviderAggregate>;
-  ethVolume: {
-    buyWei: bigint;
-    sellWei: bigint;
-    buyCount: number;
-    sellCount: number;
-  };
+  volumes: Record<TrackedVolumeChain, VolumeCounter>;
 };
 
 type EndpointStatsRow = {
@@ -288,7 +307,7 @@ const API_KEY_AUTH_CACHE_MAX_SIZE = 10000;
 let pool: Pool | null = null;
 let databaseReadyPromise: Promise<void> | null = null;
 let allTimeRequestsCache: { expiresAt: number; value: ApiStatsRequests } | null = null;
-let allTimeVolumeCache: { expiresAt: number; value: ApiStatsVolume } | null = null;
+let allTimeVolumeCache: { expiresAt: number; value: ApiAllTimeVolume } | null = null;
 let bufferedAnalyticsByDay = new Map<string, BufferedDayAnalytics>();
 let bufferedRequestCount = 0;
 let analyticsFlushPromise: Promise<void> | null = null;
@@ -301,6 +320,89 @@ let apiKeyRateLimitStates = new Map<string, {
 }>();
 let apiKeyAuthCache = new Map<string, ApiKeyAuthCacheEntry>();
 const requestMetricsContext = new AsyncLocalStorage<RequestMetricsContext>();
+let nativePriceCache: { expiresAt: number; value: NativePriceSnapshot } | null = null;
+
+function createVolumeCounterSnapshot(): VolumeCounterSnapshot {
+  return {
+    buyRaw: "0",
+    sellRaw: "0",
+    buyCount: 0,
+    sellCount: 0,
+  };
+}
+
+function createVolumeCounter(): VolumeCounter {
+  return {
+    buyRaw: 0n,
+    sellRaw: 0n,
+    buyCount: 0,
+    sellCount: 0,
+  };
+}
+
+function createVolumeMap<TValue extends VolumeCounter | VolumeCounterSnapshot>(
+  factory: () => TValue,
+): Record<TrackedVolumeChain, TValue> {
+  return {
+    eth: factory(),
+    base: factory(),
+    bsc: factory(),
+    sol: factory(),
+  };
+}
+
+function getPriceKeyForChain(chain: TrackedVolumeChain): NativePriceKey {
+  switch (chain) {
+    case "bsc":
+      return "bnb";
+    case "sol":
+      return "sol";
+    default:
+      return "eth";
+  }
+}
+
+function isNativeTokenForChain(chain: TrackedVolumeChain, token: string): boolean {
+  const normalized = token.trim().toLowerCase();
+  if (chain === "sol") {
+    return normalized === "sol" || normalized === "solana" || normalized === "native" || normalized === SOL_NATIVE_MINT;
+  }
+  return isNativeIn(token);
+}
+
+function formatUsd(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+async function getCachedNativePricesUsd(): Promise<NativePriceSnapshot> {
+  const now = Date.now();
+  if (nativePriceCache && nativePriceCache.expiresAt > now) {
+    return nativePriceCache.value;
+  }
+
+  const rows = await getCoinsMarkets("usd", 250, 1, "ethereum,binancecoin,solana");
+  const prices: NativePriceSnapshot = {
+    eth: null,
+    bnb: null,
+    sol: null,
+  };
+
+  for (const row of rows) {
+    if (row.id === "ethereum") {
+      prices.eth = row.current_price ?? null;
+    } else if (row.id === "binancecoin") {
+      prices.bnb = row.current_price ?? null;
+    } else if (row.id === "solana") {
+      prices.sol = row.current_price ?? null;
+    }
+  }
+
+  nativePriceCache = {
+    expiresAt: now + NATIVE_PRICE_CACHE_TTL_MS,
+    value: prices,
+  };
+  return prices;
+}
 
 function getWindowStartMs(nowMs: number, durationMs: number): number {
   return Math.floor(nowMs / durationMs) * durationMs;
@@ -462,12 +564,7 @@ function createDailyMetrics(date = new Date()): DailyMetrics {
     statusCodes: {},
     totalLatencyMs: 0,
     latencyBuckets: {},
-    ethVolume: {
-      buyWei: "0",
-      sellWei: "0",
-      buyCount: 0,
-      sellCount: 0,
-    },
+    volumes: createVolumeMap(createVolumeCounterSnapshot),
   };
 }
 
@@ -495,12 +592,7 @@ function createBufferedDayAnalytics(date = new Date()): BufferedDayAnalytics {
     endpointStats: new Map(),
     keyStats: new Map(),
     providerStats: new Map(),
-    ethVolume: {
-      buyWei: 0n,
-      sellWei: 0n,
-      buyCount: 0,
-      sellCount: 0,
-    },
+    volumes: createVolumeMap(createVolumeCounter),
   };
 }
 
@@ -578,6 +670,18 @@ async function ensureTables(client: Pool | PoolClient): Promise<void> {
         eth_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
         eth_buy_count INTEGER NOT NULL DEFAULT 0,
         eth_sell_count INTEGER NOT NULL DEFAULT 0,
+        base_buy_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        base_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        base_buy_count INTEGER NOT NULL DEFAULT 0,
+        base_sell_count INTEGER NOT NULL DEFAULT 0,
+        bsc_buy_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        bsc_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        bsc_buy_count INTEGER NOT NULL DEFAULT 0,
+        bsc_sell_count INTEGER NOT NULL DEFAULT 0,
+        sol_buy_lamports NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        sol_sell_lamports NUMERIC(78, 0) NOT NULL DEFAULT 0,
+        sol_buy_count INTEGER NOT NULL DEFAULT 0,
+        sol_sell_count INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -586,6 +690,18 @@ async function ensureTables(client: Pool | PoolClient): Promise<void> {
 
   await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS total_latency_ms BIGINT NOT NULL DEFAULT 0`);
   await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS latency_buckets JSONB NOT NULL DEFAULT '{}'::jsonb`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS base_buy_wei NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS base_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS base_buy_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS base_sell_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS bsc_buy_wei NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS bsc_sell_wei NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS bsc_buy_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS bsc_sell_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS sol_buy_lamports NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS sol_sell_lamports NUMERIC(78, 0) NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS sol_buy_count INTEGER NOT NULL DEFAULT 0`);
+  await client.query(`ALTER TABLE api_daily_stats ADD COLUMN IF NOT EXISTS sol_sell_count INTEGER NOT NULL DEFAULT 0`);
 
   await client.query(
     `
@@ -834,10 +950,12 @@ function mergeBufferedDayAnalytics(target: BufferedDayAnalytics, source: Buffere
     target.providerStats.set(providerKey, current);
   }
 
-  target.ethVolume.buyWei += source.ethVolume.buyWei;
-  target.ethVolume.sellWei += source.ethVolume.sellWei;
-  target.ethVolume.buyCount += source.ethVolume.buyCount;
-  target.ethVolume.sellCount += source.ethVolume.sellCount;
+  for (const chain of TRACKED_VOLUME_CHAINS) {
+    target.volumes[chain].buyRaw += source.volumes[chain].buyRaw;
+    target.volumes[chain].sellRaw += source.volumes[chain].sellRaw;
+    target.volumes[chain].buyCount += source.volumes[chain].buyCount;
+    target.volumes[chain].sellCount += source.volumes[chain].sellCount;
+  }
 }
 
 function requeueBufferedAnalytics(snapshot: Map<string, BufferedDayAnalytics>, snapshotRequestCount: number): void {
@@ -1867,24 +1985,32 @@ export async function flushProviderMetrics(): Promise<void> {
   scheduleBufferedAnalyticsFlush();
 }
 
-export async function recordEthSwapVolume(input: { chain: string; tokenIn: string; tokenOut: string; buyWei?: string | null; sellWei?: string | null }): Promise<void> {
-  if (input.chain !== "eth") {
+export async function recordSwapVolume(input: { chain: string; tokenIn: string; tokenOut: string; buyWei?: string | null; sellWei?: string | null }): Promise<void> {
+  let chain: SupportedChain;
+  try {
+    chain = normalizeChain(input.chain);
+  } catch {
     return;
   }
 
-  const buyWei = input.buyWei && isNativeIn(input.tokenIn) && !isNativeIn(input.tokenOut) ? BigInt(input.buyWei) : 0n;
-  const sellWei = input.sellWei && !isNativeIn(input.tokenIn) && isNativeIn(input.tokenOut) ? BigInt(input.sellWei) : 0n;
-  if (buyWei === 0n && sellWei === 0n) {
+  const trackedChain = chain as TrackedVolumeChain;
+  const buyRaw = input.buyWei && isNativeTokenForChain(trackedChain, input.tokenIn) && !isNativeTokenForChain(trackedChain, input.tokenOut)
+    ? BigInt(input.buyWei)
+    : 0n;
+  const sellRaw = input.sellWei && !isNativeTokenForChain(trackedChain, input.tokenIn) && isNativeTokenForChain(trackedChain, input.tokenOut)
+    ? BigInt(input.sellWei)
+    : 0n;
+  if (buyRaw === 0n && sellRaw === 0n) {
     return;
   }
 
   const now = new Date();
   const dayKey = getDayKey(now);
   const buffered = getBufferedDayAnalytics(dayKey, now);
-  buffered.ethVolume.buyWei += buyWei;
-  buffered.ethVolume.sellWei += sellWei;
-  buffered.ethVolume.buyCount += buyWei > 0n ? 1 : 0;
-  buffered.ethVolume.sellCount += sellWei > 0n ? 1 : 0;
+  buffered.volumes[trackedChain].buyRaw += buyRaw;
+  buffered.volumes[trackedChain].sellRaw += sellRaw;
+  buffered.volumes[trackedChain].buyCount += buyRaw > 0n ? 1 : 0;
+  buffered.volumes[trackedChain].sellCount += sellRaw > 0n ? 1 : 0;
   scheduleBufferedAnalyticsFlush();
 }
 
@@ -1902,7 +2028,19 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
         eth_buy_wei,
         eth_sell_wei,
         eth_buy_count,
-        eth_sell_count
+        eth_sell_count,
+        base_buy_wei,
+        base_sell_wei,
+        base_buy_count,
+        base_sell_count,
+        bsc_buy_wei,
+        bsc_sell_wei,
+        bsc_buy_count,
+        bsc_sell_count,
+        sol_buy_lamports,
+        sol_sell_lamports,
+        sol_buy_count,
+        sol_sell_count
       )
       VALUES (
         $1::date,
@@ -1915,7 +2053,19 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
         $8::numeric,
         $9::numeric,
         $10,
-        $11
+        $11,
+        $12::numeric,
+        $13::numeric,
+        $14,
+        $15,
+        $16::numeric,
+        $17::numeric,
+        $18,
+        $19,
+        $20::numeric,
+        $21::numeric,
+        $22,
+        $23
       )
       ON CONFLICT (day_key)
       DO UPDATE SET
@@ -1953,6 +2103,18 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
         eth_sell_wei = api_daily_stats.eth_sell_wei + EXCLUDED.eth_sell_wei,
         eth_buy_count = api_daily_stats.eth_buy_count + EXCLUDED.eth_buy_count,
         eth_sell_count = api_daily_stats.eth_sell_count + EXCLUDED.eth_sell_count,
+        base_buy_wei = api_daily_stats.base_buy_wei + EXCLUDED.base_buy_wei,
+        base_sell_wei = api_daily_stats.base_sell_wei + EXCLUDED.base_sell_wei,
+        base_buy_count = api_daily_stats.base_buy_count + EXCLUDED.base_buy_count,
+        base_sell_count = api_daily_stats.base_sell_count + EXCLUDED.base_sell_count,
+        bsc_buy_wei = api_daily_stats.bsc_buy_wei + EXCLUDED.bsc_buy_wei,
+        bsc_sell_wei = api_daily_stats.bsc_sell_wei + EXCLUDED.bsc_sell_wei,
+        bsc_buy_count = api_daily_stats.bsc_buy_count + EXCLUDED.bsc_buy_count,
+        bsc_sell_count = api_daily_stats.bsc_sell_count + EXCLUDED.bsc_sell_count,
+        sol_buy_lamports = api_daily_stats.sol_buy_lamports + EXCLUDED.sol_buy_lamports,
+        sol_sell_lamports = api_daily_stats.sol_sell_lamports + EXCLUDED.sol_sell_lamports,
+        sol_buy_count = api_daily_stats.sol_buy_count + EXCLUDED.sol_buy_count,
+        sol_sell_count = api_daily_stats.sol_sell_count + EXCLUDED.sol_sell_count,
         updated_at = NOW()
     `,
     [
@@ -1963,10 +2125,22 @@ async function flushBufferedDayAnalytics(client: PoolClient, state: BufferedDayA
       JSON.stringify(state.statusCodes),
       state.totalLatencyMs,
       JSON.stringify(state.latencyBuckets),
-      state.ethVolume.buyWei.toString(),
-      state.ethVolume.sellWei.toString(),
-      state.ethVolume.buyCount,
-      state.ethVolume.sellCount,
+      state.volumes.eth.buyRaw.toString(),
+      state.volumes.eth.sellRaw.toString(),
+      state.volumes.eth.buyCount,
+      state.volumes.eth.sellCount,
+      state.volumes.base.buyRaw.toString(),
+      state.volumes.base.sellRaw.toString(),
+      state.volumes.base.buyCount,
+      state.volumes.base.sellCount,
+      state.volumes.bsc.buyRaw.toString(),
+      state.volumes.bsc.sellRaw.toString(),
+      state.volumes.bsc.buyCount,
+      state.volumes.bsc.sellCount,
+      state.volumes.sol.buyRaw.toString(),
+      state.volumes.sol.sellRaw.toString(),
+      state.volumes.sol.buyCount,
+      state.volumes.sol.sellCount,
     ],
   );
 
@@ -2262,9 +2436,21 @@ async function getTodayMetrics(): Promise<DailyMetrics> {
     eth_sell_wei: string;
     eth_buy_count: number | string;
     eth_sell_count: number | string;
+    base_buy_wei: string;
+    base_sell_wei: string;
+    base_buy_count: number | string;
+    base_sell_count: number | string;
+    bsc_buy_wei: string;
+    bsc_sell_wei: string;
+    bsc_buy_count: number | string;
+    bsc_sell_count: number | string;
+    sol_buy_lamports: string;
+    sol_sell_lamports: string;
+    sol_buy_count: number | string;
+    sol_sell_count: number | string;
   }>(
     `
-      SELECT day_key, started_at, resets_at, total_requests, status_codes, total_latency_ms, latency_buckets, eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count
+      SELECT day_key, started_at, resets_at, total_requests, status_codes, total_latency_ms, latency_buckets, eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count, base_buy_wei, base_sell_wei, base_buy_count, base_sell_count, bsc_buy_wei, bsc_sell_wei, bsc_buy_count, bsc_sell_count, sol_buy_lamports, sol_sell_lamports, sol_buy_count, sol_sell_count
       FROM api_daily_stats
       WHERE day_key = $1::date
       LIMIT 1
@@ -2288,11 +2474,11 @@ async function getTodayMetrics(): Promise<DailyMetrics> {
       : (row.status_codes ?? {}),
     totalLatencyMs: parseCount(row.total_latency_ms),
     latencyBuckets: parseCountMap(row.latency_buckets),
-    ethVolume: {
-      buyWei: row.eth_buy_wei ?? "0",
-      sellWei: row.eth_sell_wei ?? "0",
-      buyCount: parseCount(row.eth_buy_count),
-      sellCount: parseCount(row.eth_sell_count),
+    volumes: {
+      eth: { buyRaw: row.eth_buy_wei ?? "0", sellRaw: row.eth_sell_wei ?? "0", buyCount: parseCount(row.eth_buy_count), sellCount: parseCount(row.eth_sell_count) },
+      base: { buyRaw: row.base_buy_wei ?? "0", sellRaw: row.base_sell_wei ?? "0", buyCount: parseCount(row.base_buy_count), sellCount: parseCount(row.base_sell_count) },
+      bsc: { buyRaw: row.bsc_buy_wei ?? "0", sellRaw: row.bsc_sell_wei ?? "0", buyCount: parseCount(row.bsc_buy_count), sellCount: parseCount(row.bsc_sell_count) },
+      sol: { buyRaw: row.sol_buy_lamports ?? "0", sellRaw: row.sol_sell_lamports ?? "0", buyCount: parseCount(row.sol_buy_count), sellCount: parseCount(row.sol_sell_count) },
     },
   };
 }
@@ -2802,6 +2988,70 @@ async function getFilteredAllTimeUserStats(filter: { agentId: string | null; age
   };
 }
 
+function buildApiStatsVolume(volumes: Record<TrackedVolumeChain, VolumeCounterSnapshot>): ApiStatsVolume {
+  const chains = {
+    eth: {
+      unit: "wei" as const,
+      symbol: "ETH" as const,
+      buyRaw: volumes.eth.buyRaw,
+      sellRaw: volumes.eth.sellRaw,
+      buyNative: formatUnits(volumes.eth.buyRaw, 18),
+      sellNative: formatUnits(volumes.eth.sellRaw, 18),
+      totalRaw: (BigInt(volumes.eth.buyRaw) + BigInt(volumes.eth.sellRaw)).toString(),
+      totalNative: formatUnits((BigInt(volumes.eth.buyRaw) + BigInt(volumes.eth.sellRaw)).toString(), 18),
+      buyCount: volumes.eth.buyCount,
+      sellCount: volumes.eth.sellCount,
+      totalCount: volumes.eth.buyCount + volumes.eth.sellCount,
+    },
+    base: {
+      unit: "wei" as const,
+      symbol: "ETH" as const,
+      buyRaw: volumes.base.buyRaw,
+      sellRaw: volumes.base.sellRaw,
+      buyNative: formatUnits(volumes.base.buyRaw, 18),
+      sellNative: formatUnits(volumes.base.sellRaw, 18),
+      totalRaw: (BigInt(volumes.base.buyRaw) + BigInt(volumes.base.sellRaw)).toString(),
+      totalNative: formatUnits((BigInt(volumes.base.buyRaw) + BigInt(volumes.base.sellRaw)).toString(), 18),
+      buyCount: volumes.base.buyCount,
+      sellCount: volumes.base.sellCount,
+      totalCount: volumes.base.buyCount + volumes.base.sellCount,
+    },
+    bsc: {
+      unit: "wei" as const,
+      symbol: "BNB" as const,
+      buyRaw: volumes.bsc.buyRaw,
+      sellRaw: volumes.bsc.sellRaw,
+      buyNative: formatUnits(volumes.bsc.buyRaw, 18),
+      sellNative: formatUnits(volumes.bsc.sellRaw, 18),
+      totalRaw: (BigInt(volumes.bsc.buyRaw) + BigInt(volumes.bsc.sellRaw)).toString(),
+      totalNative: formatUnits((BigInt(volumes.bsc.buyRaw) + BigInt(volumes.bsc.sellRaw)).toString(), 18),
+      buyCount: volumes.bsc.buyCount,
+      sellCount: volumes.bsc.sellCount,
+      totalCount: volumes.bsc.buyCount + volumes.bsc.sellCount,
+    },
+    sol: {
+      unit: "lamports" as const,
+      symbol: "SOL" as const,
+      buyRaw: volumes.sol.buyRaw,
+      sellRaw: volumes.sol.sellRaw,
+      buyNative: formatUnits(volumes.sol.buyRaw, 9),
+      sellNative: formatUnits(volumes.sol.sellRaw, 9),
+      totalRaw: (BigInt(volumes.sol.buyRaw) + BigInt(volumes.sol.sellRaw)).toString(),
+      totalNative: formatUnits((BigInt(volumes.sol.buyRaw) + BigInt(volumes.sol.sellRaw)).toString(), 9),
+      buyCount: volumes.sol.buyCount,
+      sellCount: volumes.sol.sellCount,
+      totalCount: volumes.sol.buyCount + volumes.sol.sellCount,
+    },
+  };
+
+  return {
+    chains,
+    buyCount: TRACKED_VOLUME_CHAINS.reduce((sum, chain) => sum + volumes[chain].buyCount, 0),
+    sellCount: TRACKED_VOLUME_CHAINS.reduce((sum, chain) => sum + volumes[chain].sellCount, 0),
+    totalCount: TRACKED_VOLUME_CHAINS.reduce((sum, chain) => sum + volumes[chain].buyCount + volumes[chain].sellCount, 0),
+  };
+}
+
 async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
   await ensureDatabaseReady();
   const result = await getPool().query<{
@@ -2809,9 +3059,21 @@ async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
     eth_sell_wei: string;
     eth_buy_count: string | number;
     eth_sell_count: string | number;
+    base_buy_wei: string;
+    base_sell_wei: string;
+    base_buy_count: string | number;
+    base_sell_count: string | number;
+    bsc_buy_wei: string;
+    bsc_sell_wei: string;
+    bsc_buy_count: string | number;
+    bsc_sell_count: string | number;
+    sol_buy_lamports: string;
+    sol_sell_lamports: string;
+    sol_buy_count: string | number;
+    sol_sell_count: string | number;
   }>(
     `
-      SELECT eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count
+      SELECT eth_buy_wei, eth_sell_wei, eth_buy_count, eth_sell_count, base_buy_wei, base_sell_wei, base_buy_count, base_sell_count, bsc_buy_wei, bsc_sell_wei, bsc_buy_count, bsc_sell_count, sol_buy_lamports, sol_sell_lamports, sol_buy_count, sol_sell_count
       FROM api_daily_stats
       WHERE day_key = $1::date
       LIMIT 1
@@ -2820,20 +3082,15 @@ async function getVolumeStats(dayKey: string): Promise<ApiStatsVolume> {
   );
 
   const row = result.rows[0];
-  const buyWei = row?.eth_buy_wei ?? "0";
-  const sellWei = row?.eth_sell_wei ?? "0";
-
-  return {
-    buyWei,
-    sellWei,
-    buyEth: formatUnits(buyWei, 18),
-    sellEth: formatUnits(sellWei, 18),
-    buyCount: parseCount(row?.eth_buy_count),
-    sellCount: parseCount(row?.eth_sell_count),
-  };
+  return buildApiStatsVolume({
+    eth: { buyRaw: row?.eth_buy_wei ?? "0", sellRaw: row?.eth_sell_wei ?? "0", buyCount: parseCount(row?.eth_buy_count), sellCount: parseCount(row?.eth_sell_count) },
+    base: { buyRaw: row?.base_buy_wei ?? "0", sellRaw: row?.base_sell_wei ?? "0", buyCount: parseCount(row?.base_buy_count), sellCount: parseCount(row?.base_sell_count) },
+    bsc: { buyRaw: row?.bsc_buy_wei ?? "0", sellRaw: row?.bsc_sell_wei ?? "0", buyCount: parseCount(row?.bsc_buy_count), sellCount: parseCount(row?.bsc_sell_count) },
+    sol: { buyRaw: row?.sol_buy_lamports ?? "0", sellRaw: row?.sol_sell_lamports ?? "0", buyCount: parseCount(row?.sol_buy_count), sellCount: parseCount(row?.sol_sell_count) },
+  });
 }
 
-async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
+async function getAllTimeVolumeStats(): Promise<ApiAllTimeVolume> {
   const now = Date.now();
   if (allTimeVolumeCache && allTimeVolumeCache.expiresAt > now) {
     return allTimeVolumeCache.value;
@@ -2845,28 +3102,65 @@ async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
     eth_sell_wei: string;
     eth_buy_count: string;
     eth_sell_count: string;
+    base_buy_wei: string;
+    base_sell_wei: string;
+    base_buy_count: string;
+    base_sell_count: string;
+    bsc_buy_wei: string;
+    bsc_sell_wei: string;
+    bsc_buy_count: string;
+    bsc_sell_count: string;
+    sol_buy_lamports: string;
+    sol_sell_lamports: string;
+    sol_buy_count: string;
+    sol_sell_count: string;
   }>(
     `
       SELECT
         COALESCE(SUM(eth_buy_wei), 0)::text AS eth_buy_wei,
         COALESCE(SUM(eth_sell_wei), 0)::text AS eth_sell_wei,
         COALESCE(SUM(eth_buy_count), 0)::text AS eth_buy_count,
-        COALESCE(SUM(eth_sell_count), 0)::text AS eth_sell_count
+        COALESCE(SUM(eth_sell_count), 0)::text AS eth_sell_count,
+        COALESCE(SUM(base_buy_wei), 0)::text AS base_buy_wei,
+        COALESCE(SUM(base_sell_wei), 0)::text AS base_sell_wei,
+        COALESCE(SUM(base_buy_count), 0)::text AS base_buy_count,
+        COALESCE(SUM(base_sell_count), 0)::text AS base_sell_count,
+        COALESCE(SUM(bsc_buy_wei), 0)::text AS bsc_buy_wei,
+        COALESCE(SUM(bsc_sell_wei), 0)::text AS bsc_sell_wei,
+        COALESCE(SUM(bsc_buy_count), 0)::text AS bsc_buy_count,
+        COALESCE(SUM(bsc_sell_count), 0)::text AS bsc_sell_count,
+        COALESCE(SUM(sol_buy_lamports), 0)::text AS sol_buy_lamports,
+        COALESCE(SUM(sol_sell_lamports), 0)::text AS sol_sell_lamports,
+        COALESCE(SUM(sol_buy_count), 0)::text AS sol_buy_count,
+        COALESCE(SUM(sol_sell_count), 0)::text AS sol_sell_count
       FROM api_daily_stats
     `,
   );
 
   const row = result.rows[0];
-  const buyWei = row?.eth_buy_wei ?? "0";
-  const sellWei = row?.eth_sell_wei ?? "0";
+  const baseVolume = buildApiStatsVolume({
+    eth: { buyRaw: row?.eth_buy_wei ?? "0", sellRaw: row?.eth_sell_wei ?? "0", buyCount: parseCount(row?.eth_buy_count), sellCount: parseCount(row?.eth_sell_count) },
+    base: { buyRaw: row?.base_buy_wei ?? "0", sellRaw: row?.base_sell_wei ?? "0", buyCount: parseCount(row?.base_buy_count), sellCount: parseCount(row?.base_sell_count) },
+    bsc: { buyRaw: row?.bsc_buy_wei ?? "0", sellRaw: row?.bsc_sell_wei ?? "0", buyCount: parseCount(row?.bsc_buy_count), sellCount: parseCount(row?.bsc_sell_count) },
+    sol: { buyRaw: row?.sol_buy_lamports ?? "0", sellRaw: row?.sol_sell_lamports ?? "0", buyCount: parseCount(row?.sol_buy_count), sellCount: parseCount(row?.sol_sell_count) },
+  });
+  const pricesUsd = await getCachedNativePricesUsd();
+  const totalVolumeUsd = TRACKED_VOLUME_CHAINS.reduce((sum, chain) => {
+    const nativeAmount = Number(baseVolume.chains[chain].totalNative);
+    if (!Number.isFinite(nativeAmount)) {
+      return sum;
+    }
+    const price = pricesUsd[getPriceKeyForChain(chain)];
+    if (price === null) {
+      return sum;
+    }
+    return sum + (nativeAmount * price);
+  }, 0);
 
-  const volume = {
-    buyWei,
-    sellWei,
-    buyEth: formatUnits(buyWei, 18),
-    sellEth: formatUnits(sellWei, 18),
-    buyCount: parseCount(row?.eth_buy_count),
-    sellCount: parseCount(row?.eth_sell_count),
+  const volume: ApiAllTimeVolume = {
+    ...baseVolume,
+    pricesUsd,
+    totalVolumeUsd: formatUsd(totalVolumeUsd),
   };
 
   allTimeVolumeCache = {
@@ -2875,16 +3169,6 @@ async function getAllTimeVolumeStats(): Promise<ApiStatsVolume> {
   };
 
   return volume;
-}
-
-function summarizeAllTimeVolume(volume: ApiStatsVolume): ApiAllTimeVolume {
-  const totalWei = (BigInt(volume.buyWei) + BigInt(volume.sellWei)).toString();
-  return {
-    ...volume,
-    totalWei,
-    totalEth: formatUnits(totalWei, 18),
-    totalCount: volume.buyCount + volume.sellCount,
-  };
 }
 
 export async function getApiRuntimeStats(): Promise<ApiRuntimeStatsResponse> {
@@ -3104,6 +3388,6 @@ export async function getVolume(): Promise<ApiVolumeResponse> {
   const volume = await getAllTimeVolumeStats();
   return {
     endpoint: "volume",
-    volume: summarizeAllTimeVolume(volume),
+    volume,
   };
 }
