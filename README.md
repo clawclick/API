@@ -94,6 +94,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/strats` | GET | List available strategy guides |
 | `/strats/:id` | GET | Fetch a strategy guide (markdown) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
+| `/ws/agentStats` | WS | Live rolling 60-minute request and latency stats per agentId |
 
 ---
 
@@ -2047,6 +2048,58 @@ ws.on('message', (data) => {
   }
 });
 ```
+
+---
+
+### `WS /ws/agentStats`
+
+Live per-agent dashboard stream for frontend admin panels. Sends rolling 60-minute request counts and average response times for one or more `agentId` values.
+
+Authentication:
+- Send `x-admin-key: <ADMIN_API_KEY>` during the websocket handshake if your client supports custom headers.
+- Browser clients can connect with `?adminKey=<ADMIN_API_KEY>` in the websocket URL.
+
+#### Connection Flow
+
+```
+1. Connect:    ws://localhost:3000/ws/agentStats?adminKey=...
+2. Receive:    {"type":"info","data":"Connected. Send JSON ..."}
+3. Send:       {"agentId":"scanner-alpha"}
+4. Receive:    {"type":"subscribed","data":{"agentIds":["scanner-alpha"],"snapshots":[...]}}
+5. Receive:    {"type":"agentStats","data":{"agentId":"scanner-alpha",...}}  (about once per second while traffic changes)
+6. Send:       {"agentIds":["scanner-alpha","scanner-beta"]} to replace subscriptions
+```
+
+#### Subscription Payload
+
+```json
+{ "agentId": "scanner-alpha" }
+```
+
+or
+
+```json
+{ "agentIds": ["scanner-alpha", "scanner-beta"] }
+```
+
+#### Event Shape
+
+```json
+{
+  "type": "agentStats",
+  "data": {
+    "agentId": "scanner-alpha",
+    "window": "rolling_60m",
+    "requestsLastHour": 124,
+    "avgResponseMsLastHour": 188.4,
+    "updatedAt": "2026-03-21T20:15:00.000Z"
+  }
+}
+```
+
+Notes:
+- The stream is in-memory and low overhead: request tracking is constant-time and websocket broadcasts are coalesced to roughly once per second.
+- This is process-local. On multiple dynos/processes, each instance only knows about traffic it handled. Use Redis or another shared pub/sub store if you need one globally merged live stream across horizontal scaling.
 
 ---
 

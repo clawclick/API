@@ -23,6 +23,7 @@ import { getFilteredTokens } from "#services/filterTokens";
 // import { getTokenWallets } from "#services/tokenWallets";
 // import { getWalletStats } from "#services/walletStats";
 import { getTokenHolders } from "#services/tokenHolders";
+import { handleAgentStatsClient } from "#services/agentStatsStream";
 import { handleClient } from "#services/launchpadStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
@@ -138,5 +139,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // WebSocket: Codex launchpad event stream
   app.get("/ws/launchpadEvents", { websocket: true }, (socket) => {
     handleClient(socket);
+  });
+
+  app.get("/ws/agentStats", { websocket: true }, (socket) => {
+    handleAgentStatsClient(socket);
   });
 }

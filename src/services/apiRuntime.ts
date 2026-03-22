@@ -158,6 +158,7 @@ type DailyKeyStatsRow = {
 type ResolvedApiKey = {
   id: string;
   prefix: string;
+  agentId: string | null;
 };
 
 type ApiKeyAuthCacheEntry = {
@@ -192,6 +193,7 @@ const ADMIN_PATHS = new Set([
   "/admin/stats/user",
   "/admin/stats/agents",
   "/admin/stats/volume",
+  "/ws/agentStats",
 ]);
 const PROTECTED_PREFIXES = [
   "/tokenPoolInfo",
@@ -910,29 +912,31 @@ async function getAllTimeUsersStats(): Promise<ApiAllTimeUsers> {
           k.created_at,
           k.last_used_at,
           k.total_requests,
-          COALESCE(SUM(d.successful_requests), 0)::text AS successful_requests,
-          COALESCE(SUM(d.client_error_requests), 0)::text AS client_error_requests,
-          COALESCE(SUM(d.server_error_requests), 0)::text AS server_error_requests,
-          COALESCE(SUM(d.total_latency_ms), 0)::text AS total_latency_ms,
-          COALESCE(jsonb_object_agg(bucket_counts.key, bucket_counts.value_sum) FILTER (WHERE bucket_counts.key IS NOT NULL), '{}'::jsonb) AS latency_buckets
+          stats.successful_requests,
+          stats.client_error_requests,
+          stats.server_error_requests,
+          stats.total_latency_ms,
+          stats.latency_buckets
         FROM api_keys k
-        LEFT JOIN api_daily_key_stats d
-          ON d.api_key_id = k.id
         LEFT JOIN LATERAL (
-          SELECT key, SUM(value::bigint)::text AS value_sum
-          FROM jsonb_each_text(COALESCE(d.latency_buckets, '{}'::jsonb))
-          GROUP BY key
-        ) bucket_counts ON true
-        GROUP BY
-          k.id,
-          k.prefix,
-          k.label,
-          k.agent_id,
-          k.agent_wallet_evm,
-          k.agent_wallet_sol,
-          k.created_at,
-          k.last_used_at,
-          k.total_requests
+          SELECT
+            COALESCE(SUM(d.successful_requests), 0)::text AS successful_requests,
+            COALESCE(SUM(d.client_error_requests), 0)::text AS client_error_requests,
+            COALESCE(SUM(d.server_error_requests), 0)::text AS server_error_requests,
+            COALESCE(SUM(d.total_latency_ms), 0)::text AS total_latency_ms,
+            COALESCE((
+              SELECT jsonb_object_agg(merged.key, to_jsonb(merged.value_sum))
+              FROM (
+                SELECT bucket.key, SUM(bucket.value::bigint) AS value_sum
+                FROM api_daily_key_stats d2
+                CROSS JOIN LATERAL jsonb_each_text(COALESCE(d2.latency_buckets, '{}'::jsonb)) AS bucket(key, value)
+                WHERE d2.api_key_id = k.id
+                GROUP BY bucket.key
+              ) merged
+            ), '{}'::jsonb) AS latency_buckets
+          FROM api_daily_key_stats d
+          WHERE d.api_key_id = k.id
+        ) stats ON true
         ORDER BY k.total_requests DESC, k.created_at DESC
       `,
     ),
@@ -1470,6 +1474,30 @@ export function requireAdminKey(headers: Record<string, unknown>): void {
   }
 }
 
+export function requireAdminKeyForWebSocket(headers: Record<string, unknown>, url?: string | null): void {
+  const configured = getOptionalEnv("ADMIN_API_KEY");
+  if (!isConfigured(configured)) {
+    throw new AccessError(503, "Set a real value for ADMIN_API_KEY in the root .env file.");
+  }
+
+  const headerKey = getPresentedAdminKey(headers);
+  const queryKey = (() => {
+    if (!url) {
+      return null;
+    }
+    try {
+      return new URL(url, "http://localhost").searchParams.get("adminKey")?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const presented = headerKey ?? queryKey;
+  if (!presented || presented !== configured) {
+    throw new AccessError(401, "Missing or invalid admin key.");
+  }
+}
+
 export async function requireApiKey(headers: Record<string, unknown>): Promise<ResolvedApiKey> {
   const presented = getPresentedApiKey(headers);
   if (!presented) {
@@ -1487,9 +1515,9 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
   }
 
   await ensureDatabaseReady();
-  const result = await getPool().query<{ id: string; prefix: string }>(
+  const result = await getPool().query<{ id: string; prefix: string; agent_id: string | null }>(
     `
-      SELECT id, prefix
+      SELECT id, prefix, agent_id
       FROM api_keys
       WHERE key_hash = $1
       LIMIT 1
@@ -1502,7 +1530,7 @@ export async function requireApiKey(headers: Record<string, unknown>): Promise<R
     throw new AccessError(401, "Invalid API key.");
   }
 
-  const resolved = { id: match.id, prefix: match.prefix };
+  const resolved = { id: match.id, prefix: match.prefix, agentId: match.agent_id };
   setCachedResolvedApiKey(keyHash, resolved, API_KEY_AUTH_CACHE_TTL_MS, nowMs);
   return resolved;
 }
@@ -2640,30 +2668,32 @@ async function getFilteredAllTimeUserStats(filter: { agentId: string | null; age
         k.created_at,
         k.last_used_at,
         k.total_requests,
-        COALESCE(SUM(d.successful_requests), 0)::text AS successful_requests,
-        COALESCE(SUM(d.client_error_requests), 0)::text AS client_error_requests,
-        COALESCE(SUM(d.server_error_requests), 0)::text AS server_error_requests,
-        COALESCE(SUM(d.total_latency_ms), 0)::text AS total_latency_ms,
-        COALESCE(jsonb_object_agg(bucket_counts.key, bucket_counts.value_sum) FILTER (WHERE bucket_counts.key IS NOT NULL), '{}'::jsonb) AS latency_buckets
+        stats.successful_requests,
+        stats.client_error_requests,
+        stats.server_error_requests,
+        stats.total_latency_ms,
+        stats.latency_buckets
       FROM api_keys k
-      LEFT JOIN api_daily_key_stats d
-        ON d.api_key_id = k.id
       LEFT JOIN LATERAL (
-        SELECT key, SUM(value::bigint)::text AS value_sum
-        FROM jsonb_each_text(COALESCE(d.latency_buckets, '{}'::jsonb))
-        GROUP BY key
-      ) bucket_counts ON true
+        SELECT
+          COALESCE(SUM(d.successful_requests), 0)::text AS successful_requests,
+          COALESCE(SUM(d.client_error_requests), 0)::text AS client_error_requests,
+          COALESCE(SUM(d.server_error_requests), 0)::text AS server_error_requests,
+          COALESCE(SUM(d.total_latency_ms), 0)::text AS total_latency_ms,
+          COALESCE((
+            SELECT jsonb_object_agg(merged.key, to_jsonb(merged.value_sum))
+            FROM (
+              SELECT bucket.key, SUM(bucket.value::bigint) AS value_sum
+              FROM api_daily_key_stats d2
+              CROSS JOIN LATERAL jsonb_each_text(COALESCE(d2.latency_buckets, '{}'::jsonb)) AS bucket(key, value)
+              WHERE d2.api_key_id = k.id
+              GROUP BY bucket.key
+            ) merged
+          ), '{}'::jsonb) AS latency_buckets
+        FROM api_daily_key_stats d
+        WHERE d.api_key_id = k.id
+      ) stats ON true
       ${where.clause}
-      GROUP BY
-        k.id,
-        k.prefix,
-        k.label,
-        k.agent_id,
-        k.agent_wallet_evm,
-        k.agent_wallet_sol,
-        k.created_at,
-        k.last_used_at,
-        k.total_requests
       ORDER BY k.total_requests DESC, k.created_at DESC
     `,
     where.params,

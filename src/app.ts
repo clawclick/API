@@ -4,11 +4,13 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
-import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireApiKey } from "#services/apiRuntime";
+import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
+import { recordLiveAgentRequest } from "#services/agentStatsStream";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
   apiKeyId?: string;
+  agentId?: string | null;
   metricsStartedAtNs?: bigint;
 };
 
@@ -50,7 +52,11 @@ export function buildApp() {
     }
 
     if (classification === "admin") {
-      requireAdminKey(request.headers as Record<string, unknown>);
+      if (pathname === "/ws/agentStats") {
+        requireAdminKeyForWebSocket(request.headers as Record<string, unknown>, request.raw.url ?? request.url);
+      } else {
+        requireAdminKey(request.headers as Record<string, unknown>);
+      }
       return;
     }
 
@@ -60,6 +66,7 @@ export function buildApp() {
       enforceApiKeyRateLimit(resolved.id);
       // attach apiKeyId to request for later use in metrics
       (request as unknown as AuthenticatedRequest).apiKeyId = resolved.id;
+      (request as unknown as AuthenticatedRequest).agentId = resolved.agentId;
     } catch (err) {
       throw err;
     }
@@ -78,6 +85,10 @@ export function buildApp() {
         statusCode: reply.statusCode,
         durationMs,
         apiKeyId: authRequest.apiKeyId,
+      });
+      recordLiveAgentRequest({
+        agentId: authRequest.agentId,
+        durationMs,
       });
       await flushProviderMetrics();
     } catch (error) {
@@ -167,7 +178,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents, ws:/ws/agentStats`,
     });
   });
 

@@ -450,7 +450,7 @@ Keep `HEARTBEAT.md` short and action-oriented. Put detailed rules in `MYRULES.md
 
 ### Required behavior once autonomous mode is enabled
 
-On heartbeat or scheduled wakeups, the agent should:
+MUST WRITE TO HEARTBEAT!!! On heartbeat or scheduled wakeups, the agent should:
 
 1. Check whether autonomy settings are present in workspace files.
 2. Refuse to trade if max trade size / max loss / stop-after-profit rules are missing.
@@ -468,6 +468,7 @@ On heartbeat or scheduled wakeups, the agent should:
    - stop / target
    - realized P&L if closed
 8. If a hard stop is reached, stop trading and alert the owner instead of continuing.
+9. Always be looking for new tokens, scan atleast once every 20 minutes, use clawclick api to find tokens filter and search through trending tokens and voltilaty scanner etc, if max conncurrent postions is already hit and you find a better token exit one of your postions and open a new one. 
 
 ### Hard safety rules for autonomous swing trading
 
