@@ -223,6 +223,48 @@ const PROTECTED_PREFIXES = [
   "/ws/launchpadEvents",
   "/admin/",
 ];
+const TRACKED_METRIC_PATHS = new Set([
+  "/health",
+  "/providers",
+  "/admin/apiKeys",
+  "/admin/apiKeys/generate",
+  "/admin/stats",
+  "/admin/stats/requests",
+  "/admin/stats/users",
+  "/admin/stats/user",
+  "/admin/stats/agents",
+  "/admin/stats/volume",
+  "/tokenPoolInfo",
+  "/tokenPriceHistory",
+  "/priceHistoryIndicators",
+  "/detailedTokenStats",
+  "/isScam",
+  "/fullAudit",
+  "/holderAnalysis",
+  "/holders",
+  "/fudSearch",
+  "/marketOverview",
+  "/walletReview",
+  "/swap",
+  "/swapQuote",
+  "/swapDexes",
+  "/approve",
+  "/unwrap",
+  "/trendingTokens",
+  "/getTopEthTokens",
+  "/getNewEthTradableTokens",
+  "/newPairs",
+  "/topTraders",
+  "/gasFeed",
+  "/tokenSearch",
+  "/filterTokens",
+  "/tokenHolders",
+  "/volatilityScanner",
+  "/strats",
+  "/strats/:id",
+  "/ws/launchpadEvents",
+  "/ws/agentStats",
+]);
 const ALL_TIME_REQUESTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const ALL_TIME_VOLUME_CACHE_TTL_MS = 5 * 60 * 1000;
 const ANALYTICS_FLUSH_INTERVAL_MS = 5 * 60 * 1000;
@@ -1460,6 +1502,10 @@ export function classifyPath(pathname: string): "public" | "admin" | "protected"
     return "protected";
   }
   return "unknown";
+}
+
+export function isTrackedMetricPath(pathname: string): boolean {
+  return TRACKED_METRIC_PATHS.has(pathname);
 }
 
 export function requireAdminKey(headers: Record<string, unknown>): void {

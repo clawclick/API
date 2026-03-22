@@ -4,7 +4,7 @@ import fastifyWebSocket from "@fastify/websocket";
 import type { FastifyError } from "fastify";
 import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
-import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
+import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, isTrackedMetricPath, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
 import { recordLiveAgentRequest } from "#services/agentStatsStream";
 import { registerRoutes } from "#routes/index";
 
@@ -78,6 +78,10 @@ export function buildApp() {
     const durationMs = authRequest.metricsStartedAtNs
       ? Number(process.hrtime.bigint() - authRequest.metricsStartedAtNs) / 1_000_000
       : undefined;
+
+    if (!isTrackedMetricPath(path)) {
+      return payload;
+    }
 
     try {
       await recordRequestMetric({
