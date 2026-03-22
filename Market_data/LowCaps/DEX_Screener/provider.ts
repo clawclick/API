@@ -34,7 +34,15 @@ export type DexPair = {
   };
 };
 
-export async function getTokenPairs(chain: SupportedChain, tokenAddress: string): Promise<DexPair[]> {
+type GetTokenPairsOptions = {
+  fresh?: boolean;
+};
+
+export async function getTokenPairs(
+  chain: SupportedChain,
+  tokenAddress: string,
+  options: GetTokenPairsOptions = {},
+): Promise<DexPair[]> {
   const dexChain = toDexScreenerChain(chain);
   if (!dexChain) {
     return [];
@@ -42,7 +50,7 @@ export async function getTokenPairs(chain: SupportedChain, tokenAddress: string)
 
   const cacheKey = `${dexChain}:${tokenAddress.toLowerCase()}`;
   const cached = tokenPairsCache.get(cacheKey);
-  if (cached) {
+  if (!options.fresh && cached) {
     return cached;
   }
 
@@ -52,7 +60,10 @@ export async function getTokenPairs(chain: SupportedChain, tokenAddress: string)
       throw error;
     });
 
-  tokenPairsCache.set(cacheKey, request);
+  if (!options.fresh) {
+    tokenPairsCache.set(cacheKey, request);
+  }
+
   return request;
 }
 

@@ -5,7 +5,8 @@ export const tokenQuerySchema = z.object({
   tokenAddress: z.string().min(1),
   poolAddress: z.string().optional(),
   symbol: z.string().optional(),
-  tokenName: z.string().optional()
+  tokenName: z.string().optional(),
+  fresh: z.preprocess((value) => value === "true" || value === true, z.boolean().default(false)),
 });
 
 export const marketOverviewSchema = z.object({

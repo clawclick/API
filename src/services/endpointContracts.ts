@@ -16,7 +16,7 @@ const descriptions: Record<EndpointName, string> = {
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
-  tokenPoolInfo: "Returns market cap, price, liquidity, holder summary, and 24h movement for a token or pool.",
+  tokenPoolInfo: "Returns market cap, price, liquidity, holder summary, and 24h movement for a token or pool. Supports fresh=true to bypass provider memoization for debugging.",
   tokenPriceHistory: "Returns normalized price history for a token using an adjustable timeframe.",
   detailedTokenStats: "Returns cached bucketed token stats from Codex for volume, price, liquidity, and trader-count changes across short windows.",
   isScam: "Runs the fast scam triage pass using Honeypot and related contract-security signals.",

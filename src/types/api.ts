@@ -103,6 +103,7 @@ export type TokenPricePoint = {
   low?: number;
   close?: number;
   volume?: number;
+  isLatestPrice?: boolean;
 };
 
 export type TokenPriceHistoryResponse = {

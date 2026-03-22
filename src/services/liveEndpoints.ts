@@ -17,7 +17,7 @@ import {
   isCodexConfigured,
 } from "#providers/market/codex";
 import type { CodexDetailedTokenStatsWindow, CodexDetailedValueMetric, CodexStatsType } from "#providers/market/codex";
-import { getCoinMarketChart, getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
+import { getCoinDetails, getCoinMarketChart, getTokenMarketChart, getTokenPrice } from "#providers/market/coinGecko";
 import { getTokenPairs } from "#providers/market/dexScreener";
 import { getToken as getGeckoTerminalToken, getTopPools as getGeckoTerminalTopPools, getOhlcv as getGeckoTerminalOhlcv } from "#providers/market/geckoTerminal";
 import { getTokenSecurity } from "#providers/risk/goPlus";
@@ -283,6 +283,97 @@ function getDesiredCandleCount(limit: string, interval: string): number {
   const intervalMs = getIntervalMs(interval);
   const count = Math.ceil((days * 86_400_000) / intervalMs);
   return Math.max(1, Math.min(count, 1500));
+}
+
+async function getLatestSpotPriceUsd(
+  query: PriceHistoryQuery,
+  providers: ProviderStatus[],
+): Promise<number | null> {
+  const chain = normalizeChain(query.chain);
+  const majorAsset = resolveMajorAsset((query as { asset?: string }).asset, query.tokenAddress);
+
+  if (majorAsset) {
+    const coinDetails = await runProvider(
+      providers,
+      "coinGeckoMajor",
+      true,
+      () => getCoinDetails(MAJOR_ASSETS[majorAsset].coinGeckoId),
+    );
+    return parseNumber(coinDetails?.market_data?.current_price?.usd);
+  }
+
+  const tokenAddress = query.tokenAddress ?? "";
+  if (!tokenAddress) {
+    return null;
+  }
+
+  const dexPairs = await runProvider(providers, "dexScreener", true, () => getTokenPairs(chain, tokenAddress));
+  const topDexPair = dexPairs?.[0];
+  const dexPrice = parseNumber(topDexPair?.priceUsd);
+  if (dexPrice !== null) {
+    if (topDexPair?.pairAddress) {
+      poolAddressCache.set(poolCacheKey(chain, tokenAddress), topDexPair.pairAddress);
+    }
+    return dexPrice;
+  }
+
+  if (chain === "sol" && isBirdeyeConfigured()) {
+    const birdeye = await runProvider(providers, "birdeye", true, () => getBirdeyeOverview(tokenAddress));
+    const birdeyePrice = parseNumber(birdeye?.data?.price);
+    if (birdeyePrice !== null) {
+      return birdeyePrice;
+    }
+  }
+
+  if (isEvmChain(chain)) {
+    const geckoToken = await runProvider(providers, "geckoTerminal", true, () => getGeckoTerminalToken(chain, tokenAddress));
+    const geckoPrice = parseNumber(geckoToken?.data?.attributes?.price_usd);
+    if (geckoPrice !== null) {
+      return geckoPrice;
+    }
+
+    const coinGecko = await runProvider(providers, "coinGecko", true, () => getTokenPrice(chain, tokenAddress));
+    return parseNumber(coinGecko?.usd);
+  }
+
+  return null;
+}
+
+async function appendLatestPricePoint(
+  query: PriceHistoryQuery,
+  points: TokenPricePoint[],
+  providers: ProviderStatus[],
+): Promise<TokenPricePoint[]> {
+  const latestPriceUsd = await getLatestSpotPriceUsd(query, providers);
+  if (latestPriceUsd === null) {
+    return points;
+  }
+
+  const latestPoint: TokenPricePoint = {
+    timestamp: Date.now(),
+    priceUsd: latestPriceUsd,
+    open: latestPriceUsd,
+    high: latestPriceUsd,
+    low: latestPriceUsd,
+    close: latestPriceUsd,
+    volume: 0,
+    isLatestPrice: true,
+  };
+
+  if (points.length === 0) {
+    return [latestPoint];
+  }
+
+  const lastPoint = points[points.length - 1];
+  if (lastPoint.isLatestPrice) {
+    return [...points.slice(0, -1), latestPoint];
+  }
+
+  if (lastPoint.timestamp >= latestPoint.timestamp) {
+    return points;
+  }
+
+  return [...points, latestPoint];
 }
 
 function parseDetailedMetric(metric: CodexDetailedValueMetric | undefined): DetailedTokenStatsMetric | null {
@@ -893,9 +984,15 @@ function buildMajorDrivers(xMentions: SocialMention[], redditMentions: SocialMen
 export async function getTokenPoolInfo(query: TokenQuery): Promise<TokenPoolInfoResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
+  const dexFresh = true;
 
   // Primary: DexScreener (free, all chains, has everything we need)
-  const dexPairs = await runProvider(providers, "dexScreener", true, () => getTokenPairs(chain, query.tokenAddress));
+  const dexPairs = await runProvider(
+    providers,
+    "dexScreener",
+    true,
+    () => getTokenPairs(chain, query.tokenAddress, { fresh: dexFresh || query.fresh }),
+  );
   const topDexPair = dexPairs?.[0];
   const networkId = CODEX_NETWORK_IDS[chain];
   let codexPairAddress: string | null = null;
@@ -977,6 +1074,8 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
         priceUsd: price
       }));
     }
+
+    points = await appendLatestPricePoint(query, points, providers);
 
     return {
       endpoint: "tokenPriceHistory",
@@ -1105,6 +1204,8 @@ export async function getTokenPriceHistory(query: PriceHistoryQuery): Promise<To
       }));
     }
   }
+
+  points = await appendLatestPricePoint(query, points, providers);
 
   return {
     endpoint: "tokenPriceHistory",
@@ -1537,7 +1638,8 @@ export async function getMarketOverview(query: MarketOverviewQuery): Promise<Mar
     tokenAddress: query.tokenAddress ?? "",
     poolAddress: query.poolAddress,
     symbol: query.symbol,
-    tokenName: query.tokenName
+    tokenName: query.tokenName,
+    fresh: false,
   };
 
   const [pool, risk, social] = await Promise.all([
