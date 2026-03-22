@@ -365,8 +365,8 @@ GET /swap?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenO
 If the agent exits a position at resistance and the same token later drops back toward support, it may re-enter. This is a common and valid swing pattern.
 
 **Re-entry is allowed if all of the following are true:**
-- the last exit on this token was profitable
-- at least 30 minutes have passed since the exit (cooling-off)
+- the last exit on this token was >= buy price
+- at least 10 minutes have passed since the exit (cooling-off)
 - the token passes a fresh safety check (`/isScam`)
 - fresh indicators confirm a new buy setup (RSI oversold, summary signal buy/strong_buy, etc.)
 - support level has not broken since the last exit
