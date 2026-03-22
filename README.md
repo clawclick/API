@@ -81,6 +81,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/swapDexes` | GET | List available DEXes for a chain |
 | `/unwrap` | GET | Build unsigned wrapped-native withdraw tx |
 | `/trendingTokens` | GET | Currently trending tokens |
+| `/getTopEthTokens` | GET | Top Ethereum tokens from Ethplorer (cached 10 min) |
 | `/newPairs` | GET | Recently created pairs/pools |
 | `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |
 | `/gasFeed` | GET | Current gas prices (EVM chains) |
@@ -1392,6 +1393,58 @@ GET /trendingTokens
 
 ---
 
+### `GET /getTopEthTokens`
+
+Top Ethereum tokens from Ethplorer. Ethereum mainnet only. Results are cached for 10 minutes.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `criteria` | string | no | `trade` | Sort by `trade`, `cap`, or `count` |
+| `limit` | number | no | `50` | Max results (1–50) |
+
+```
+GET /getTopEthTokens?criteria=cap&limit=25
+```
+
+**Response:**
+```json
+{
+  "endpoint": "getTopEthTokens",
+  "status": "live",
+  "criteria": "cap",
+  "limit": 25,
+  "cached": false,
+  "tokens": [
+    {
+      "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "totalSupply": "1000000000000000",
+      "name": "Tether USD",
+      "symbol": "USDT",
+      "decimals": "6",
+      "price": {
+        "rate": 1,
+        "currency": "USD",
+        "diff": 0.01,
+        "diff7d": 0.03,
+        "diff30d": 0.02,
+        "marketCapUsd": 100000000000,
+        "availableSupply": 100000000000,
+        "volume24h": 50000000000,
+        "ts": 1763000000
+      },
+      "countOps": 12345678,
+      "holdersCount": 1000000,
+      "lastUpdated": 1763000000
+    }
+  ],
+  "providers": [...]
+}
+```
+
+Ethplorer may include additional token fields in each row. This endpoint preserves those extra fields while normalizing the common token info fields above.
+
+---
+
 ### `GET /newPairs`
 
 Recently created trading pairs/pools.
@@ -2006,6 +2059,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `ADMIN_API_KEY` | Admin-only endpoints: `/admin/apiKeys/generate`, `/admin/stats`, `/admin/stats/*` |
 | `MORALIS_API_KEY` | walletReview, holderAnalysis, tokenPoolInfo, holders |
 | `BIRDEYE_API_KEY` | tokenPoolInfo, priceHistory, topTraders, walletReview |
+| `ETHPLORER_API_KEY` | getTopEthTokens (Ethereum mainnet only) |
 | `ETHERSCAN_API_KEY` | gasFeed (single key for ETH/BASE/BSC via Etherscan V2) |
 | `ETH_RPC_URL` | tokenPoolInfo, holderAnalysis (on-chain calls) |
 | `BASE_RPC_URL` | tokenPoolInfo, holderAnalysis (on-chain calls) |

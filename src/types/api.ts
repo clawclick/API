@@ -452,6 +452,56 @@ export type TrendingTokensResponse = {
   providers: ProviderStatus[];
 };
 
+export type GetTopEthTokenPrice = {
+  rate: number | null;
+  currency: string | null;
+  diff: number | null;
+  diff7d: number | null;
+  diff30d: number | null;
+  marketCapUsd: number | null;
+  availableSupply: number | null;
+  volume24h: number | null;
+  ts: number | null;
+};
+
+export type GetTopEthTokenContractInfo = {
+  creatorAddress: string | null;
+  creationTransactionHash: string | null;
+  creationTimestamp: number | null;
+};
+
+export type GetTopEthToken = {
+  address: string | null;
+  totalSupply: string | null;
+  name: string | null;
+  symbol: string | null;
+  decimals: string | null;
+  price: GetTopEthTokenPrice | null;
+  owner: string | null;
+  contractInfo: GetTopEthTokenContractInfo | null;
+  countOps: number | null;
+  txsCount: number | null;
+  totalIn: string | number | null;
+  totalOut: string | number | null;
+  transfersCount: number | null;
+  ethTransfersCount: number | null;
+  holdersCount: number | null;
+  image: string | null;
+  website: string | null;
+  lastUpdated: number | null;
+  [key: string]: unknown;
+};
+
+export type GetTopEthTokensResponse = {
+  endpoint: "getTopEthTokens";
+  status: "live" | "partial";
+  criteria: "trade" | "cap" | "count";
+  limit: number;
+  cached: boolean;
+  tokens: GetTopEthToken[];
+  providers: ProviderStatus[];
+};
+
 export type NewPairItem = {
   source: string;
   chainId: string | null;

@@ -16,7 +16,7 @@ import { getProviderHealth } from "#services/providerHealth";
 import { getApproveTx, getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { buildUnwrapTx } from "#lib/evm";
 import { isNativeIn } from "#lib/evm";
-import { getTrendingTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
+import { getTrendingTokens, getTopEthTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
 // DISABLED — Codex paid plan only 
 // import { getFilteredWallets } from "#services/filterWallets";
@@ -27,7 +27,7 @@ import { handleClient } from "#services/launchpadStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
-import { approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, marketOverviewSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
 import { recordEthSwapVolume } from "#services/apiRuntime";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -107,6 +107,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // Discovery & market routes
   app.get("/trendingTokens", async () => getTrendingTokens());
+  app.get("/getTopEthTokens", async (request) => getTopEthTokens(parseQuery(getTopEthTokensSchema, request.query)));
   app.get("/newPairs", async (request) => getNewPairs(parseQuery(newPairsSchema, request.query)));
   app.get("/topTraders", async (request) => getTopTraders(parseQuery(topTradersSchema, request.query)));
   app.get("/gasFeed", async (request) => getGasFeed(parseQuery(gasFeedSchema, request.query)));

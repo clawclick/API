@@ -122,6 +122,11 @@ export const gasFeedSchema = z.object({
   chain: z.string().min(1).default("eth"),
 });
 
+export const getTopEthTokensSchema = z.object({
+  criteria: z.enum(["trade", "cap", "count"]).default("trade"),
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+});
+
 export const tokenSearchSchema = z.object({
   query: z.string().min(1),
 });
@@ -133,6 +138,7 @@ export const newPairsSchema = z.object({
 
 export type TopTradersQuery = z.output<typeof topTradersSchema>;
 export type GasFeedQuery = z.output<typeof gasFeedSchema>;
+export type GetTopEthTokensQuery = z.output<typeof getTopEthTokensSchema>;
 export type TokenSearchQuery = z.output<typeof tokenSearchSchema>;
 export type NewPairsQuery = z.output<typeof newPairsSchema>;
 

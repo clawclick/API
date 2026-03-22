@@ -22,6 +22,7 @@
     "#providers/market/alchemy": "./Market_data/MidCapsAndMajors/Alchemy/provider.ts",
     "#providers/market/coinGecko": "./Market_data/MidCapsAndMajors/CoinGecko/provider.ts",
     "#providers/market/coinMarketCap": "./Market_data/MidCapsAndMajors/Coinmarketcap/provider.ts",
+    "#providers/market/ethplorer": "./Market_data/MidCapsAndMajors/Ethplorer/provider.ts",
     "#providers/market/birdeye": "./Market_data/LowCaps/Birdeye/provider.ts",
     "#providers/market/dexScreener": "./Market_data/LowCaps/DEX_Screener/provider.ts",
     "#providers/market/geckoTerminal": "./Market_data/LowCaps/GeckoTerminal/provider.ts",
