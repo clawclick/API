@@ -34,7 +34,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "geckoTerminal", label: "GeckoTerminal", category: "marketData", folder: "Market_data/LowCaps/GeckoTerminal", env: [], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview"] },
   { id: "codex", label: "Codex", category: "marketData", folder: "Market_data/LowCaps/Codex", env: ["CODEX_API_KEY"], endpoints: ["filterTokens", "tokenPoolInfo", "tokenPriceHistory", "holderAnalysis", "detailedTokenStats"] },
   { id: "alchemy", label: "Alchemy", category: "marketData", folder: "Market_data/MidCapsAndMajors/Alchemy", env: ["ALCHEMY_API_KEY"], endpoints: ["tokenPriceHistory"] },
-  { id: "ethplorer", label: "Ethplorer", category: "marketData", folder: "Market_data/MidCapsAndMajors/Ethplorer", env: ["ETHPLORER_API_KEY"], endpoints: ["getTopEthTokens"] },
+  { id: "ethplorer", label: "Ethplorer", category: "marketData", folder: "Market_data/MidCapsAndMajors/Ethplorer", env: ["ETHPLORER_API_KEY"], endpoints: ["getTopEthTokens", "getNewEthTradableTokens"] },
   { id: "coinGecko", label: "CoinGecko", category: "marketData", folder: "Market_data/MidCapsAndMajors/CoinGecko", env: ["COINGECKO_PRO_API_KEY"], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview"] },
   { id: "coinMarketCap", label: "CoinMarketCap", category: "marketData", folder: "Market_data/MidCapsAndMajors/Coinmarketcap", env: ["CMC_API_KEY"], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "newPairsDexScreener", label: "DexScreener New Pairs", category: "newPairs", folder: "New_pairs/Dexscreener_new_pairs", env: [], endpoints: ["marketOverview"] },

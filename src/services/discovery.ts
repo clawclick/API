@@ -2,7 +2,7 @@ import { addStatus, runProvider, summarizeStatus } from "#lib/runProvider";
 import { normalizeChain, isEvmChain } from "#providers/shared/chains";
 import { searchPairs, getLatestBoosts } from "#providers/market/dexScreener";
 import { getTopTraders as getBirdeyeTopTraders, isBirdeyeConfigured } from "#providers/market/birdeye";
-import { getTop as getEthplorerTop, isEthplorerConfigured, type EthplorerGetTopToken } from "#providers/market/ethplorer";
+import { getTop as getEthplorerTop, getTokensNew as getEthplorerTokensNew, isEthplorerConfigured, type EthplorerGetTopToken, type EthplorerNewTradableToken } from "#providers/market/ethplorer";
 import { getLatestTokenProfiles } from "#providers/newPairs/dexScreenerNewPairs";
 import { getCurrentlyLive } from "#providers/newPairs/pumpFun";
 import { getNewPools } from "#providers/newPairs/raydiumNewPools";
@@ -12,9 +12,11 @@ import { getBlockNumber, getFeeHistory, getGasPrice } from "#providers/onchain/r
 import type { GasFeedQuery, GetTopEthTokensQuery, NewPairsQuery, TokenSearchQuery, TopTradersQuery } from "#routes/helpers";
 import type {
   GasFeedResponse,
+  GetNewEthTradableTokensResponse,
   GetTopEthToken,
   GetTopEthTokensResponse,
   NewPairItem,
+  NewEthTradableToken,
   NewPairsResponse,
   ProviderStatus,
   TokenSearchResponse,
@@ -30,6 +32,14 @@ type GetTopEthTokensCacheEntry = {
 
 const getTopEthTokensCache = new Map<string, GetTopEthTokensCacheEntry>();
 const GET_TOP_ETH_TOKENS_CACHE_TTL_MS = 10 * 60 * 1000;
+
+type GetNewEthTradableTokensCacheEntry = {
+  data: GetNewEthTradableTokensResponse;
+  expiresAt: number;
+};
+
+const getNewEthTradableTokensCache = new Map<string, GetNewEthTradableTokensCacheEntry>();
+const GET_NEW_ETH_TRADABLE_TOKENS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 function getTopEthTokensCacheKey(q: GetTopEthTokensQuery): string {
   return JSON.stringify({ criteria: q.criteria, limit: q.limit });
@@ -154,6 +164,87 @@ export async function getTopEthTokens(q: GetTopEthTokensQuery): Promise<GetTopEt
 
   if (statuses.some((status) => status.status === "ok")) {
     getTopEthTokensCache.set(cacheKey, { data: response, expiresAt: Date.now() + GET_TOP_ETH_TOKENS_CACHE_TTL_MS });
+  }
+
+  return response;
+}
+
+/* ────────────────────────────────────────────────────────────
+   GET /getNewEthTradableTokens
+   New tradable Ethereum tokens from Ethplorer with a 10-minute cache.
+   ──────────────────────────────────────────────────────────── */
+
+export async function getNewEthTradableTokens(): Promise<GetNewEthTradableTokensResponse> {
+  const cached = getNewEthTradableTokensCache.get("all");
+  if (cached && cached.expiresAt > Date.now()) {
+    return { ...cached.data, cached: true };
+  }
+
+  const statuses: ProviderStatus[] = [];
+  const data = await runProvider(
+    statuses,
+    "ethplorer:getTokensNew",
+    isEthplorerConfigured(),
+    () => getEthplorerTokensNew(),
+    "Ethplorer API key not configured.",
+  );
+
+  const tokens: NewEthTradableToken[] = (data ?? []).map((token: EthplorerNewTradableToken) => {
+    const raw = token as Record<string, unknown>;
+    const price = token.price && typeof token.price === "object"
+      ? {
+          rate: token.price.rate ?? null,
+          currency: token.price.currency ?? null,
+          diff: token.price.diff ?? null,
+          diff7d: token.price.diff7d ?? null,
+          diff30d: token.price.diff30d ?? null,
+          marketCapUsd: token.price.marketCapUsd ?? null,
+          availableSupply: token.price.availableSupply ?? null,
+          volume24h: token.price.volume24h ?? null,
+          ts: token.price.ts ?? null,
+        }
+      : null;
+
+    return {
+      ...raw,
+      address: token.address ?? null,
+      totalSupply: token.totalSupply ?? null,
+      name: token.name ?? null,
+      symbol: token.symbol ?? null,
+      decimals: token.decimals ?? null,
+      price,
+      owner: token.owner ?? null,
+      contractInfo: token.contractInfo
+        ? {
+            creatorAddress: token.contractInfo.creatorAddress ?? null,
+            creationTransactionHash: token.contractInfo.creationTransactionHash ?? null,
+            creationTimestamp: token.contractInfo.creationTimestamp ?? null,
+          }
+        : null,
+      countOps: token.countOps ?? null,
+      txsCount: token.txsCount ?? null,
+      totalIn: token.totalIn ?? null,
+      totalOut: token.totalOut ?? null,
+      transfersCount: token.transfersCount ?? null,
+      ethTransfersCount: token.ethTransfersCount ?? null,
+      holdersCount: token.holdersCount ?? null,
+      image: token.image ?? null,
+      website: token.website ?? null,
+      lastUpdated: token.lastUpdated ?? null,
+      added: token.added ?? null,
+    };
+  });
+
+  const response: GetNewEthTradableTokensResponse = {
+    endpoint: "getNewEthTradableTokens",
+    status: summarizeStatus(statuses),
+    cached: false,
+    tokens,
+    providers: statuses,
+  };
+
+  if (statuses.some((status) => status.status === "ok")) {
+    getNewEthTradableTokensCache.set("all", { data: response, expiresAt: Date.now() + GET_NEW_ETH_TRADABLE_TOKENS_CACHE_TTL_MS });
   }
 
   return response;

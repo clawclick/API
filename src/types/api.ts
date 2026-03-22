@@ -502,6 +502,18 @@ export type GetTopEthTokensResponse = {
   providers: ProviderStatus[];
 };
 
+export type NewEthTradableToken = GetTopEthToken & {
+  added: number | null;
+};
+
+export type GetNewEthTradableTokensResponse = {
+  endpoint: "getNewEthTradableTokens";
+  status: "live" | "partial";
+  cached: boolean;
+  tokens: NewEthTradableToken[];
+  providers: ProviderStatus[];
+};
+
 export type NewPairItem = {
   source: string;
   chainId: string | null;

@@ -16,7 +16,7 @@ import { getProviderHealth } from "#services/providerHealth";
 import { getApproveTx, getSwapTx, getSwapQuote, getSwapDexes } from "#services/swap";
 import { buildUnwrapTx } from "#lib/evm";
 import { isNativeIn } from "#lib/evm";
-import { getTrendingTokens, getTopEthTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
+import { getTrendingTokens, getTopEthTokens, getNewEthTradableTokens, getNewPairs, getTopTraders, getGasFeed, getTokenSearch } from "#services/discovery";
 import { getFilteredTokens } from "#services/filterTokens";
 // DISABLED — Codex paid plan only 
 // import { getFilteredWallets } from "#services/filterWallets";
@@ -108,6 +108,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Discovery & market routes
   app.get("/trendingTokens", async () => getTrendingTokens());
   app.get("/getTopEthTokens", async (request) => getTopEthTokens(parseQuery(getTopEthTokensSchema, request.query)));
+  app.get("/getNewEthTradableTokens", async () => getNewEthTradableTokens());
   app.get("/newPairs", async (request) => getNewPairs(parseQuery(newPairsSchema, request.query)));
   app.get("/topTraders", async (request) => getTopTraders(parseQuery(topTradersSchema, request.query)));
   app.get("/gasFeed", async (request) => getGasFeed(parseQuery(gasFeedSchema, request.query)));

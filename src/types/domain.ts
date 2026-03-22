@@ -32,6 +32,7 @@ export type EndpointName =
   | "swapDexes"
   | "trendingTokens"
   | "getTopEthTokens"
+  | "getNewEthTradableTokens"
   | "newPairs"
   | "topTraders"
   | "gasFeed"

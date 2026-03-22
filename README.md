@@ -82,6 +82,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/unwrap` | GET | Build unsigned wrapped-native withdraw tx |
 | `/trendingTokens` | GET | Currently trending tokens |
 | `/getTopEthTokens` | GET | Top Ethereum tokens from Ethplorer (cached 10 min) |
+| `/getNewEthTradableTokens` | GET | New tradable Ethereum tokens from Ethplorer (cached 10 min) |
 | `/newPairs` | GET | Recently created pairs/pools |
 | `/topTraders` | GET | Top traders for a token (multi-chain via Birdeye) |
 | `/gasFeed` | GET | Current gas prices (EVM chains) |
@@ -1442,6 +1443,51 @@ GET /getTopEthTokens?criteria=cap&limit=25
 ```
 
 Ethplorer may include additional token fields in each row. This endpoint preserves those extra fields while normalizing the common token info fields above.
+
+---
+
+### `GET /getNewEthTradableTokens`
+
+Newest tradable Ethereum tokens from Ethplorer. Ethereum mainnet only. Results are cached for 10 minutes.
+
+```
+GET /getNewEthTradableTokens
+```
+
+**Response:**
+```json
+{
+  "endpoint": "getNewEthTradableTokens",
+  "status": "live",
+  "cached": false,
+  "tokens": [
+    {
+      "address": "0x1234...",
+      "totalSupply": "1000000000000000000",
+      "name": "New Token",
+      "symbol": "NEW",
+      "decimals": "18",
+      "price": {
+        "rate": 0.00012,
+        "currency": "USD",
+        "diff": 4.2,
+        "diff7d": 4.2,
+        "diff30d": 4.2,
+        "marketCapUsd": 120000,
+        "availableSupply": 1000000000,
+        "volume24h": 25000,
+        "ts": 1763000000
+      },
+      "holdersCount": 145,
+      "lastUpdated": 1763000000,
+      "added": 1762999500
+    }
+  ],
+  "providers": [...]
+}
+```
+
+Ethplorer returns up to 100 newly tradable tokens sorted by creation time. This endpoint preserves any additional Ethplorer fields while normalizing the common token fields and the `added` timestamp.
 
 ---
 

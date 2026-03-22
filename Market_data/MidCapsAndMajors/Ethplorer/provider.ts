@@ -53,6 +53,10 @@ export type EthplorerGetTopResponse = {
   error?: EthplorerError;
 };
 
+export type EthplorerNewTradableToken = EthplorerGetTopToken & {
+  added?: number;
+};
+
 export function isEthplorerConfigured(): boolean {
   return isConfigured(getOptionalEnv("ETHPLORER_API_KEY"));
 }
@@ -68,4 +72,16 @@ export async function getTop(criteria: EthplorerTopCriteria = "trade", limit = 5
   }
 
   return response;
+}
+
+export async function getTokensNew(): Promise<EthplorerNewTradableToken[]> {
+  const response = await requestJson<EthplorerNewTradableToken[]>(
+    `https://api.ethplorer.io/getTokensNew?apiKey=${encodeURIComponent(getRequiredEnv("ETHPLORER_API_KEY"))}`,
+  );
+
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  throw new Error("Ethplorer getTokensNew returned an unexpected response shape.");
 }
