@@ -20,12 +20,12 @@ function buildHeaders(): Record<string, string> | undefined {
   }
 
   return {
-    "x-cg-pro-api-key": apiKey
+    "x-cg-demo-api-key": apiKey
   };
 }
 
 function getBaseUrl(): string {
-  return isConfigured(getOptionalEnv("COINGECKO_API_KEY"))
+  return isConfigured(getOptionalEnv("COINGECKO_PRO_API_KEY"))
     ? "https://api.coingecko.com/api/v3"
     : "https://api.coingecko.com/api/v3";
 }
@@ -62,8 +62,6 @@ export async function getCoinMarketChart(coinId: string, days: number): Promise<
     { headers: buildHeaders() }
   );
 }
-
-/* ── NEW ENDPOINTS ────────────────────────────────────────── */
 
 type CoinGeckoCoinDetail = {
   id?: string;
