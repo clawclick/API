@@ -18,7 +18,7 @@ Every new endpoint touches these files, in order:
 | 4 | `src/types/api.ts` | Define the response type |
 | 5 | `src/routes/helpers.ts` | Create a Zod schema for query-param validation |
 | 6 | `src/services/<name>.ts` | Implement the service function (call providers, aggregate, return response) |
-| 7 | `src/routes/index.ts` | Register the route (`app.get(…)`) and import the service + schema |
+| 7 | `src/routes/index.ts` | Register the route (`app.get(…)` or `app.post(…)`) and import the service + schema |
 | 8 | Provider folder (`Market_data/**/provider.ts`, etc.) | Write the adapter that calls the external API and normalizes the data |
 | 9 | `.env` / `.env.example` | Add any new API keys |
 | 10 | `README.md` | Document the endpoint below |
@@ -76,6 +76,11 @@ npx tsx src/server.ts   # starts on port 3000
 | `/fudSearch` | GET | Search social mentions for FUD signals |
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
+| `/nansenPresets` | GET | List named preset templates for Nansen-backed endpoints |
+| `/tokenScreener` | POST | Nansen cross-chain token screening with smart-money and market filters |
+| `/addressRelatedWallets` | POST | Nansen wallet-clustering route to trace related wallets and hidden fund movement |
+| `/jupiterDcas` | POST | Nansen Solana Jupiter DCA orders for a token |
+| `/smartMoneyNetflow` | POST | Nansen smart-money accumulation and distribution flows across chains |
 | `/approve` | GET | Build unsigned approval txs for router, fee wrapper, or Permit2 flows |
 | `/swap` | GET | Build unsigned swap transaction |
 | `/swapQuote` | GET | Get swap quote (amount out) |
@@ -621,7 +626,7 @@ GET /health
 
 ### `GET /providers`
 
-List all registered providers and whether they're configured.
+List all registered providers and whether they're configured. Internal workspace folder paths are not returned.
 
 ```
 GET /providers
@@ -631,8 +636,8 @@ GET /providers
 ```json
 {
   "providers": [
-    { "id": "moralis", "label": "Moralis", "folder": "Alpha_Wallet_tracking/Moralis", "category": "walletTracking", "configured": true },
-    { "id": "birdeye", "label": "Birdeye", "folder": "Market_data/LowCaps/Birdeye", "category": "marketData", "configured": true }
+    { "id": "moralis", "label": "Moralis", "category": "walletTracking", "configured": true },
+    { "id": "birdeye", "label": "Birdeye", "category": "marketData", "configured": true }
   ]
 }
 ```
@@ -1135,6 +1140,317 @@ GET /walletReview?chain=sol&walletAddress=8X35r...&days=30&pageCount=10
   "providers": [...]
 }
 ```
+
+---
+
+### `GET /nansenPresets`
+
+Returns the built-in preset request templates for the Nansen-backed routes so you can see the default filters without hand-building them.
+
+Supported presets:
+
+- `buyCandidates` for `/tokenScreener`
+- `avoidTokens` for `/smartMoneyNetflow`
+- `solDcaAccumulation` for `/jupiterDcas`
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `endpoint` | string | no | Filter to `tokenScreener`, `smartMoneyNetflow`, or `jupiterDcas` |
+
+```
+GET /nansenPresets
+GET /nansenPresets?endpoint=smartMoneyNetflow
+```
+
+**Response:**
+```json
+{
+  "endpoint": "nansenPresets",
+  "status": "live",
+  "count": 3,
+  "presets": [
+    {
+      "id": "buyCandidates",
+      "endpoint": "tokenScreener",
+      "label": "Buy Candidates",
+      "intent": "Find tokens with fresh smart-money participation and meaningful buy-side activity.",
+      "requestTemplate": {
+        "chains": ["ethereum", "solana", "base"],
+        "timeframe": "24h",
+        "pagination": { "page": 1, "per_page": 25 },
+        "filters": {
+          "only_smart_money": true,
+          "token_age_days": { "min": 1, "max": 180 }
+        },
+        "order_by": [{ "field": "buy_volume", "direction": "DESC" }]
+      }
+    }
+  ],
+  "providers": []
+}
+```
+
+---
+
+### `POST /tokenScreener`
+
+Cross-chain token screening powered by Nansen. Use this to find tokens with strong smart-money participation, liquidity, volume, and netflow characteristics.
+
+If you do not want to hand-build the filters, pass `preset: "buyCandidates"` and optionally override any field.
+
+**Body fields:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `preset` | string | no | `buyCandidates` preset for smart-money-led token discovery |
+| `chains` | string[] | **yes** | Nansen chain ids, e.g. `ethereum`, `solana`, `base` |
+| `timeframe` | string | no* | One of `5m`, `10m`, `1h`, `6h`, `24h`, `7d`, `30d` |
+| `date` | object | no* | Custom date range `{ from, to }` |
+| `pagination` | object | no | `{ page, per_page }` |
+| `filters` | object | no | Nansen token screener filters |
+| `order_by` | object[] | no | Nansen sort order rows |
+
+`timeframe` or `date` is required, but not both.
+
+Preset-only example:
+
+```json
+POST /tokenScreener
+{
+  "preset": "buyCandidates"
+}
+```
+
+```json
+POST /tokenScreener
+{
+  "chains": ["ethereum", "solana", "base"],
+  "timeframe": "24h",
+  "pagination": { "page": 1, "per_page": 10 },
+  "filters": {
+    "only_smart_money": true,
+    "token_age_days": { "min": 1, "max": 365 }
+  },
+  "order_by": [{ "field": "buy_volume", "direction": "DESC" }]
+}
+```
+
+**Response:**
+```json
+{
+  "endpoint": "tokenScreener",
+  "status": "live",
+  "chains": ["ethereum", "solana", "base"],
+  "presetApplied": "buyCandidates",
+  "timeframe": "24h",
+  "dateRange": null,
+  "count": 10,
+  "summary": {
+    "positiveNetflowCount": 7,
+    "negativeNetflowCount": 3,
+    "strongestInflow": {
+      "chain": "solana",
+      "tokenAddress": "So111...",
+      "tokenSymbol": "MEME",
+      "netflowUsd": 325000
+    }
+  },
+  "pagination": { "page": 1, "perPage": 10, "isLastPage": false },
+  "tokens": [...],
+  "providers": [...]
+}
+```
+
+---
+
+### `POST /addressRelatedWallets`
+
+Wallet-clustering endpoint powered by Nansen profiler. This is the route to use when tracking alpha wallets that try to hide their buys by first sending funds to connected wallets.
+
+**Body fields:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `address` | string | **yes** | Address to analyze |
+| `chain` | string | **yes** | Nansen chain id, e.g. `ethereum`, `base`, `solana` |
+| `pagination` | object | no | `{ page, per_page }` |
+| `order_by` | object[] | no | Nansen sort order rows |
+
+```json
+POST /addressRelatedWallets
+{
+  "address": "0x28c6c06298d514db089934071355e5743bf21d60",
+  "chain": "ethereum",
+  "pagination": { "page": 1, "per_page": 25 },
+  "order_by": [{ "field": "order", "direction": "ASC" }]
+}
+```
+
+**Response:**
+```json
+{
+  "endpoint": "addressRelatedWallets",
+  "status": "live",
+  "address": "0x28c6c06298d514db089934071355e5743bf21d60",
+  "chain": "ethereum",
+  "count": 25,
+  "summary": {
+    "relationTypes": ["funded_by", "counterparty", "transfer_path"],
+    "latestInteractionAt": "2026-03-23T12:10:00Z"
+  },
+  "pagination": { "page": 1, "perPage": 25, "isLastPage": false },
+  "relatedWallets": [...],
+  "providers": [...]
+}
+```
+
+---
+
+### `POST /jupiterDcas`
+
+Solana-only Jupiter DCA order flow from Nansen. Use this to see what tokens wallets are systematically buying over time via DCA.
+
+If you want the default high-signal filter set, pass `preset: "solDcaAccumulation"` and only provide the token mint.
+
+**Body fields:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `preset` | string | no | `solDcaAccumulation` |
+| `token_address` | string | **yes** | Solana token mint |
+| `pagination` | object | no | `{ page, per_page }` |
+| `filters` | object | no | Nansen Jupiter DCA filters |
+
+Preset-first example:
+
+```json
+POST /jupiterDcas
+{
+  "preset": "solDcaAccumulation",
+  "token_address": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv"
+}
+```
+
+```json
+POST /jupiterDcas
+{
+  "token_address": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+  "pagination": { "page": 1, "per_page": 10 },
+  "filters": {
+    "deposit_amount": { "min": 100 },
+    "deposit_usd_value": { "min": 1000 },
+    "status": "Active"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "endpoint": "jupiterDcas",
+  "status": "live",
+  "chain": "solana",
+  "tokenAddress": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+  "presetApplied": "solDcaAccumulation",
+  "count": 10,
+  "summary": {
+    "activeCount": 8,
+    "closedCount": 2,
+    "totalDepositUsdValue": 48500
+  },
+  "pagination": { "page": 1, "perPage": 10, "isLastPage": false },
+  "orders": [...],
+  "providers": [...]
+}
+```
+
+---
+
+### `POST /smartMoneyNetflow`
+
+Smart-money inflow and outflow analysis powered by Nansen. Use this to find tokens being accumulated and tokens being distributed or avoided by smart money.
+
+If you want a default smart-money distribution screen, pass `preset: "avoidTokens"` and optionally override chains, sorting, or filters.
+
+**Body fields:**
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `preset` | string | no | `avoidTokens` preset for negative smart-money flow screening |
+| `chains` | string[] | **yes** | Nansen chain ids, or a list like `ethereum`, `solana` |
+| `filters` | object | no | Nansen smart-money netflow filters |
+| `premium_labels` | boolean | no | Request premium labels when available |
+| `pagination` | object | no | `{ page, per_page }` |
+| `order_by` | object[] | no | Nansen sort order rows |
+
+Preset-only example:
+
+```json
+POST /smartMoneyNetflow
+{
+  "preset": "avoidTokens"
+}
+```
+
+```json
+POST /smartMoneyNetflow
+{
+  "chains": ["ethereum", "solana"],
+  "filters": {
+    "include_smart_money_labels": ["Fund", "Smart Trader"],
+    "include_native_tokens": false,
+    "include_stablecoins": false
+  },
+  "pagination": { "page": 1, "per_page": 10 },
+  "order_by": [{ "field": "net_flow_24h_usd", "direction": "DESC" }]
+}
+```
+
+**Response:**
+```json
+{
+  "endpoint": "smartMoneyNetflow",
+  "status": "live",
+  "chains": ["ethereum", "solana"],
+  "presetApplied": "avoidTokens",
+  "count": 10,
+  "summary": {
+    "accumulationCount": 6,
+    "distributionCount": 4,
+    "strongestInflow": { "tokenSymbol": "ABC", "netFlow24hUsd": 950000 },
+    "strongestOutflow": { "tokenSymbol": "XYZ", "netFlow24hUsd": -510000 }
+  },
+  "pagination": { "page": 1, "perPage": 10, "isLastPage": false },
+  "tokens": [...],
+  "providers": [...]
+}
+```
+
+#### Nansen Alpha Wallet Workflow
+
+Use these three endpoints together when you want to catch wallets that split funds across multiple addresses before entering a position.
+
+1. Start with `/addressRelatedWallets` on the wallet you already trust.
+This gives you the transfer-linked and interaction-linked wallet graph around the original address.
+
+2. Run `/walletReview` on the original wallet and the highest-signal related wallets.
+Focus on recent transfers, recent interactions, realized PnL, and top holdings to separate real execution wallets from passive transfer hops.
+
+3. Run `/smartMoneyNetflow` with `preset: "avoidTokens"` or a custom netflow screen.
+This tells you whether the tokens touched by that wallet cluster are currently being accumulated or distributed by the broader smart-money cohort.
+
+4. Use `/tokenScreener` with `preset: "buyCandidates"` to confirm whether the same names also have healthy buy-side volume, liquidity, and netflow.
+If a token shows up in both the wallet cluster and the buy-candidate screen, it is usually a better follow-up candidate than a token only seen in one place.
+
+5. For Solana names, add `/jupiterDcas` with `preset: "solDcaAccumulation"`.
+That helps distinguish one-off speculation from steady automated accumulation.
+
+Practical interpretation:
+
+- Related wallets plus rising netflow: stronger signal for hidden accumulation.
+- Related wallets plus negative netflow: often a distribution or exit pattern.
+- Active Jupiter DCA plus positive smart-money flow: better confirmation on Solana.
+- Large transfers with no holdings, no PnL history, and no repeat interactions: often just routing wallets, not conviction wallets.
 
 ---
 
@@ -2306,7 +2622,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `SANTIMENT_API_KEY` | marketOverview |
 | `COINGECKO_PRO_API_KEY` | tokenPoolInfo |
 | `DEXTOOLS_API_KEY` | tokenPoolInfo |
-| `NANSEN_API_KEY` | walletReview |
+| `NANSEN_API_KEY` | walletReview, tokenScreener, addressRelatedWallets, jupiterDcas, smartMoneyNetflow |
 | `SOL_FEE_TREASURY` | Solana `/swap` native-in fee recipient wallet |
 | `SOL_FEE_TREASURY_WSOL_ACCOUNT` + `SOL_FEE_PROGRAM_ID` | Solana `/swap` token-to-SOL fee settlement |
 | `SOL_PROTOCOL_FEE_BPS` | Solana `/swap` protocol fee basis points, default `10` |

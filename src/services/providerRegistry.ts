@@ -4,7 +4,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "arkham", label: "Arkham", category: "walletTracking", folder: "Alpha_Wallet_tracking/Arkham", env: ["ARKHAM_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
   { id: "debank", label: "DeBank", category: "walletTracking", folder: "Alpha_Wallet_tracking/Debank", env: ["DEBANK_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
   { id: "moralis", label: "Moralis", category: "walletTracking", folder: "Alpha_Wallet_tracking/Moralis", env: ["MORALIS_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "holders", "marketOverview"] },
-  { id: "nansen", label: "Nansen", category: "walletTracking", folder: "Alpha_Wallet_tracking/Nansen", env: ["NANSEN_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview"] },
+  { id: "nansen", label: "Nansen", category: "walletTracking", folder: "Alpha_Wallet_tracking/Nansen", env: ["NANSEN_API_KEY"], endpoints: ["walletReview", "holderAnalysis", "marketOverview", "tokenScreener", "addressRelatedWallets", "jupiterDcas", "smartMoneyNetflow"] },
   { id: "aerodromeV2", label: "Aerodrome V2", category: "dex", folder: "DEX/Chain/BASE/AERODOME_V2", env: [], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "baseGasFeed", label: "Base Gas Feed", category: "chainInfra", folder: "DEX/Chain/BASE/GAS_FEED", env: ["ETHERSCAN_API_KEY"], endpoints: ["marketOverview"] },
   { id: "baseRpc", label: "Base RPC", category: "chainInfra", folder: "DEX/Chain/BASE/RPC", env: ["BASE_RPC_URL"], endpoints: ["tokenPoolInfo", "holderAnalysis", "marketOverview"] },

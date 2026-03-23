@@ -3,6 +3,22 @@
 import { getOptionalEnv, getRequiredEnv, isConfigured } from "#config/env";
 import { requestJson } from "#lib/http";
 
+type NansenPaginationRequest = {
+  page?: number;
+  per_page?: number;
+};
+
+type NansenPaginationResponse = {
+  page?: number;
+  per_page?: number;
+  is_last_page?: boolean;
+};
+
+type NansenSortOrder = {
+  field?: string;
+  direction?: string;
+};
+
 type NansenLabel = {
   address?: string;
   blockchain?: string;
@@ -24,6 +40,14 @@ function getHeaders(): Record<string, string> {
   return {
     apiKey: getRequiredEnv("NANSEN_API_KEY"),
   };
+}
+
+async function postNansen<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  return requestJson<T>(`${getBaseUrl()}${path}`, {
+    method: "POST",
+    headers: { ...getHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function isNansenConfigured(): boolean {
@@ -142,4 +166,138 @@ export async function searchGeneral(query: string): Promise<NansenSearchResponse
       body: JSON.stringify({ query }),
     },
   );
+}
+
+export type NansenTokenScreenerRequest = {
+  chains: string[];
+  timeframe?: string;
+  date?: {
+    from: string;
+    to: string;
+  };
+  pagination?: NansenPaginationRequest;
+  filters?: Record<string, unknown>;
+  order_by?: NansenSortOrder[];
+};
+
+export type NansenTokenScreenerRow = {
+  chain?: string;
+  token_address?: string;
+  token_symbol?: string;
+  token_age_days?: number;
+  market_cap_usd?: number;
+  liquidity?: number;
+  price_usd?: number;
+  price_change?: number;
+  fdv?: number;
+  fdv_mc_ratio?: number;
+  buy_volume?: number;
+  inflow_fdv_ratio?: number;
+  outflow_fdv_ratio?: number;
+  sell_volume?: number;
+  volume?: number;
+  netflow?: number;
+};
+
+export type NansenTokenScreenerResponse = {
+  data?: NansenTokenScreenerRow[];
+  pagination?: NansenPaginationResponse;
+};
+
+export async function getTokenScreener(body: NansenTokenScreenerRequest): Promise<NansenTokenScreenerResponse> {
+  return postNansen<NansenTokenScreenerResponse>("/api/v1/token-screener", body as Record<string, unknown>);
+}
+
+export type NansenAddressRelatedWalletsRequest = {
+  address: string;
+  chain: string;
+  pagination?: NansenPaginationRequest;
+  order_by?: NansenSortOrder[];
+};
+
+export type NansenAddressRelatedWalletRow = {
+  address?: string;
+  address_label?: string;
+  relation?: string;
+  transaction_hash?: string;
+  block_timestamp?: string;
+  order?: number;
+  chain?: string;
+};
+
+export type NansenAddressRelatedWalletsResponse = {
+  data?: NansenAddressRelatedWalletRow[];
+  pagination?: NansenPaginationResponse;
+};
+
+export async function getAddressRelatedWallets(
+  body: NansenAddressRelatedWalletsRequest,
+): Promise<NansenAddressRelatedWalletsResponse> {
+  return postNansen<NansenAddressRelatedWalletsResponse>("/api/v1/profiler/address/related-wallets", body as Record<string, unknown>);
+}
+
+export type NansenJupiterDcasRequest = {
+  token_address: string;
+  pagination?: NansenPaginationRequest;
+  filters?: Record<string, unknown>;
+};
+
+export type NansenJupiterDcaRow = {
+  since_timestamp?: string;
+  last_timestamp?: string;
+  trader_address?: string;
+  creation_hash?: string;
+  trader_label?: string;
+  dca_vault_address?: string;
+  input_mint_address?: string;
+  output_mint_address?: string;
+  deposit_amount?: number;
+  deposit_spent?: number;
+  other_token_redeemed?: number;
+  status?: string;
+  token_input?: string;
+  token_output?: string;
+  deposit_usd_value?: number;
+};
+
+export type NansenJupiterDcasResponse = {
+  data?: NansenJupiterDcaRow[];
+  pagination?: NansenPaginationResponse;
+};
+
+export async function getJupiterDcas(body: NansenJupiterDcasRequest): Promise<NansenJupiterDcasResponse> {
+  return postNansen<NansenJupiterDcasResponse>("/api/v1/tgm/jup-dca", body as Record<string, unknown>);
+}
+
+export type NansenSmartMoneyNetflowRequest = {
+  chains: string[];
+  filters?: Record<string, unknown>;
+  premium_labels?: boolean;
+  pagination?: NansenPaginationRequest;
+  order_by?: NansenSortOrder[];
+};
+
+export type NansenSmartMoneyNetflowRow = {
+  token_address?: string;
+  token_symbol?: string;
+  net_flow_1h_usd?: number;
+  net_flow_24h_usd?: number;
+  net_flow_7d_usd?: number;
+  net_flow_30d_usd?: number;
+  chain?: string;
+  token_sectors?: string[];
+  trader_count?: number;
+  token_age_days?: number;
+  market_cap_usd?: number;
+};
+
+export type NansenSmartMoneyNetflowResponse = {
+  data?: NansenSmartMoneyNetflowRow[];
+  pagination?: NansenPaginationResponse;
+};
+
+export async function getSmartMoneyNetflow(
+  body: NansenSmartMoneyNetflowRequest,
+): Promise<NansenSmartMoneyNetflowResponse> {
+  return postNansen<NansenSmartMoneyNetflowResponse>("/api/v1/smart-money/netflow", body as Record<string, unknown>);
 }

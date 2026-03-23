@@ -8,7 +8,6 @@ export function getProviderHealth(endpoint?: EndpointName) {
     .map((provider) => ({
       id: provider.id,
       label: provider.label,
-      folder: provider.folder,
       category: provider.category,
       configured: provider.env.every((envName) => isConfigured(getOptionalEnv(envName)))
     }));

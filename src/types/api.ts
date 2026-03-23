@@ -77,6 +77,159 @@ export type WalletReviewResponse = {
   providers: ProviderStatus[];
 };
 
+export type NansenPagination = {
+  page: number;
+  perPage: number;
+  isLastPage: boolean | null;
+};
+
+export type TokenScreenerItem = {
+  chain: string | null;
+  tokenAddress: string | null;
+  tokenSymbol: string | null;
+  tokenAgeDays: number | null;
+  marketCapUsd: number | null;
+  liquidityUsd: number | null;
+  priceUsd: number | null;
+  priceChangePct: number | null;
+  fdvUsd: number | null;
+  fdvMcRatio: number | null;
+  buyVolumeUsd: number | null;
+  inflowFdvRatio: number | null;
+  outflowFdvRatio: number | null;
+  sellVolumeUsd: number | null;
+  volumeUsd: number | null;
+  netflowUsd: number | null;
+};
+
+export type TokenScreenerResponse = {
+  endpoint: "tokenScreener";
+  status: "live" | "partial";
+  chains: string[];
+  presetApplied?: string | null;
+  timeframe: string | null;
+  dateRange: {
+    from: string;
+    to: string;
+  } | null;
+  count: number;
+  summary: {
+    positiveNetflowCount: number;
+    negativeNetflowCount: number;
+    strongestInflow: TokenScreenerItem | null;
+  };
+  pagination: NansenPagination;
+  tokens: TokenScreenerItem[];
+  providers: ProviderStatus[];
+};
+
+export type AddressRelatedWalletItem = {
+  address: string | null;
+  addressLabel: string | null;
+  relation: string | null;
+  transactionHash: string | null;
+  blockTimestamp: string | null;
+  order: number | null;
+  chain: string | null;
+};
+
+export type AddressRelatedWalletsResponse = {
+  endpoint: "addressRelatedWallets";
+  status: "live" | "partial";
+  address: string;
+  chain: string;
+  count: number;
+  summary: {
+    relationTypes: string[];
+    latestInteractionAt: string | null;
+  };
+  pagination: NansenPagination;
+  relatedWallets: AddressRelatedWalletItem[];
+  providers: ProviderStatus[];
+};
+
+export type JupiterDcaItem = {
+  sinceTimestamp: string | null;
+  lastTimestamp: string | null;
+  traderAddress: string | null;
+  creationHash: string | null;
+  traderLabel: string | null;
+  dcaVaultAddress: string | null;
+  inputMintAddress: string | null;
+  outputMintAddress: string | null;
+  depositAmount: number | null;
+  depositSpent: number | null;
+  otherTokenRedeemed: number | null;
+  statusLabel: string | null;
+  tokenInput: string | null;
+  tokenOutput: string | null;
+  depositUsdValue: number | null;
+};
+
+export type JupiterDcasResponse = {
+  endpoint: "jupiterDcas";
+  status: "live" | "partial";
+  chain: "solana";
+  tokenAddress: string;
+  presetApplied?: string | null;
+  count: number;
+  summary: {
+    activeCount: number;
+    closedCount: number;
+    totalDepositUsdValue: number;
+  };
+  pagination: NansenPagination;
+  orders: JupiterDcaItem[];
+  providers: ProviderStatus[];
+};
+
+export type SmartMoneyNetflowItem = {
+  tokenAddress: string | null;
+  tokenSymbol: string | null;
+  netFlow1hUsd: number | null;
+  netFlow24hUsd: number | null;
+  netFlow7dUsd: number | null;
+  netFlow30dUsd: number | null;
+  chain: string | null;
+  tokenSectors: string[];
+  traderCount: number | null;
+  tokenAgeDays: number | null;
+  marketCapUsd: number | null;
+};
+
+export type SmartMoneyNetflowResponse = {
+  endpoint: "smartMoneyNetflow";
+  status: "live" | "partial";
+  chains: string[];
+  presetApplied?: string | null;
+  count: number;
+  summary: {
+    accumulationCount: number;
+    distributionCount: number;
+    strongestInflow: SmartMoneyNetflowItem | null;
+    strongestOutflow: SmartMoneyNetflowItem | null;
+  };
+  pagination: NansenPagination;
+  tokens: SmartMoneyNetflowItem[];
+  providers: ProviderStatus[];
+};
+
+export type NansenPresetTemplate = {
+  id: "buyCandidates" | "avoidTokens" | "solDcaAccumulation";
+  endpoint: "tokenScreener" | "smartMoneyNetflow" | "jupiterDcas";
+  label: string;
+  intent: string;
+  requestTemplate: Record<string, unknown>;
+};
+
+export type NansenPresetsResponse = {
+  endpoint: "nansenPresets";
+  status: "live";
+  count: number;
+  presets: NansenPresetTemplate[];
+  providers: ProviderStatus[];
+};
+
 export type TokenPoolInfoResponse = {
   endpoint: "tokenPoolInfo";
   status: "live" | "partial";
