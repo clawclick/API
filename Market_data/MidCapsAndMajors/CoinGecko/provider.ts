@@ -25,7 +25,7 @@ function buildHeaders(): Record<string, string> | undefined {
 }
 
 function getBaseUrl(): string {
-  return isConfigured(getOptionalEnv("COINGECKO_PRO_API_KEY"))
+  return isConfigured(getOptionalEnv("COINGECKO_API_KEY"))
     ? "https://api.coingecko.com/api/v3"
     : "https://api.coingecko.com/api/v3";
 }
