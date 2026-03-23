@@ -8,6 +8,10 @@ type NansenPaginationRequest = {
   per_page?: number;
 };
 
+type NansenTimeframe = "5m" | "10m" | "1h" | "6h" | "24h" | "7d" | "30d";
+
+type NansenSortDirection = "ASC" | "DESC";
+
 type NansenPaginationResponse = {
   page?: number;
   per_page?: number;
@@ -16,7 +20,7 @@ type NansenPaginationResponse = {
 
 type NansenSortOrder = {
   field?: string;
-  direction?: string;
+  direction?: NansenSortDirection;
 };
 
 type NansenLabel = {
@@ -170,7 +174,7 @@ export async function searchGeneral(query: string): Promise<NansenSearchResponse
 
 export type NansenTokenScreenerRequest = {
   chains: string[];
-  timeframe?: string;
+  timeframe?: NansenTimeframe;
   date?: {
     from: string;
     to: string;

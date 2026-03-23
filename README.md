@@ -1225,12 +1225,11 @@ POST /tokenScreener
 ```json
 POST /tokenScreener
 {
-  "chains": ["ethereum", "solana", "base"],
-  "timeframe": "24h",
+  "preset": "buyCandidates",
   "pagination": { "page": 1, "per_page": 10 },
   "filters": {
-    "only_smart_money": true,
-    "token_age_days": { "min": 1, "max": 365 }
+    "token_age_days": { "min": 1, "max": 365 },
+    "only_smart_money": true
   },
   "order_by": [{ "field": "buy_volume", "direction": "DESC" }]
 }
@@ -1396,14 +1395,14 @@ POST /smartMoneyNetflow
 ```json
 POST /smartMoneyNetflow
 {
-  "chains": ["ethereum", "solana"],
+  "preset": "avoidTokens",
   "filters": {
-    "include_smart_money_labels": ["Fund", "Smart Trader"],
+    "exclude_smart_money_labels": ["30D Smart Trader"],
     "include_native_tokens": false,
     "include_stablecoins": false
   },
   "pagination": { "page": 1, "per_page": 10 },
-  "order_by": [{ "field": "net_flow_24h_usd", "direction": "DESC" }]
+  "order_by": [{ "field": "net_flow_24h_usd", "direction": "ASC" }]
 }
 ```
 

@@ -80,6 +80,10 @@ const NANSEN_PRESET_TEMPLATES: NansenPresetTemplate[] = [
   },
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function toNullableString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -115,24 +119,77 @@ function normalizePagination(input: { page?: number; per_page?: number; is_last_
   };
 }
 
-function mergePresetRequest<T extends Record<string, unknown>>(template: T, overrides: Record<string, unknown>): T {
-  return {
-    ...template,
-    ...overrides,
-    pagination: {
-      ...(template.pagination && typeof template.pagination === "object" ? template.pagination : {}),
-      ...(overrides.pagination && typeof overrides.pagination === "object" ? overrides.pagination : {}),
-    },
-    filters: {
-      ...(template.filters && typeof template.filters === "object" ? template.filters : {}),
-      ...(overrides.filters && typeof overrides.filters === "object" ? overrides.filters : {}),
-    },
-    date: {
-      ...(template.date && typeof template.date === "object" ? template.date : {}),
-      ...(overrides.date && typeof overrides.date === "object" ? overrides.date : {}),
-    },
-    order_by: overrides.order_by ?? template.order_by,
-  } as T;
+function omitUndefined<T extends Record<string, unknown>>(input: T): T {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as T;
+}
+
+function mergeOptionalObject(
+  left: Record<string, unknown> | undefined,
+  right: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const merged = {
+    ...(left ?? {}),
+    ...(right ?? {}),
+  };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergePresetRequest<T extends Record<string, unknown>>(
+  template: Partial<T>,
+  overrides: Record<string, unknown>,
+  omittedOverrideKeys: string[] = [],
+): T {
+  const sanitizedTemplate = omitUndefined(template as Record<string, unknown>);
+  const sanitizedOverrides = omitUndefined(
+    Object.fromEntries(Object.entries(overrides).filter(([key]) => !omittedOverrideKeys.includes(key))),
+  );
+
+  const request: Record<string, unknown> = {
+    ...sanitizedTemplate,
+    ...sanitizedOverrides,
+  };
+
+  const pagination = mergeOptionalObject(
+    isRecord(sanitizedTemplate.pagination) ? sanitizedTemplate.pagination : undefined,
+    isRecord(sanitizedOverrides.pagination) ? sanitizedOverrides.pagination : undefined,
+  );
+  const filters = mergeOptionalObject(
+    isRecord(sanitizedTemplate.filters) ? sanitizedTemplate.filters : undefined,
+    isRecord(sanitizedOverrides.filters) ? sanitizedOverrides.filters : undefined,
+  );
+  const date = mergeOptionalObject(
+    isRecord(sanitizedTemplate.date) ? sanitizedTemplate.date : undefined,
+    isRecord(sanitizedOverrides.date) ? sanitizedOverrides.date : undefined,
+  );
+
+  if (pagination) {
+    request.pagination = pagination;
+  } else {
+    delete request.pagination;
+  }
+
+  if (filters) {
+    request.filters = filters;
+  } else {
+    delete request.filters;
+  }
+
+  if (date) {
+    request.date = date;
+  } else {
+    delete request.date;
+  }
+
+  if (sanitizedOverrides.order_by !== undefined) {
+    request.order_by = sanitizedOverrides.order_by;
+  } else if (sanitizedTemplate.order_by !== undefined) {
+    request.order_by = sanitizedTemplate.order_by;
+  } else {
+    delete request.order_by;
+  }
+
+  return request as T;
 }
 
 function getPresetTemplate(id: string | undefined, endpoint: NansenPresetTemplate["endpoint"]): NansenPresetTemplate | null {
@@ -152,10 +209,23 @@ function resolveTokenScreenerRequest(query: TokenScreenerQuery): { presetApplied
   const request = mergePresetRequest<NansenTokenScreenerRequest>(
     (preset?.requestTemplate ?? {}) as NansenTokenScreenerRequest,
     query as unknown as Record<string, unknown>,
+    ["preset"],
   );
+
+  if (query.date) {
+    delete request.timeframe;
+  }
+
+  if (query.timeframe) {
+    delete request.date;
+  }
 
   if (!request.chains || request.chains.length === 0) {
     throw new Error("Provide chains or use a preset that defines chains.");
+  }
+
+  if (request.timeframe && request.date) {
+    throw new Error("Use timeframe or date, not both.");
   }
 
   if (!request.timeframe && !request.date) {
@@ -174,6 +244,7 @@ function resolveJupiterDcasRequest(query: JupiterDcasQuery): { presetApplied: st
   const request = mergePresetRequest<NansenJupiterDcasRequest>(
     (preset?.requestTemplate ?? {}) as NansenJupiterDcasRequest,
     query as unknown as Record<string, unknown>,
+    ["preset"],
   );
 
   if (!request.token_address) {
@@ -192,6 +263,7 @@ function resolveSmartMoneyNetflowRequest(query: SmartMoneyNetflowQuery): { prese
   const request = mergePresetRequest<NansenSmartMoneyNetflowRequest>(
     (preset?.requestTemplate ?? {}) as NansenSmartMoneyNetflowRequest,
     query as unknown as Record<string, unknown>,
+    ["preset"],
   );
 
   if (!request.chains || request.chains.length === 0) {
