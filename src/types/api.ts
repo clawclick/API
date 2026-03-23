@@ -81,15 +81,17 @@ export type WalletChartResponse = {
   endpoint: "walletChart";
   status: "live" | "partial";
   walletAddress: string;
+  requestedChain: "eth" | "base" | "bsc" | "sol" | null;
   chartPeriod: "max";
   currency: "usd";
-  chains: ["eth", "base", "bsc"];
+  chains: Array<"eth" | "base" | "bsc" | "sol">;
   chainIds: {
     eth: "ethereum";
     base: "base";
     sol: "solana";
     bsc: "binance-smart-chain";
   };
+  appliedChainIds: string[] | null;
   chart: {
     data?: unknown;
     links?: Record<string, unknown>;

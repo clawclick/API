@@ -52,12 +52,6 @@ const ZERION_CHAIN_IDS: Record<string, string> = {
   sol: "solana",
 };
 
-const ZERION_WALLET_CHART_SUPPORTED_CHAINS = ["eth", "base", "bsc"] as const;
-
-const ZERION_WALLET_CHART_CHAIN_IDS = [
-  ...ZERION_WALLET_CHART_SUPPORTED_CHAINS.map((chain) => ZERION_CHAIN_IDS[chain]),
-].join(",");
-
 /* ── Wallet PnL ──────────────────────────────────────────── */
 
 export async function getWalletPnl(
@@ -80,11 +74,18 @@ export async function getWalletPnl(
   );
 }
 
-export async function getWalletChart(walletAddress: string): Promise<ZerionWalletChartResponse> {
+export function getZerionChainId(chain: string): string | null {
+  return ZERION_CHAIN_IDS[chain] ?? null;
+}
+
+export async function getWalletChart(walletAddress: string, chainIds?: string[]): Promise<ZerionWalletChartResponse> {
   const params = new URLSearchParams({
     currency: "usd",
-    "filter[chain_ids]": ZERION_WALLET_CHART_CHAIN_IDS,
   });
+
+  if (chainIds?.length) {
+    params.set("filter[chain_ids]", chainIds.join(","));
+  }
 
   return requestJson<ZerionWalletChartResponse>(
     `https://api.zerion.io/v1/wallets/${encodeURIComponent(walletAddress)}/charts/max?${params.toString()}`,

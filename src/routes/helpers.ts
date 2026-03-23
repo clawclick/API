@@ -57,6 +57,7 @@ export const walletReviewSchema = z.object({
 
 export const walletChartSchema = z.object({
   walletAddress: z.string().min(1),
+  chain: z.string().min(1).optional(),
 });
 
 const nansenPaginationSchema = z.object({

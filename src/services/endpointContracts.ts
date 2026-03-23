@@ -15,7 +15,7 @@ const descriptions: Record<EndpointName, string> = {
   statsVolume: "Returns aggregated native buy and sell volume counters for ETH, Base, BSC, and Solana, plus all-time totals and all-time USD-equivalent volume.",
   approve: "Builds unsigned approval transactions for router, fee-wrapper, or Permit2-based sell flows.",
   holders: "Returns top holder rows for a token, using Moralis on EVM chains and Solana RPC on Solana.",
-  walletChart: "Returns Zerion wallet balance chart data for the supported Zerion EVM chain set using a fixed max time range and USD denomination.",
+  walletChart: "Returns Zerion wallet balance chart data with optional admin-selected chain filtering and a fixed max time range in USD.",
   walletReview: "Returns wallet profitability, holdings, protocol exposure, approvals, and recent activity for copy-trading analysis.",
   tokenScreener: "Screens tokens across chains using Nansen market, volume, liquidity, and smart-money filters.",
   addressRelatedWallets: "Returns wallets related to an address through transfer and interaction paths to help trace wallet clustering.",

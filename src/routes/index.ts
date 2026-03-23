@@ -67,7 +67,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/holders", async (request) => getHolders(parseQuery(holdersSchema, request.query)));
   app.get("/fudSearch", async (request) => getFudSearch(parseQuery(fudSearchSchema, request.query)));
   app.get("/marketOverview", async (request) => getMarketOverview(parseQuery(marketOverviewSchema, request.query)));
-  app.get("/walletChart", async (request) => getWalletChart(parseQuery(walletChartSchema, request.query)));
+  app.get("/admin/walletChart", async (request) => getWalletChart(parseQuery(walletChartSchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
   app.post("/tokenScreener", async (request) => getTokenScreenerData(parseQuery(tokenScreenerSchema, request.body)));
   app.post("/addressRelatedWallets", async (request) => getAddressRelatedWalletsData(parseQuery(addressRelatedWalletsSchema, request.body)));
