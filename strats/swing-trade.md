@@ -888,6 +888,7 @@ Recommended cooling-off examples:
 
 | Endpoint | Purpose |
 |----------|---------|
+| `/trendingTokens` | get dexscreener trending tokens for chain
 | `/filterTokens` | Screen for high-volume tokens across chains |
 | `/volatilityScanner` | Find tokens with consistent swing patterns + levels |
 | `/isScam` | Quick safety check (isScam, riskLevel 0-100, warnings) |
