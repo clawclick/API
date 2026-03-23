@@ -42,6 +42,7 @@ const descriptions: Record<EndpointName, string> = {
   tokenSearch: "Searches for tokens by name, symbol, or address across chains.",
   volatilityScanner: "Scans high-volume tokens for consistent swing patterns, computing support/resistance levels and a composite swing score.",
   priceHistoryIndicators: "Returns OHLCV price history plus timeframe-adaptive technical indicators (RSI, MACD, EMA, Bollinger Bands, ATR, Stoch RSI, Support/Resistance, VWAP, OBV) with an aggregate buy/sell signal.",
+  rateMyEntry: "Rates whether a token is a good swing-trade entry right now using price, indicators, volume quality, and scam-risk checks, and suggests a better pullback level when needed.",
 };
 
 const cacheHints: Record<EndpointName, number> = {
@@ -85,6 +86,7 @@ const cacheHints: Record<EndpointName, number> = {
   tokenSearch: 60,
   volatilityScanner: 300,
   priceHistoryIndicators: 60,
+  rateMyEntry: 60,
 };
 
 export function buildEndpointScaffold(endpoint: EndpointName, request: Record<string, unknown>) {

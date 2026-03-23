@@ -67,6 +67,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/admin/stats/volume` | GET | Daily ETH buy/sell volume counters |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |
 | `/tokenPriceHistory` | GET | Historical OHLCV price data |
+| `/rateMyEntry` | GET | Score whether a token is a good swing-trade entry right now |
 | `/detailedTokenStats` | GET | Bucketed token stats from Codex (cached 30 min) |
 | `/isScam` | GET | Quick scam check with risk score |
 | `/fullAudit` | GET | Deep contract audit (taxes, ownership, trading flags) |
@@ -1896,6 +1897,111 @@ GET /priceHistoryIndicators?chain=eth&tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27e
 **Indicators included:** RSI, MACD, EMA (short/medium/long), SMA, Bollinger Bands (%B, bandwidth), ATR, Stochastic RSI, Support/Resistance levels, VWAP (with bands), OBV (with trend).
 
 **Aggregate signal:** `summary.signal` is one of `strong_buy`, `buy`, `neutral`, `sell`, `strong_sell` based on the count of bullish vs bearish indicator readings.
+
+---
+
+### `GET /rateMyEntry`
+
+Rates whether the current token price is a good swing-trade entry using the same decision logic described in the swing-trade strategy guide. The endpoint combines current market price, technical indicators, detailed volume stats, and scam-risk checks. Results are cached for 60 seconds.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `eth` | Chain |
+| `tokenAddress` | string | **yes** | — | Token address |
+| `indicatorTimeFrame` | string | no | `1h` | `1m`, `5m`, `10m`, `15m`, `30m`, `1h`, `4h`, `1d` |
+
+```
+GET /rateMyEntry?chain=base&tokenAddress=0x4200000000000000000000000000000000000006&indicatorTimeFrame=1h
+```
+
+**Response:**
+```json
+{
+  "endpoint": "rateMyEntry",
+  "status": "live",
+  "chain": "base",
+  "tokenAddress": "0x4200...0006",
+  "indicatorTimeFrame": "1h",
+  "cached": false,
+  "rating": {
+    "score": 7.6,
+    "maxScore": 10,
+    "label": "good",
+    "action": "enter_now",
+    "summary": "Entry is rated 7.6/10. The setup clears the swing-trade checks with an aggregate indicator signal of buy.",
+    "betterEntryPriceUsd": null,
+    "betterEntryDiscountPct": null,
+    "suggestedTakeProfitUsd": 1.1275,
+    "estimatedUpsidePct": 8.42,
+    "requiredConfirmations": [],
+    "hardStops": []
+  },
+  "market": {
+    "currentPriceUsd": 1.04,
+    "liquidityUsd": 860000,
+    "volume24hUsd": 2450000,
+    "priceChange24hPct": 5.7
+  },
+  "range": {
+    "supportUsd": 0.99,
+    "resistanceUsd": 1.1275,
+    "currentPosition": 0.364,
+    "rangeWidthPct": 13.89
+  },
+  "indicators": {
+    "summarySignal": "buy",
+    "bullishCount": 4,
+    "bearishCount": 1,
+    "neutralCount": 2,
+    "rsi": 37.8,
+    "rsiSignal": "neutral",
+    "macdHistogram": 0.0041,
+    "macdTrend": "bullish",
+    "bollingerPercentB": 0.24,
+    "vwapUsd": 1.06,
+    "emaShortUsd": 1.05,
+    "emaMediumUsd": 1.02,
+    "emaLongUsd": 0.98,
+    "emaStack": "bullish",
+    "latestCandle": "bullish"
+  },
+  "volume": {
+    "threshold24hUsd": 100000,
+    "thresholdLiquidityUsd": 50000,
+    "hour1VolumeUsd": 122000,
+    "hour4VolumeUsd": 410000,
+    "volumeConsistencyPct": 118.98,
+    "latestCandleVolume": 31000,
+    "recentAverageCandleVolume": 24500,
+    "volumeVsRecentAveragePct": 26.53,
+    "buySellRatio": 1.18,
+    "buyers": 352,
+    "sellers": 301
+  },
+  "risk": {
+    "isScam": false,
+    "riskLevel": 18,
+    "warnings": []
+  },
+  "factors": [
+    {
+      "name": "Trend filter",
+      "status": "bullish",
+      "score": 2,
+      "maxScore": 2,
+      "detail": "Price is above the long EMA and the EMA stack is bullish."
+    }
+  ],
+  "providers": []
+}
+```
+
+**Interpretation:**
+- `rating.score` is the 0-10 entry quality rating.
+- `rating.action` is `enter_now`, `wait_for_pullback`, or `avoid`.
+- If `rating.score < 7`, `rating.betterEntryPriceUsd` gives the preferred pullback level to wait for.
+- `range.currentPosition` shows where price sits inside the support/resistance range (`0` = at support, `1` = at resistance).
+- `factors` breaks out how trend, location, momentum, volume, flow, summary, and safety contributed to the rating.
 
 ---
 

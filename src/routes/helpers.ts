@@ -279,6 +279,14 @@ export const priceHistoryIndicatorsSchema = z.object({
 
 export type PriceHistoryIndicatorsQuery = z.output<typeof priceHistoryIndicatorsSchema>;
 
+export const rateMyEntrySchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  tokenAddress: z.string().min(1),
+  indicatorTimeFrame: z.enum(["1m", "5m", "10m", "15m", "30m", "1h", "4h", "1d"]).default("1h"),
+});
+
+export type RateMyEntryQuery = z.output<typeof rateMyEntrySchema>;
+
 export function parseQuery<TSchema extends z.ZodTypeAny>(schema: TSchema, query: unknown): z.output<TSchema> {
   return schema.parse(query);
 }

@@ -167,6 +167,85 @@ export type DetailedTokenStatsResponse = {
   providers: ProviderStatus[];
 };
 
+export type RateMyEntryFactor = {
+  name: string;
+  status: "bullish" | "bearish" | "neutral";
+  score: number;
+  maxScore: number;
+  detail: string;
+};
+
+export type RateMyEntryResponse = {
+  endpoint: "rateMyEntry";
+  status: "live" | "partial";
+  chain: string;
+  tokenAddress: string;
+  indicatorTimeFrame: string;
+  cached: boolean;
+  rating: {
+    score: number;
+    maxScore: 10;
+    label: "strong" | "good" | "mixed" | "poor";
+    action: "enter_now" | "wait_for_pullback" | "avoid";
+    summary: string;
+    betterEntryPriceUsd: number | null;
+    betterEntryDiscountPct: number | null;
+    suggestedTakeProfitUsd: number | null;
+    estimatedUpsidePct: number | null;
+    requiredConfirmations: string[];
+    hardStops: string[];
+  };
+  market: {
+    currentPriceUsd: number | null;
+    liquidityUsd: number | null;
+    volume24hUsd: number | null;
+    priceChange24hPct: number | null;
+  };
+  range: {
+    supportUsd: number | null;
+    resistanceUsd: number | null;
+    currentPosition: number | null;
+    rangeWidthPct: number | null;
+  };
+  indicators: {
+    summarySignal: "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell";
+    bullishCount: number;
+    bearishCount: number;
+    neutralCount: number;
+    rsi: number | null;
+    rsiSignal: "overbought" | "oversold" | "neutral" | null;
+    macdHistogram: number | null;
+    macdTrend: "bullish" | "bearish" | "neutral" | null;
+    bollingerPercentB: number | null;
+    vwapUsd: number | null;
+    emaShortUsd: number | null;
+    emaMediumUsd: number | null;
+    emaLongUsd: number | null;
+    emaStack: "bullish" | "bearish" | "mixed" | "unknown";
+    latestCandle: "bullish" | "bearish" | "flat" | "unknown";
+  };
+  volume: {
+    threshold24hUsd: number;
+    thresholdLiquidityUsd: number;
+    hour1VolumeUsd: number | null;
+    hour4VolumeUsd: number | null;
+    volumeConsistencyPct: number | null;
+    latestCandleVolume: number | null;
+    recentAverageCandleVolume: number | null;
+    volumeVsRecentAveragePct: number | null;
+    buySellRatio: number | null;
+    buyers: number | null;
+    sellers: number | null;
+  };
+  risk: {
+    isScam: boolean | null;
+    riskLevel: number | null;
+    warnings: string[];
+  };
+  factors: RateMyEntryFactor[];
+  providers: ProviderStatus[];
+};
+
 export type IsScamResponse = {
   endpoint: "isScam";
   status: "live" | "partial";

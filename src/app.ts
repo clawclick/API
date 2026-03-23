@@ -63,7 +63,7 @@ export function buildApp() {
     // Require API key for all non-public routes (protected and other non-public)
     try {
       const resolved = await requireApiKey(request.headers as Record<string, unknown>);
-      enforceApiKeyRateLimit(resolved.id);
+      enforceApiKeyRateLimit(resolved.id, pathname);
       // attach apiKeyId to request for later use in metrics
       (request as unknown as AuthenticatedRequest).apiKeyId = resolved.id;
       (request as unknown as AuthenticatedRequest).agentId = resolved.agentId;
@@ -182,7 +182,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents, ws:/ws/agentStats`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /rateMyEntry, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /walletReview, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents, ws:/ws/agentStats`,
     });
   });
 

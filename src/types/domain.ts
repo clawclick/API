@@ -38,7 +38,8 @@ export type EndpointName =
   | "gasFeed"
   | "tokenSearch"
   | "volatilityScanner"
-  | "priceHistoryIndicators";
+  | "priceHistoryIndicators"
+  | "rateMyEntry";
 
 export type ProviderRecord = {
   id: string;

@@ -219,6 +219,7 @@ const PROTECTED_PREFIXES = [
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
+  "/rateMyEntry",
   "/detailedTokenStats",
   "/isScam",
   "/fullAudit",
@@ -256,6 +257,7 @@ const TRACKED_METRIC_PATHS = new Set([
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
+  "/rateMyEntry",
   "/detailedTokenStats",
   "/isScam",
   "/fullAudit",
@@ -300,6 +302,8 @@ const RATE_LIMIT_MINUTE_MS = 60 * 1000;
 const RATE_LIMIT_HOUR_MS = 60 * 60 * 1000;
 const RATE_LIMIT_STATE_TTL_MS = 2 * RATE_LIMIT_HOUR_MS;
 const RATE_LIMIT_CLEANUP_THRESHOLD = 5000;
+const ENDPOINT_COOLDOWN_CLEANUP_THRESHOLD = 5000;
+const RATE_MY_ENTRY_COOLDOWN_MS = 30 * 60 * 1000;
 const API_KEY_AUTH_CACHE_TTL_MS = 60 * 1000;
 const API_KEY_AUTH_NEGATIVE_CACHE_TTL_MS = 10 * 1000;
 const API_KEY_AUTH_CACHE_MAX_SIZE = 10000;
@@ -318,6 +322,7 @@ let apiKeyRateLimitStates = new Map<string, {
   hour: { windowStartMs: number; count: number };
   lastSeenAt: number;
 }>();
+let apiKeyEndpointCooldowns = new Map<string, number>();
 let apiKeyAuthCache = new Map<string, ApiKeyAuthCacheEntry>();
 const requestMetricsContext = new AsyncLocalStorage<RequestMetricsContext>();
 let nativePriceCache: { expiresAt: number; value: NativePriceSnapshot } | null = null;
@@ -427,6 +432,18 @@ function cleanupApiKeyRateLimitStates(nowMs: number): void {
   }
 }
 
+function cleanupApiKeyEndpointCooldowns(nowMs: number): void {
+  if (apiKeyEndpointCooldowns.size < ENDPOINT_COOLDOWN_CLEANUP_THRESHOLD) {
+    return;
+  }
+
+  for (const [key, expiresAt] of apiKeyEndpointCooldowns.entries()) {
+    if (expiresAt <= nowMs) {
+      apiKeyEndpointCooldowns.delete(key);
+    }
+  }
+}
+
 function cleanupApiKeyAuthCache(nowMs: number): void {
   if (apiKeyAuthCache.size <= API_KEY_AUTH_CACHE_MAX_SIZE) {
     return;
@@ -482,9 +499,25 @@ function dropAuthCacheByApiKeyId(apiKeyId: string): void {
   }
 }
 
-export function enforceApiKeyRateLimit(apiKeyId: string): void {
+export function enforceApiKeyRateLimit(apiKeyId: string, pathname?: string): void {
   const nowMs = Date.now();
   cleanupApiKeyRateLimitStates(nowMs);
+  cleanupApiKeyEndpointCooldowns(nowMs);
+
+  if (pathname === "/rateMyEntry") {
+    const cooldownKey = `${apiKeyId}:${pathname}`;
+    const cooldownExpiresAt = apiKeyEndpointCooldowns.get(cooldownKey);
+    if (cooldownExpiresAt && cooldownExpiresAt > nowMs) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((cooldownExpiresAt - nowMs) / 1000));
+      throw new AccessError(429, "API key cooldown exceeded for /rateMyEntry. This endpoint can only be called once every 30 minutes.", {
+        retryAfterSeconds,
+        scope: "endpointCooldown",
+        path: pathname,
+        cooldownSeconds: RATE_MY_ENTRY_COOLDOWN_MS / 1000,
+      });
+    }
+    apiKeyEndpointCooldowns.set(cooldownKey, nowMs + RATE_MY_ENTRY_COOLDOWN_MS);
+  }
 
   const secondWindowStartMs = getWindowStartMs(nowMs, RATE_LIMIT_SECOND_MS);
   const minuteWindowStartMs = getWindowStartMs(nowMs, RATE_LIMIT_MINUTE_MS);

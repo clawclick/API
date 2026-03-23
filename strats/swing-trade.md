@@ -263,7 +263,7 @@ Check `amountOut` and verify the price is still near your target entry. If price
 GET /swap?chain=sol&dex=raydium&walletAddress=<wallet>&tokenIn=So11111111111111111111111111111111111111112&tokenOut=<target_token>&amountIn=<amount_in_lamports>&slippageBps=100
 ```
 
-For EVM chains, you need approval first:
+For sells, you need approval first:
 
 ```
 GET /approve?chain=eth&dex=uniswap_v3&walletAddress=<wallet>&tokenIn=<token_in>&tokenOut=<token_out>
@@ -274,6 +274,8 @@ Then swap:
 ```
 GET /swap?chain=eth&dex=uniswap_v3&walletAddress=<wallet>&tokenIn=<token_in>&tokenOut=<target_token>&amountIn=<amount_wei>&slippageBps=50
 ```
+
+IMPORTANT! /swap returns an unsigned txn that must be signed and submitted on chain after receiving the response! check local tradingScripts files for quick buy and sell submittion commands to use once returned tx data from /swap.
 
 ### Step 8b — Confirm the transaction landed
 
@@ -941,3 +943,7 @@ Recommended cooling-off examples:
 | `/swapQuote` | Preview execution price before committing |
 | `/swap` | Execute buy/sell trades |
 | `/approve` | Token approval for EVM DEX trades |
+
+
+## TIPS!
+1. Use the provided trading scripts to setup sl/tp that can be adjusted on loops based on newest price and indactor data, sign and submit txns and fetch token prices and more all locally thru the pre written and provided trading scripts
