@@ -204,6 +204,7 @@ export class AccessError extends Error {
 
 const PUBLIC_PATHS = new Set(["/health", "/providers"]);
 const ADMIN_PATHS = new Set([
+  "/admin",
   "/admin/apiKeys",
   "/admin/apiKeys/generate",
   "/admin/stats",
@@ -240,7 +241,6 @@ const PROTECTED_PREFIXES = [
   "/filterTokens",
   "/volatilityScanner",
   "/ws/launchpadEvents",
-  "/admin/",
 ];
 const TRACKED_METRIC_PATHS = new Set([
   "/health",
