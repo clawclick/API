@@ -15,7 +15,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "**/provider.ts"
+    "**/provider.ts",
+    "CEX/**/*.ts"
   ],
   "exclude": [
     "dist",

@@ -1916,6 +1916,12 @@ GET /strats
       "name": "Swing Trader",
       "description": "Find volatile high-volume tokens with 10%+ price swings and place entries/exits at support & resistance levels.",
       "path": "/strats/swing-trade"
+    },
+    {
+      "id": "scalping",
+      "name": "Hardened Scalper",
+      "description": "SOL-first, BSC-fallback intraday scalping guide focused on small, fast profits with strict liquidity, safety, slippage, and execution gates.",
+      "path": "/strats/scalping"
     }
   ]
 }
@@ -1929,6 +1935,12 @@ Fetch a strategy guide as markdown. Returns `Content-Type: text/markdown`.
 
 ```
 GET /strats/swing-trade
+```
+
+Also available:
+
+```
+GET /strats/scalping
 ```
 
 **Response:** Raw markdown document describing the full strategy playbook — API endpoints used, entry/exit criteria, risk management rules, and a monitoring decision tree. Designed to be consumed by autonomous trading agents.

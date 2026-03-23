@@ -61,7 +61,7 @@ This returns tokens pre-scored for swing suitability. Each candidate includes:
 **Prioritize tokens where:**
 - `swingCount` >= 3 (proven repeating pattern — this is the strongest signal)
 - `avgSwingPct` between 10 and 40 (too high = unstable, too low = not worth the gas)
-- `currentPosition` < 0.3 (near support — good entry) or > 0.7 (near resistance — wait or short)
+- `currentPosition` < 0.55 (in the lower half of the range — good entry) or > 0.7 (near resistance — wait or short)
 - `buyVsSellRatio` between 0.5 and 2.0 (balanced two-way market, not a dump)
 - `swingScore` >= 60
 
@@ -133,7 +133,7 @@ This returns full OHLCV candles plus computed indicators. Check:
 7. **Summary** (`indicators.summary`):
    - `signal` of `"strong_buy"` or `"buy"` → indicators align for entry
    - `signal` of `"sell"` or `"strong_sell"` → don't enter
-   - Check `bullishCount` vs `bearishCount` — want at least 4 bullish out of 7
+   - Check `bullishCount` vs `bearishCount` — want at least 3 bullish out of 8
 
 **Ideal entry conditions (at least 3 of these should be true):**
 - RSI oversold or near 35
@@ -141,7 +141,19 @@ This returns full OHLCV candles plus computed indicators. Check:
 - MACD histogram turning positive
 - Bollinger %B below 0.2
 - Price below VWAP
+- EMA short > medium > long (uptrend alignment)
+- Bullish candle (close >= open)
+- Volume above recent average
 - Summary signal is `"buy"` or `"strong_buy"`
+
+**Summary signal derivation:**
+- `"strong_buy"` = 5+ bullish, ≤1 bearish
+- `"buy"` = 3+ bullish, ≤2 bearish
+- `"sell"` = 4+ bearish
+- `"strong_sell"` = 5+ bearish
+- otherwise `"neutral"`
+
+**Trend filter (hard gate):** Price must be above the 50-period EMA. If price is below the long EMA, do not enter regardless of other signals — the token is in a downtrend.
 
 ### Step 5 — Confirm with detailed stats
 
@@ -243,7 +255,7 @@ Before placing a buy, always quote:
 GET /swapQuote?chain=sol&dex=raydium&tokenIn=So11111111111111111111111111111111111111112&tokenOut=<target_token>&amountIn=<amount_in_lamports>&slippageBps=100
 ```
 
-Check `amountOut` and verify the price is still near your target entry. If price has moved more than 3% above your calculated support level, **wait for a pullback** — don't chase.
+Check `amountOut` and verify the price is still near your target entry. If price has moved more than 15% above your calculated support level, **wait for a pullback** — don't chase. (For volatile tokens with 25%+ swings, a 15% buffer from support still puts you in the lower half of the range.)
 
 ### Step 8 — Place the entry (buy at support)
 
@@ -286,12 +298,13 @@ Monitor using indicators on a faster timeframe:
 GET /priceHistoryIndicators?chain=sol&tokenAddress=<address>&indicatorTimeFrame=5m
 ```
 
-**Exit signals (sell when ANY of these hit):**
-- Price reaches strongest resistance level from Step 4
-- RSI crosses above 70 (overbought)
-- MACD histogram turns negative after being positive (momentum fading)
-- Bollinger %B > 0.95 (price hitting upper band)
-- Summary signal flips to `"sell"` or `"strong_sell"`
+**Exit signals — use summary-based exits, not individual indicators:**
+- Price reaches strongest resistance level from Step 4 → **exit immediately**
+- Summary signal flips to `"strong_sell"` → **exit immediately** (no grace period)
+- Summary signal flips to `"sell"` → **exit after holding for 3+ bars** (grace period avoids whipsaws)
+- Take-profit target reached (20% above entry) → **exit**
+
+> **Important:** Do NOT exit on individual RSI/MACD/Bollinger signals alone. Backtesting showed that using individual indicator exits (e.g. RSI > 70 alone) causes premature exits that cut winners short. Only exit on the composite summary signal, resistance hits, or hard stops. Individual indicators should inform the summary, not trigger exits independently.
 
 Place the sell:
 
@@ -329,9 +342,32 @@ GET /swap?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenO
 
 ## Phase 4: Risk Management & Hold-Off Rules
 
+### Backtested default parameters
+
+These values were tuned via backtesting on pre-screened swing tokens (25%+ swings, swingScore 90+, 30d hourly candles). Results: **61% win rate, 2.06 profit factor, +7.4% return** across 54 trades.
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Take profit | 20% | Asymmetric R:R needed to overcome ~2.6% round-trip fees |
+| Stop loss | 12% | Hard cap; support-based stop is tighter when support is close |
+| Breakeven trigger | +3% | Move stop to entry once price closes 3%+ above entry |
+| Trailing activation | 40% of way to resistance | Start trailing at 8% below highest price |
+| Tight trailing | 75% of way to resistance | Tighten to 3% below highest price |
+| Max range position | 0.55 | Enter if price is in lower 55% of support-resistance range |
+| Max entry distance from support | 15% | Don't chase entries too far above support |
+| Min confirmed signals | 3 bullish | Summary "buy" requires 3+ bullish, ≤2 bearish |
+| Failed rebound threshold | 5% | Support broken if price closes >5% below on 2+ candles |
+| Support recovery bars | 2 | Need 2 candles below threshold to count as broken |
+| Time stop | 24 bars | Only exit if also underwater >3% |
+| Cooldown | 1 bar | Wait 1 bar after exit before re-entry |
+| RSI max entry | 35 | RSI must be ≤35 to count as bullish confirmation |
+| Bollinger max %B | 0.2 | %B must be ≤0.2 to count as bullish confirmation |
+| EMA periods | 9 / 21 / 50 | Short / medium / long |
+| Trend filter | Price > EMA 50 | Hard gate — no entries in downtrend |
+
 ### When to HOLD OFF (do not enter this round)
 
-1. **Failed rebound**: Price broke below support by > 5% and hasn't recovered in 2+ candles on your timeframe. The range is breaking down — stay out until a new range forms.
+1. **Failed rebound**: Price closed below support by > 5% on 2+ of the last few candles on your timeframe and hasn't recovered back above support. The range is breaking down — stay out until a new range forms.
 
 2. **Volume collapse**: Check `/detailedTokenStats` — if `hour1` volume is less than 25% of `hour4` volume / 4, the swing pattern may be dying.
 
@@ -347,10 +383,12 @@ GET /swap?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenO
 
 ### Stop-loss rules
 
-- **Hard stop**: If price drops > 12% below your actual entry price (not support), sell immediately. The swing thesis is broken.
-- **Time stop**: If price hasn't moved toward resistance within 12 hours of entry (for 1h timeframe) or 4 hours (for 5m/15m timeframe), re-evaluate. Close if indicators have turned bearish.
-- **Trailing stop**: Once price is > 50% of the way to resistance, set a trailing stop at 5% below current price. Tighten to 3% once > 75% of the way.
-- **Indicator stop**: If RSI was oversold at entry but is now neutral and price hasn't moved up meaningfully (< 3%), consider cutting — the bounce may not come.
+- **Hard stop**: If price *closes* > 12% below your actual entry price (not support), sell immediately. The swing thesis is broken. Use candle close, not intrabar wicks — wicks cause false stop triggers on volatile tokens.
+- **Support-based stop**: Set initial stop at `support × (1 - failedReboundPct)`, but never wider than the hard stop. This invalidates the trade if the support level that justified entry breaks.
+- **Breakeven stop**: Once price closes 3%+ above entry, move the stop to entry price. This locks in a scratch trade and removes downside risk. Do NOT trigger breakeven at 1% — normal volatility will stop you out prematurely.
+- **Time stop**: If price hasn't moved toward resistance within 24 candles on your timeframe *and* the position is underwater by more than 3%, close it. If the position is flat or slightly green after 24 candles, let it ride — time alone is not a reason to cut a non-losing trade.
+- **Trailing stop**: Once price is > 40% of the way to resistance, set a trailing stop at 8% below the highest price seen. Tighten to 3% once > 75% of the way.
+- **Indicator stop**: If the indicator summary flips to `"strong_sell"`, exit immediately with no grace period. If it flips to `"sell"`, allow a 3-bar grace period before exiting — short-lived sell signals are often whipsaws that reverse.
 
 ### Position sizing
 
