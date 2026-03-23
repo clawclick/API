@@ -385,7 +385,7 @@ These values were tuned via backtesting on pre-screened swing tokens (25%+ swing
 
 ### Stop-loss rules
 
-- **Hard stop**: If price *closes* > 12% below your actual entry price (not support), sell immediately. The swing thesis is broken. Use candle close, not intrabar wicks — wicks cause false stop triggers on volatile tokens.
+- **Hard stop**: If price drops > 12% below your actual entry price (not support), sell immediately. The swing thesis is broken. In live trading, compare against the current spot price on each check. (The "use candle close, not wicks" rule is a backtesting detail — in live mode, the agent checks spot price every ~5 minutes, so there's no wick/close distinction; the current price is the price.)
 - **Support-based stop**: Set initial stop at `support × (1 - failedReboundPct)`, but never wider than the hard stop. This invalidates the trade if the support level that justified entry breaks.
 - **Breakeven stop**: Once price closes 3%+ above entry, move the stop to entry price. This locks in a scratch trade and removes downside risk. Do NOT trigger breakeven at 1% — normal volatility will stop you out prematurely.
 - **Time stop**: If price hasn't moved toward resistance within 24 candles on your timeframe *and* the position is underwater by more than 3%, close it. If the position is flat or slightly green after 24 candles, let it ride — time alone is not a reason to cut a non-losing trade.
