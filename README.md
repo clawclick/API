@@ -75,6 +75,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/holders` | GET | Top holder rows for a token (Moralis on EVM, RPC on Solana) |
 | `/fudSearch` | GET | Search social mentions for FUD signals |
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
+| `/walletChart` | GET | Zerion wallet balance chart across supported Zerion chains |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
 | `/nansenPresets` | GET | List named preset templates for Nansen-backed endpoints |
 | `/tokenScreener` | POST | Nansen cross-chain token screening with smart-money and market filters |

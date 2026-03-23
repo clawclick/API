@@ -22,6 +22,12 @@ export type ZerionPnlResponse = {
   };
 };
 
+export type ZerionWalletChartResponse = {
+  data?: unknown;
+  links?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+};
+
 /* ── Helpers ──────────────────────────────────────────────── */
 
 export function isZerionConfigured(): boolean {
@@ -46,6 +52,12 @@ const ZERION_CHAIN_IDS: Record<string, string> = {
   sol: "solana",
 };
 
+const ZERION_WALLET_CHART_SUPPORTED_CHAINS = ["eth", "base", "bsc"] as const;
+
+const ZERION_WALLET_CHART_CHAIN_IDS = [
+  ...ZERION_WALLET_CHART_SUPPORTED_CHAINS.map((chain) => ZERION_CHAIN_IDS[chain]),
+].join(",");
+
 /* ── Wallet PnL ──────────────────────────────────────────── */
 
 export async function getWalletPnl(
@@ -64,6 +76,18 @@ export async function getWalletPnl(
 
   return requestJson<ZerionPnlResponse>(
     `https://api.zerion.io/v1/wallets/${encodeURIComponent(walletAddress)}/pnl?${params.toString()}`,
+    { headers: getAuthHeader() },
+  );
+}
+
+export async function getWalletChart(walletAddress: string): Promise<ZerionWalletChartResponse> {
+  const params = new URLSearchParams({
+    currency: "usd",
+    "filter[chain_ids]": ZERION_WALLET_CHART_CHAIN_IDS,
+  });
+
+  return requestJson<ZerionWalletChartResponse>(
+    `https://api.zerion.io/v1/wallets/${encodeURIComponent(walletAddress)}/charts/max?${params.toString()}`,
     { headers: getAuthHeader() },
   );
 }

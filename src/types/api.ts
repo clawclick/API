@@ -77,6 +77,27 @@ export type WalletReviewResponse = {
   providers: ProviderStatus[];
 };
 
+export type WalletChartResponse = {
+  endpoint: "walletChart";
+  status: "live" | "partial";
+  walletAddress: string;
+  chartPeriod: "max";
+  currency: "usd";
+  chains: ["eth", "base", "bsc"];
+  chainIds: {
+    eth: "ethereum";
+    base: "base";
+    sol: "solana";
+    bsc: "binance-smart-chain";
+  };
+  chart: {
+    data?: unknown;
+    links?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+  } | null;
+  providers: ProviderStatus[];
+};
+
 export type NansenPagination = {
   page: number;
   perPage: number;

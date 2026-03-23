@@ -11,6 +11,7 @@ import {
 } from "#services/liveEndpoints";
 import { deleteApiKey, generateApiKey, getApiRuntimeStats, getStatsAgents, getStatsRequests, getStatsUser, getStatsUsers, getStatsVolume } from "#services/apiRuntime";
 import { getHolders } from "#services/holders";
+import { getWalletChart } from "#services/walletChart";
 import { getWalletReview } from "#services/walletReview";
 import { getAddressRelatedWalletsData, getJupiterDcasData, getNansenPresetsData, getSmartMoneyNetflowData, getTokenScreenerData } from "#services/nansenSignals";
 import { getProviderHealth } from "#services/providerHealth";
@@ -29,7 +30,7 @@ import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
 import { getRateMyEntry } from "#services/rateMyEntry";
-import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
+import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema } from "#routes/helpers";
 import { recordSwapVolume } from "#services/apiRuntime";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -66,6 +67,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/holders", async (request) => getHolders(parseQuery(holdersSchema, request.query)));
   app.get("/fudSearch", async (request) => getFudSearch(parseQuery(fudSearchSchema, request.query)));
   app.get("/marketOverview", async (request) => getMarketOverview(parseQuery(marketOverviewSchema, request.query)));
+  app.get("/walletChart", async (request) => getWalletChart(parseQuery(walletChartSchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
   app.post("/tokenScreener", async (request) => getTokenScreenerData(parseQuery(tokenScreenerSchema, request.body)));
   app.post("/addressRelatedWallets", async (request) => getAddressRelatedWalletsData(parseQuery(addressRelatedWalletsSchema, request.body)));

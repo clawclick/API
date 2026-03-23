@@ -12,6 +12,7 @@ export type EndpointName =
   | "statsVolume"
   | "approve"
   | "holders"
+  | "walletChart"
   | "walletReview"
   | "tokenScreener"
   | "addressRelatedWallets"
