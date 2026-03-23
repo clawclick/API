@@ -67,7 +67,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/admin/stats/volume` | GET | Daily ETH buy/sell volume counters |
 | `/tokenPoolInfo` | GET | Token price, market cap, liquidity, pair info |
 | `/tokenPriceHistory` | GET | Historical OHLCV price data |
-| `/rateMyEntry` | GET | Score whether a token is a good swing-trade entry right now |
+| `/rateMyEntry` | GET | Score whether a token is a good swing-trade entry right now (1 call per API key every 30 min) |
 | `/detailedTokenStats` | GET | Bucketed token stats from Codex (cached 30 min) |
 | `/isScam` | GET | Quick scam check with risk score |
 | `/fullAudit` | GET | Deep contract audit (taxes, ownership, trading flags) |
@@ -1903,6 +1903,8 @@ GET /priceHistoryIndicators?chain=eth&tokenAddress=0xC02aaA39b223FE8D0A0e5C4F27e
 ### `GET /rateMyEntry`
 
 Rates whether the current token price is a good swing-trade entry using the same decision logic described in the swing-trade strategy guide. The endpoint combines current market price, technical indicators, detailed volume stats, and scam-risk checks. Results are cached for 60 seconds.
+
+**Rate limit:** Each API key can call `/rateMyEntry` only once every 30 minutes. Additional calls inside that cooldown window return `429` with `retryAfterSeconds`.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|

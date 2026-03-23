@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "apiKeys": [
+    {
+      "id": "6295b1195cefddaa6fc02bbf",
+      "label": "test-client",
+      "prefix": "ska_30f0a13b",
+      "keyHash": "f67916a37523eacaf2bb6544414374f06947aeb43ada69a383228d5bd4c6e9d7",
+      "createdAt": "2026-03-19T01:48:44.465Z",
+      "lastUsedAt": "2026-03-19T01:48:54.610Z",
+      "lastUsedDay": "2026-03-19",
+      "totalRequests": 1
+    }
+  ],
+  "metrics": {
+    "dayKey": "2026-03-19",
+    "startedAt": "2026-03-19T01:48:44.464Z",
+    "resetsAt": "2026-03-20T00:00:00.000Z",
+    "totalRequests": 3,
+    "requestsByEndpoint": {
+      "/admin/apiKeys/generate": 1,
+      "/holders": 1,
+      "/admin/stats": 1
+    },
+    "statusCodes": {
+      "200": 3
+    },
+    "ethVolume": {
+      "buyWei": "0",
+      "sellWei": "0",
+      "buyCount": 0,
+      "sellCount": 0
+    }
+  }
+}
