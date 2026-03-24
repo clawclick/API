@@ -14,6 +14,7 @@ export type EndpointName =
   | "holders"
   | "walletChart"
   | "walletReview"
+  | "pnl"
   | "tokenScreener"
   | "addressRelatedWallets"
   | "jupiterDcas"

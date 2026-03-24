@@ -60,6 +60,12 @@ export const walletChartSchema = z.object({
   chain: z.string().min(1).optional(),
 });
 
+export const pnlSchema = z.object({
+  chain: z.string().min(1).default("eth"),
+  walletAddress: z.string().min(1),
+  days: z.string().default("30"),
+});
+
 const nansenPaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   per_page: z.coerce.number().int().min(1).max(200).default(25),
@@ -133,6 +139,7 @@ export type DetailedTokenStatsQuery = z.output<typeof detailedTokenStatsSchema>;
 export type FudSearchQuery = z.output<typeof fudSearchSchema>;
 export type WalletReviewQuery = z.output<typeof walletReviewSchema>;
 export type WalletChartQuery = z.output<typeof walletChartSchema>;
+export type PnlQuery = z.output<typeof pnlSchema>;
 export type TokenScreenerQuery = z.output<typeof tokenScreenerSchema>;
 export type AddressRelatedWalletsQuery = z.output<typeof addressRelatedWalletsSchema>;
 export type JupiterDcasQuery = z.output<typeof jupiterDcasSchema>;

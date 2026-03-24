@@ -138,6 +138,27 @@ export type WalletChartResponse = {
   providers: ProviderStatus[];
 };
 
+export type PnlResponse = {
+  endpoint: "pnl";
+  status: "live" | "partial";
+  chain: string;
+  walletAddress: string;
+  source: "zerion" | "birdeye";
+  summary: {
+    realizedPnlUsd: number | null;
+    realizedPnlPct: number | null;
+    unrealizedPnlUsd: number | null;
+    totalPnlUsd: number | null;
+    avgProfitPerTradeUsd: number | null;
+    totalTrades: number | null;
+    totalBuys: number | null;
+    totalSells: number | null;
+    winRate: number | null;
+    uniqueTokens: number | null;
+  };
+  providers: ProviderStatus[];
+};
+
 export type NansenPagination = {
   page: number;
   perPage: number;

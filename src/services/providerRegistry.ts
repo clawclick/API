@@ -27,7 +27,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "defiLlama", label: "DefiLlama", category: "marketData", folder: "Market_data/DeFi/DefiLlama", env: [], endpoints: ["marketOverview"] },
   { id: "dune", label: "Dune Analytics", category: "marketData", folder: "Market_data/DeFi/DuneAnalytics", env: ["DUNE_API_KEY", "DUNE_QUERY_ID"], endpoints: ["holderAnalysis", "marketOverview"] },
   { id: "simDune", label: "Sim by Dune", category: "marketData", folder: "Market_data/DeFi/DuneAnalytics", env: ["SIM_API_KEY"], endpoints: ["tokenHolders"] },
-  { id: "birdeye", label: "Birdeye", category: "marketData", folder: "Market_data/LowCaps/Birdeye", env: ["BIRDEYE_API_KEY"], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "holderAnalysis", "marketOverview", "rateMyEntry"] },
+  { id: "birdeye", label: "Birdeye", category: "marketData", folder: "Market_data/LowCaps/Birdeye", env: ["BIRDEYE_API_KEY"], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "holderAnalysis", "marketOverview", "rateMyEntry", "pnl"] },
   { id: "dexScreener", label: "DEX Screener", category: "marketData", folder: "Market_data/LowCaps/DEX_Screener", env: [], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview", "rateMyEntry"] },
   { id: "dextools", label: "DEXTools", category: "marketData", folder: "Market_data/LowCaps/Dextoools", env: ["DEXTOOLS_API_KEY"], endpoints: ["tokenPoolInfo", "marketOverview"] },
   { id: "geckoTerminal", label: "GeckoTerminal", category: "marketData", folder: "Market_data/LowCaps/GeckoTerminal", env: [], endpoints: ["tokenPoolInfo", "tokenPriceHistory", "marketOverview", "rateMyEntry"] },
@@ -53,6 +53,6 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "polymarket", label: "Polymarket", category: "sentiment", folder: "Sentiment/Majors/Polymarket", env: [], endpoints: ["marketOverview"] },
   { id: "reddit", label: "Reddit API", category: "sentiment", folder: "Sentiment/Majors/Reddit_API", env: ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET", "REDDIT_USER_AGENT"], endpoints: ["fudSearch", "marketOverview"] },
   { id: "santiment", label: "Santiment", category: "sentiment", folder: "Sentiment/Majors/Santiment", env: ["SANTIMENT_API_KEY"], endpoints: ["fudSearch", "marketOverview"] },
-  { id: "zerion", label: "Zerion", category: "walletTracking", folder: "Alpha_Wallet_tracking/Zerion", env: ["ZERION_API_KEY"], endpoints: ["walletChart", "walletReview"] },
+  { id: "zerion", label: "Zerion", category: "walletTracking", folder: "Alpha_Wallet_tracking/Zerion", env: ["ZERION_API_KEY"], endpoints: ["walletChart", "walletReview", "pnl"] },
   { id: "codex", label: "Codex", category: "marketData", folder: "Market_data/LowCaps/Codex", env: ["CODEX_API_KEY"], endpoints: ["filterTokens", "filterWallets", "tokenWallets", "walletStats", "tokenHolders", "rateMyEntry"] }
 ];

@@ -77,6 +77,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
 | `/admin/walletChart` | GET | Admin-only Zerion wallet balance chart with optional chain override |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
+| `/pnl` | GET | Focused wallet PnL summary by chain |
 | `/nansenPresets` | GET | List named preset templates for Nansen-backed endpoints |
 | `/tokenScreener` | POST | Nansen cross-chain token screening with smart-money and market filters |
 | `/addressRelatedWallets` | POST | Nansen wallet-clustering route to trace related wallets and hidden fund movement |
@@ -1168,6 +1169,49 @@ GET /walletReview?chain=sol&walletAddress=8X35r...&days=30&pageCount=10
     { "txHash": "abc...", "category": "swap", "chain": "sol", "timestamp": 1710000000, "gasUsd": 0.001 }
   ],
   "riskyApprovals": [],
+  "providers": [...]
+}
+```
+
+---
+
+### `GET /pnl`
+
+Focused wallet PnL summary by chain.
+
+- EVM chains (`eth`, `base`, `bsc`) use `Zerion`
+- Solana (`sol`) uses `Birdeye`
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `chain` | string | no | `eth` | Chain |
+| `walletAddress` | string | **yes** | — | Wallet address |
+| `days` | string | no | `30` | Lookback period used for Solana/Birdeye duration |
+
+```
+GET /pnl?chain=sol&walletAddress=8X35r...&days=30
+```
+
+**Response:**
+```json
+{
+  "endpoint": "pnl",
+  "status": "live",
+  "chain": "sol",
+  "walletAddress": "8X35r...",
+  "source": "birdeye",
+  "summary": {
+    "realizedPnlUsd": 15000,
+    "realizedPnlPct": 23.5,
+    "unrealizedPnlUsd": 900,
+    "totalPnlUsd": 15900,
+    "avgProfitPerTradeUsd": 112,
+    "totalTrades": 150,
+    "totalBuys": 80,
+    "totalSells": 70,
+    "winRate": 62.5,
+    "uniqueTokens": 14
+  },
   "providers": [...]
 }
 ```
