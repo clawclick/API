@@ -2734,6 +2734,27 @@ Real-time X filtered stream proxy over WebSocket.
 
 Each `rules[].value` is a native X filtered-stream rule. `tag` is optional.
 
+You can also subscribe by user directly:
+
+```json
+{
+  "username": "XDevelopers"
+}
+```
+
+or
+
+```json
+{
+  "usernames": ["XDevelopers", "elonmusk"],
+  "includeReplies": false,
+  "includeRetweets": false,
+  "lang": "en"
+}
+```
+
+User subscriptions are converted into X stream rules like `from:XDevelopers -is:reply -is:retweet`.
+
 ---
 
 ## Error Handling

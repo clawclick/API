@@ -8,7 +8,14 @@ import type { XPostItem } from "#types/api";
 import WebSocket from "ws";
 
 type ClientConfig = {
-  rules: Array<{ value: string; tag?: string }>;
+  rules?: Array<{ value: string; tag?: string }>;
+  username?: string;
+  usernames?: string[];
+  userId?: string;
+  userIds?: string[];
+  includeReplies?: boolean;
+  includeRetweets?: boolean;
+  lang?: string;
   backfillMinutes?: number;
 };
 
@@ -72,6 +79,58 @@ function send(socket: WebSocket, payload: unknown): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
+}
+
+function normalizeUsername(value: string): string {
+  return value.trim().replace(/^@+/, "");
+}
+
+function buildUserRuleValue(
+  username: string,
+  options: {
+    includeReplies?: boolean;
+    includeRetweets?: boolean;
+    lang?: string;
+  },
+): string {
+  const parts = [`from:${normalizeUsername(username)}`];
+  if (options.lang?.trim()) {
+    parts.push(`lang:${options.lang.trim()}`);
+  }
+  if (!options.includeReplies) {
+    parts.push("-is:reply");
+  }
+  if (!options.includeRetweets) {
+    parts.push("-is:retweet");
+  }
+  return parts.join(" ");
+}
+
+async function resolveUsernames(config: ClientConfig): Promise<string[]> {
+  const direct = [
+    ...(config.username ? [config.username] : []),
+    ...(config.usernames ?? []),
+  ]
+    .map(normalizeUsername)
+    .filter((value) => value.length > 0);
+
+  // We currently support direct username-based X stream rules.
+  // userId/userIds are accepted for forward compatibility but not resolved here yet.
+  return [...new Set(direct)];
+}
+
+async function expandClientRules(config: ClientConfig): Promise<Array<{ value: string; tag?: string }>> {
+  const explicitRules = (config.rules ?? [])
+    .filter((rule) => typeof rule?.value === "string" && rule.value.trim().length > 0)
+    .map((rule) => ({ value: rule.value.trim(), tag: rule.tag?.trim() || undefined }));
+
+  const usernames = await resolveUsernames(config);
+  const userRules = usernames.map((username) => ({
+    value: buildUserRuleValue(username, config),
+    tag: `user:${username}`,
+  }));
+
+  return [...explicitRules, ...userRules];
 }
 
 function currentRuleIds(): string[] {
@@ -362,22 +421,15 @@ export function handleXFilteredStreamClient(socket: WebSocket): void {
         return;
       }
 
-      if (!Array.isArray(parsed.rules) || parsed.rules.length === 0) {
-        send(socket, { type: "error", data: "Provide a non-empty rules array." });
-        return;
-      }
+      const expandedRules = await expandClientRules(parsed);
 
-      const cleanedRules = parsed.rules
-        .filter((rule) => typeof rule?.value === "string" && rule.value.trim().length > 0)
-        .map((rule) => ({ value: rule.value.trim(), tag: rule.tag?.trim() || undefined }));
-
-      if (cleanedRules.length === 0) {
-        send(socket, { type: "error", data: "No valid rules were provided." });
+      if (expandedRules.length === 0) {
+        send(socket, { type: "error", data: "Provide rules, username, or usernames." });
         return;
       }
 
       await applyClientConfig(socket, {
-        rules: cleanedRules,
+        rules: expandedRules,
         backfillMinutes: parsed.backfillMinutes,
       });
     })();
