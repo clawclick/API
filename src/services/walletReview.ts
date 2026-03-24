@@ -17,7 +17,7 @@ import {
 import { isEvmChain, normalizeChain } from "#providers/shared/chains";
 import { runProvider, summarizeStatus } from "#lib/runProvider";
 import type { WalletReviewQuery } from "#routes/helpers";
-import type { ProviderStatus, WalletApproval, WalletHolding, WalletPerformanceToken, WalletProtocol, WalletReviewResponse } from "#types/api";
+import type { ProviderStatus, WalletActivity, WalletApproval, WalletHolding, WalletPerformanceToken, WalletProtocol, WalletReviewResponse } from "#types/api";
 
 function parseNumber(value: number | string | undefined | null): number | null {
   if (typeof value === "number") {
@@ -139,7 +139,7 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
 
   const topProtocols: WalletProtocol[] = [];
 
-  const recentActivity = [];
+  const recentActivity: WalletActivity[] = [];
 
   const riskyApprovals: WalletApproval[] = [];
 
