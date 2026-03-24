@@ -1,6 +1,6 @@
 # Swing Trade Strategy
 
-Automated swing-trading strategy for OpenClaw agents. Find volatile tokens with consistent 10%+ price swings, enter at support, exit at resistance, and know when to hold off.
+Automated swing-trading strategy for OpenClaw agents. Find volatile tokens with consistent 10%+ price swings, enter at support, ride momentum with trailing stops, and know when to hold off.
 
 ---
 
@@ -301,7 +301,7 @@ GET /priceHistoryIndicators?chain=sol&tokenAddress=<address>&indicatorTimeFrame=
 ```
 
 **Exit signals — use summary-based exits, not individual indicators:**
-- Price reaches strongest resistance level from Step 4 → **exit immediately**
+- Price reaches strongest resistance level from Step 4 → **tighten trailing stop to 3%** (let breakouts run instead of selling immediately; if price reverses, the tight trailing stop will exit)
 - Summary signal flips to `"strong_sell"` → **exit immediately** (no grace period)
 - Summary signal flips to `"sell"` → **exit after holding for 3+ bars** (grace period avoids whipsaws)
 - Take-profit target reached (20% above entry) → **exit**
@@ -346,12 +346,13 @@ GET /swap?chain=base&dex=uniswapV3&walletAddress=<wallet>&tokenIn=<token>&tokenO
 
 ### Backtested default parameters
 
-These values were tuned via backtesting on pre-screened swing tokens (25%+ swings, swingScore 90+, 30d hourly candles). Results: **61% win rate, 2.06 profit factor, +7.4% return** across 54 trades.
+These values were tuned via backtesting on pre-screened swing tokens (25%+ swings, swingScore 90+, 30d hourly candles). Results: **58% win rate, 2.10 profit factor, +24% return** across 82 trades with shared portfolio.
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
 | Take profit | 20% | Asymmetric R:R needed to overcome ~2.6% round-trip fees |
 | Stop loss | 12% | Hard cap; support-based stop is tighter when support is close |
+| Resistance exit mode | tighten | Tighten trailing stop at resistance instead of selling — lets breakouts run |
 | Breakeven trigger | +3% | Move stop to entry once price closes 3%+ above entry |
 | Trailing activation | 40% of way to resistance | Start trailing at 8% below highest price |
 | Tight trailing | 75% of way to resistance | Tighten to 3% below highest price |
@@ -383,13 +384,23 @@ These values were tuned via backtesting on pre-screened swing tokens (25%+ swing
 
 7. **Indicators bearish**: If `/priceHistoryIndicators` returns `summary.signal` of `"strong_sell"` and `bearishCount` >= 5, stay out regardless of price level.
 
+### Token quality auto-drop rules
+
+Not all tokens that pass initial screening remain good swing candidates. The live agent should continuously evaluate token quality and **automatically drop tokens** from the active pool when any of these conditions are met:
+
+1. **Not a swing token**: If the token accumulates 100+ `min-swing` or `invalid-range` rejections during monitoring, the price range is too narrow or unstable for swing trading. Remove it from the watchlist.
+2. **Persistent loser**: If the agent has taken 5+ trades on a token and the win rate is below 30%, the token's price action doesn't match the strategy. Stop trading it and add it to the cooling-off queue for at least 24 hours.
+3. **Range collapse**: If `swingPct` from `/volatilityScanner` drops below the minimum threshold (default 5%) on a token that was previously qualifying, the swing opportunity has dried up. Remove it.
+
+These rules prevent the agent from repeatedly losing money on tokens that looked good at screening time but don't actually swing-trade well. Token quality matters as much as entry/exit logic — garbage tokens in = garbage results out.
+
 ### Stop-loss rules
 
 - **Hard stop**: If price drops > 12% below your actual entry price (not support), sell immediately. The swing thesis is broken. In live trading, compare against the current spot price on each check. (The "use candle close, not wicks" rule is a backtesting detail — in live mode, the agent checks spot price every ~5 minutes, so there's no wick/close distinction; the current price is the price.)
 - **Support-based stop**: Set initial stop at `support × (1 - failedReboundPct)`, but never wider than the hard stop. This invalidates the trade if the support level that justified entry breaks.
 - **Breakeven stop**: Once price closes 3%+ above entry, move the stop to entry price. This locks in a scratch trade and removes downside risk. Do NOT trigger breakeven at 1% — normal volatility will stop you out prematurely.
 - **Time stop**: If price hasn't moved toward resistance within 24 candles on your timeframe *and* the position is underwater by more than 3%, close it. If the position is flat or slightly green after 24 candles, let it ride — time alone is not a reason to cut a non-losing trade.
-- **Trailing stop**: Once price is > 40% of the way to resistance, set a trailing stop at 8% below the highest price seen. Tighten to 3% once > 75% of the way.
+- **Trailing stop**: Once price is > 40% of the way to resistance, set a trailing stop at 8% below the highest price seen. Tighten to 3% once > 75% of the way. **Also tightens to 3% when price touches resistance** — this replaces the old "sell at resistance" rule and allows breakout trades to continue running.
 - **Indicator stop**: If the indicator summary flips to `"strong_sell"`, exit immediately with no grace period. If it flips to `"sell"`, allow a 3-bar grace period before exiting — short-lived sell signals are often whipsaws that reverse.
 
 ### Position sizing
@@ -444,7 +455,7 @@ Once a position is active, agents should poll on a schedule:
    - `buy` / `strong_buy` → hold, consider adding to position if not at max size
 
 2. Check if price hit stop-loss → **EXIT**
-3. Check if price hit resistance → **EXIT (take profit)**
+3. Check if price hit resistance → **tighten trailing stop to 3%** (let breakout trades run)
 4. Check if time stop exceeded → re-evaluate with fresh indicators → EXIT if bearish
 
 ---
