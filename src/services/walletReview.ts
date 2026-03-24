@@ -3,6 +3,7 @@ import {
   isBirdeyeConfigured,
 } from "#providers/market/birdeye";
 import {
+  getWalletNetWorth,
   getWalletTokenBalances,
   isMoralisConfigured
 } from "#providers/walletTracking/moralis";
@@ -62,24 +63,51 @@ function buildDateRange(days: string): { from: string; to: string } {
   };
 }
 
+function isNansenSummaryEmpty(summary: {
+  realized_pnl_usd?: number;
+  realized_pnl_percent?: number;
+  traded_times?: number;
+  traded_token_count?: number;
+  top5_tokens?: unknown[];
+} | null): boolean {
+  if (!summary) {
+    return true;
+  }
+
+  const realizedUsd = parseNumber(summary.realized_pnl_usd);
+  const realizedPct = parseNumber(summary.realized_pnl_percent);
+  const tradedTimes = summary.traded_times ?? 0;
+  const tradedTokenCount = summary.traded_token_count ?? 0;
+  const topTokenCount = Array.isArray(summary.top5_tokens) ? summary.top5_tokens.length : 0;
+
+  return realizedUsd === 0
+    && realizedPct === 0
+    && tradedTimes === 0
+    && tradedTokenCount === 0
+    && topTokenCount === 0;
+}
+
 export async function getWalletReview(query: WalletReviewQuery): Promise<WalletReviewResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
   const dateRange = buildDateRange(query.days);
   const nansenChain = toNansenChain(chain);
 
-  const [nansenSummary, moralisTokens, birdeyeNetWorth] = await Promise.all([
+  const [nansenSummary, moralisTokens, moralisNetWorth, birdeyeNetWorth] = await Promise.all([
     runProvider(providers, "nansenPnlSummary", isNansenConfigured(), () => getAddressPnlSummary({
       address: query.walletAddress,
       chain: nansenChain,
       date: dateRange,
     })),
     runProvider(providers, "moralisBalances", isMoralisConfigured() && isEvmChain(chain), () => getWalletTokenBalances(query.walletAddress, chain)),
+    runProvider(providers, "moralisNetWorth", isMoralisConfigured() && isEvmChain(chain), () => getWalletNetWorth(query.walletAddress)),
     runProvider(providers, "birdeyeNetWorth", isBirdeyeConfigured() && chain === "sol", () => getBirdeyeWalletCurrentNetWorth(query.walletAddress, 20)),
   ]);
 
+  const nansenSummaryEmpty = isNansenSummaryEmpty(nansenSummary);
   const needsZerionFallback =
-    firstNumber(nansenSummary?.realized_pnl_usd, nansenSummary?.realized_pnl_percent) === null;
+    firstNumber(nansenSummary?.realized_pnl_usd, nansenSummary?.realized_pnl_percent) === null
+    || (isEvmChain(chain) && nansenSummaryEmpty);
   const zerionPnl = await runProvider(
     providers,
     "zerionPnl",
@@ -150,12 +178,21 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
 
     return (sum ?? 0) + approval.exposureUsd;
   }, 0);
-  const zerionRealizedProfitPct = parseNumber(zerionPnl?.data?.attributes?.changes_percent);
-  const zerionRealizedProfitUsd = parseNumber(zerionPnl?.data?.attributes?.realized_absolute);
-  const nansenRealizedProfitUsd = parseNumber(nansenSummary?.realized_pnl_usd);
-  const nansenRealizedProfitPct = parseNumber(nansenSummary?.realized_pnl_percent);
-  const nansenWinRate = parseNumber(nansenSummary?.win_rate);
-  const totalNetWorthUsd = firstNumber(birdeyeNetWorth?.data?.total_value);
+  const zerionRealizedProfitPct = firstNumber(
+    zerionPnl?.data?.attributes?.relative_realized_gain_percentage,
+    zerionPnl?.data?.attributes?.changes_percent,
+  );
+  const zerionRealizedProfitUsd = firstNumber(
+    zerionPnl?.data?.attributes?.realized_gain,
+    zerionPnl?.data?.attributes?.realized_absolute,
+  );
+  const nansenRealizedProfitUsd = nansenSummaryEmpty ? null : parseNumber(nansenSummary?.realized_pnl_usd);
+  const nansenRealizedProfitPct = nansenSummaryEmpty ? null : parseNumber(nansenSummary?.realized_pnl_percent);
+  const nansenWinRate = nansenSummaryEmpty ? null : parseNumber(nansenSummary?.win_rate);
+  const totalNetWorthUsd = firstNumber(
+    birdeyeNetWorth?.data?.total_value,
+    moralisNetWorth?.total_networth_usd,
+  );
   const activeChains = new Set<string>();
   if (nansenSummary || (isEvmChain(chain) && (moralisTokenList.length > 0 || zerionPnl?.data?.attributes)) || (chain === "sol" && birdeyeTokenList.length > 0)) {
     activeChains.add(chain);
@@ -176,7 +213,7 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
       realizedProfitUsd: firstNumber(nansenRealizedProfitUsd, zerionRealizedProfitUsd),
       realizedProfitPct: nansenRealizedProfitPct ?? zerionRealizedProfitPct,
       totalTradeVolumeUsd: null,
-      totalTrades: nansenSummary?.traded_times ?? null,
+      totalTrades: nansenSummaryEmpty ? null : (nansenSummary?.traded_times ?? null),
       totalBuys: null,
       totalSells: null,
       profitable: (nansenRealizedProfitPct ?? zerionRealizedProfitPct) !== null ? (nansenRealizedProfitPct ?? zerionRealizedProfitPct)! > 0 : null,
@@ -190,16 +227,16 @@ export async function getWalletReview(query: WalletReviewQuery): Promise<WalletR
     },
     performance: {
       winRate: nansenWinRate,
-      tradedTokenCount: nansenSummary?.traded_token_count ?? null,
-      tradedTimes: nansenSummary?.traded_times ?? null,
-      realizedPnlUsd: nansenRealizedProfitUsd,
-      realizedPnlPercent: nansenRealizedProfitPct,
-      pagination: nansenSummary?.pagination ? {
+      tradedTokenCount: nansenSummaryEmpty ? null : (nansenSummary?.traded_token_count ?? null),
+      tradedTimes: nansenSummaryEmpty ? null : (nansenSummary?.traded_times ?? null),
+      realizedPnlUsd: firstNumber(nansenRealizedProfitUsd, zerionRealizedProfitUsd),
+      realizedPnlPercent: firstNumber(nansenRealizedProfitPct, zerionRealizedProfitPct),
+      pagination: !nansenSummaryEmpty && nansenSummary?.pagination ? {
         page: nansenSummary.pagination.page ?? null,
         perPage: nansenSummary.pagination.per_page ?? null,
         isLastPage: nansenSummary.pagination.is_last_page ?? null,
       } : null,
-      topTokens: (nansenSummary?.top5_tokens ?? []).map((token) => ({
+      topTokens: nansenSummaryEmpty ? [] : (nansenSummary?.top5_tokens ?? []).map((token) => ({
         tokenAddress: token.token_address ?? null,
         tokenSymbol: token.token_symbol ?? null,
         chain: token.chain ?? null,

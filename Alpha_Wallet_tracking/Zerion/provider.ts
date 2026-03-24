@@ -7,6 +7,19 @@ import { requestJson } from "#lib/http";
 /* ── Types ────────────────────────────────────────────────── */
 
 export type ZerionPnlAttributes = {
+  total_gain?: number;
+  realized_gain?: number;
+  unrealized_gain?: number;
+  relative_total_gain_percentage?: number;
+  relative_realized_gain_percentage?: number;
+  relative_unrealized_gain_percentage?: number;
+  total_fee?: number;
+  total_invested?: number;
+  realized_cost_basis?: number;
+  received_external?: number;
+  sent_external?: number;
+  sent_for_nfts?: number;
+  received_for_nfts?: number;
   changes_absolute?: number;
   changes_percent?: number;
   realized_absolute?: number;

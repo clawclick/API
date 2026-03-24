@@ -20,6 +20,16 @@ function parseNumber(value: number | string | undefined | null): number | null {
   return null;
 }
 
+function firstNumber(...values: Array<number | string | undefined | null>): number | null {
+  for (const value of values) {
+    const parsed = parseNumber(value);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 export async function getPnl(query: PnlQuery): Promise<PnlResponse> {
   const chain = normalizeChain(query.chain);
   const providers: ProviderStatus[] = [];
@@ -68,10 +78,10 @@ export async function getPnl(query: PnlQuery): Promise<PnlResponse> {
     walletAddress: query.walletAddress,
     source: "zerion",
     summary: {
-      realizedPnlUsd: parseNumber(zerion?.data?.attributes?.realized_absolute),
-      realizedPnlPct: parseNumber(zerion?.data?.attributes?.changes_percent),
-      unrealizedPnlUsd: parseNumber(zerion?.data?.attributes?.unrealized_absolute),
-      totalPnlUsd: parseNumber(zerion?.data?.attributes?.changes_absolute),
+      realizedPnlUsd: firstNumber(zerion?.data?.attributes?.realized_gain, zerion?.data?.attributes?.realized_absolute),
+      realizedPnlPct: firstNumber(zerion?.data?.attributes?.relative_realized_gain_percentage, zerion?.data?.attributes?.changes_percent),
+      unrealizedPnlUsd: firstNumber(zerion?.data?.attributes?.unrealized_gain, zerion?.data?.attributes?.unrealized_absolute),
+      totalPnlUsd: firstNumber(zerion?.data?.attributes?.total_gain, zerion?.data?.attributes?.changes_absolute),
       avgProfitPerTradeUsd: null,
       totalTrades: null,
       totalBuys: null,
