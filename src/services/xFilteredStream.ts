@@ -314,11 +314,12 @@ async function applyClientConfig(socket: WebSocket, config: ClientConfig): Promi
   const state = clients.get(socket);
   if (!state) return;
 
-  const nextKeys = new Set(config.rules.map((rule) => ruleKey(rule)));
+  const configRules = config.rules ?? [];
+  const nextKeys = new Set(configRules.map((rule) => ruleKey(rule)));
   const removedKeys = [...state.ruleKeys].filter((key) => !nextKeys.has(key));
   const addedKeys = [...nextKeys].filter((key) => !state.ruleKeys.has(key));
 
-  const ruleLookup = new Map(config.rules.map((rule) => [ruleKey(rule), rule]));
+  const ruleLookup = new Map(configRules.map((rule) => [ruleKey(rule), rule]));
   const rulesToAdd: ManagedRule[] = [];
 
   for (const key of addedKeys) {
