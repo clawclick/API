@@ -75,6 +75,11 @@ npx tsx src/server.ts   # starts on port 3000
 | `/holders` | GET | Top holder rows for a token (Moralis on EVM, RPC on Solana) |
 | `/fudSearch` | GET | Search social mentions for FUD signals |
 | `/marketOverview` | GET | Combined sentiment + pool + risk overview |
+| `/xSearch` | GET | Search recent X posts by query |
+| `/xCountRecent` | GET | Count recent X posts for a query |
+| `/xUserByUsername` | GET | Look up an X user profile by username |
+| `/xUserLikes` | GET | Get liked X posts for a user |
+| `/xUserFollowers` | GET | Get followers for an X user |
 | `/admin/walletChart` | GET | Admin-only Zerion wallet balance chart with optional chain override |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
 | `/pnl` | GET | Focused wallet PnL summary by chain |
@@ -103,6 +108,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/strats/:id` | GET | Fetch a strategy guide (markdown) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 | `/ws/agentStats` | WS | Live rolling 60-minute request and latency stats per agentId |
+| `/ws/xFilteredStream` | WS | Real-time X filtered stream proxy |
 
 ---
 
@@ -1085,6 +1091,94 @@ Major mode behavior:
   "providers": [...]
 }
 ```
+
+---
+
+### `GET /xSearch`
+
+Search recent X posts with bearer-token auth.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `query` | string | **yes** | — | X search query, e.g. `bitcoin lang:en -is:retweet` |
+| `maxResults` | number | no | `25` | Result count (10–100) |
+
+```
+GET /xSearch?query=bitcoin%20lang%3Aen%20-is%3Aretweet&maxResults=10
+```
+
+**Response:** normalized post list with author username, verification, follower count, and engagement metrics.
+
+---
+
+### `GET /xCountRecent`
+
+Get recent X post counts for a query.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `query` | string | **yes** | — | X search query |
+| `granularity` | string | no | `hour` | `minute`, `hour`, or `day` |
+
+```
+GET /xCountRecent?query=bitcoin%20lang%3Aen&granularity=hour
+```
+
+**Response:** recent count buckets plus the total matching post count.
+
+---
+
+### `GET /xUserByUsername`
+
+Look up an X user profile by username.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `username` | string | **yes** | — | X username without `@` |
+
+```
+GET /xUserByUsername?username=XDevelopers
+```
+
+**Response:** normalized user profile, creation time, protection/verification flags, and follower/following/tweet counts.
+
+---
+
+### `GET /xUserLikes`
+
+Get posts liked by an X user.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `username` | string | conditional | — | Username without `@` |
+| `userId` | string | conditional | — | X user id |
+| `maxResults` | number | no | `25` | Result count (5–100) |
+| `paginationToken` | string | no | — | Optional pagination token |
+
+```
+GET /xUserLikes?username=XDevelopers&maxResults=10
+```
+
+**Response:** normalized liked posts plus `nextToken` when X returns another page.
+
+---
+
+### `GET /xUserFollowers`
+
+Get followers for an X user.
+
+| Param | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `username` | string | conditional | — | Username without `@` |
+| `userId` | string | conditional | — | X user id |
+| `maxResults` | number | no | `25` | Result count (1–1000) |
+| `paginationToken` | string | no | — | Optional pagination token |
+
+```
+GET /xUserFollowers?username=XDevelopers&maxResults=10
+```
+
+**Response:** normalized follower rows plus `nextToken` when another page exists.
 
 ---
 
@@ -2613,6 +2707,34 @@ Notes:
 
 ---
 
+### `WS /ws/xFilteredStream`
+
+Real-time X filtered stream proxy over WebSocket.
+
+#### Connection Flow
+
+```
+1. Connect:    ws://localhost:3000/ws/xFilteredStream
+2. Receive:    {"type":"info","data":"Connected. Send JSON like ..."}
+3. Send:       {"rules":[{"value":"bitcoin lang:en -is:retweet","tag":"btc"}]}
+4. Receive:    {"type":"subscribed","data":{"rules":[...]}}
+5. Receive:    {"type":"post","data":{...}}  (continuous stream)
+```
+
+#### Subscription Payload
+
+```json
+{
+  "rules": [
+    { "value": "bitcoin lang:en -is:retweet", "tag": "btc" }
+  ]
+}
+```
+
+Each `rules[].value` is a native X filtered-stream rule. `tag` is optional.
+
+---
+
 ## Error Handling
 
 ### Validation Errors (400)
@@ -2689,7 +2811,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `SIM_API_KEY` | tokenHolders (EVM only) |
 | `LUNARCRUSH_API_KEY` | marketOverview (sentiment) |
 | `REDDIT_CLIENT_ID` + `SECRET` + `USER_AGENT` | fudSearch, marketOverview |
-| `X_BEARER_TOKEN` | fudSearch, marketOverview |
+| `X_BEARER_TOKEN` | fudSearch, marketOverview, xSearch, xCountRecent, xUserByUsername, xUserLikes, xUserFollowers, ws/xFilteredStream |
 | `TELEGRAM_BOT_TOKEN` | fudSearch |
 | `BUBBLEMAPS_API_KEY` | holderAnalysis |
 | `QUICKINTEL_API_KEY` | isScam, fullAudit |

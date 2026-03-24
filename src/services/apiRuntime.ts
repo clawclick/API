@@ -228,6 +228,11 @@ const PROTECTED_PREFIXES = [
   "/holders",
   "/fudSearch",
   "/marketOverview",
+  "/xSearch",
+  "/xCountRecent",
+  "/xUserByUsername",
+  "/xUserLikes",
+  "/xUserFollowers",
   "/walletReview",
   "/pnl",
   "/tokenScreener",
@@ -249,6 +254,7 @@ const PROTECTED_PREFIXES = [
   "/filterTokens",
   "/volatilityScanner",
   "/ws/launchpadEvents",
+  "/ws/xFilteredStream",
 ];
 const TRACKED_METRIC_PATHS = new Set([
   "/health",
@@ -273,6 +279,11 @@ const TRACKED_METRIC_PATHS = new Set([
   "/holders",
   "/fudSearch",
   "/marketOverview",
+  "/xSearch",
+  "/xCountRecent",
+  "/xUserByUsername",
+  "/xUserLikes",
+  "/xUserFollowers",
   "/walletReview",
   "/pnl",
   "/tokenScreener",
@@ -299,6 +310,7 @@ const TRACKED_METRIC_PATHS = new Set([
   "/strats/:id",
   "/ws/launchpadEvents",
   "/ws/agentStats",
+  "/ws/xFilteredStream",
 ]);
 const ALL_TIME_REQUESTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const ALL_TIME_VOLUME_CACHE_TTL_MS = 5 * 60 * 1000;

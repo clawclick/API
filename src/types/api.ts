@@ -620,6 +620,102 @@ export type SocialMention = {
   metrics?: Record<string, number | null>;
 };
 
+export type XPostItem = {
+  id: string;
+  text: string;
+  createdAt: string | null;
+  authorId: string | null;
+  authorName: string | null;
+  authorUsername: string | null;
+  authorVerified: boolean | null;
+  authorFollowers: number | null;
+  url: string | null;
+  metrics: {
+    likes: number | null;
+    replies: number | null;
+    reposts: number | null;
+    quotes: number | null;
+    bookmarks: number | null;
+    impressions: number | null;
+  };
+};
+
+export type XUserSummary = {
+  id: string;
+  name: string | null;
+  username: string | null;
+  verified: boolean | null;
+  protected: boolean | null;
+  createdAt: string | null;
+  description: string | null;
+  profileImageUrl: string | null;
+  metrics: {
+    followers: number | null;
+    following: number | null;
+    tweets: number | null;
+    listed: number | null;
+    likes: number | null;
+  };
+};
+
+export type XSearchResponse = {
+  endpoint: "xSearch";
+  status: "live" | "partial";
+  query: string;
+  maxResults: number;
+  count: number;
+  nextToken: string | null;
+  posts: XPostItem[];
+  providers: ProviderStatus[];
+};
+
+export type XCountRecentBucket = {
+  start: string | null;
+  end: string | null;
+  postCount: number | null;
+};
+
+export type XCountRecentResponse = {
+  endpoint: "xCountRecent";
+  status: "live" | "partial";
+  query: string;
+  granularity: "minute" | "hour" | "day";
+  totalPostCount: number | null;
+  nextToken: string | null;
+  buckets: XCountRecentBucket[];
+  providers: ProviderStatus[];
+};
+
+export type XUserByUsernameResponse = {
+  endpoint: "xUserByUsername";
+  status: "live" | "partial";
+  username: string;
+  user: XUserSummary | null;
+  providers: ProviderStatus[];
+};
+
+export type XUserLikesResponse = {
+  endpoint: "xUserLikes";
+  status: "live" | "partial";
+  username: string | null;
+  userId: string;
+  count: number;
+  nextToken: string | null;
+  posts: XPostItem[];
+  providers: ProviderStatus[];
+};
+
+export type XUserFollowersResponse = {
+  endpoint: "xUserFollowers";
+  status: "live" | "partial";
+  username: string | null;
+  userId: string;
+  count: number;
+  nextToken: string | null;
+  followers: XUserSummary[];
+  providers: ProviderStatus[];
+};
+
 export type FudSearchResponse = {
   endpoint: "fudSearch";
   status: "live" | "partial";

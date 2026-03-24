@@ -60,6 +60,38 @@ export const walletChartSchema = z.object({
   chain: z.string().min(1).optional(),
 });
 
+export const xSearchSchema = z.object({
+  query: z.string().min(1),
+  maxResults: z.coerce.number().int().min(10).max(100).default(25),
+});
+
+export const xCountRecentSchema = z.object({
+  query: z.string().min(1),
+  granularity: z.enum(["minute", "hour", "day"]).default("hour"),
+});
+
+export const xUserByUsernameSchema = z.object({
+  username: z.string().min(1),
+});
+
+export const xUserLikesSchema = z.object({
+  username: z.string().min(1).optional(),
+  userId: z.string().min(1).optional(),
+  maxResults: z.coerce.number().int().min(5).max(100).default(25),
+  paginationToken: z.string().min(1).optional(),
+}).refine((value) => Boolean(value.username || value.userId), {
+  message: "Provide username or userId.",
+});
+
+export const xUserFollowersSchema = z.object({
+  username: z.string().min(1).optional(),
+  userId: z.string().min(1).optional(),
+  maxResults: z.coerce.number().int().min(1).max(1000).default(25),
+  paginationToken: z.string().min(1).optional(),
+}).refine((value) => Boolean(value.username || value.userId), {
+  message: "Provide username or userId.",
+});
+
 export const pnlSchema = z.object({
   chain: z.string().min(1).default("eth"),
   walletAddress: z.string().min(1),
@@ -139,6 +171,11 @@ export type DetailedTokenStatsQuery = z.output<typeof detailedTokenStatsSchema>;
 export type FudSearchQuery = z.output<typeof fudSearchSchema>;
 export type WalletReviewQuery = z.output<typeof walletReviewSchema>;
 export type WalletChartQuery = z.output<typeof walletChartSchema>;
+export type XSearchQuery = z.output<typeof xSearchSchema>;
+export type XCountRecentQuery = z.output<typeof xCountRecentSchema>;
+export type XUserByUsernameQuery = z.output<typeof xUserByUsernameSchema>;
+export type XUserLikesQuery = z.output<typeof xUserLikesSchema>;
+export type XUserFollowersQuery = z.output<typeof xUserFollowersSchema>;
 export type PnlQuery = z.output<typeof pnlSchema>;
 export type TokenScreenerQuery = z.output<typeof tokenScreenerSchema>;
 export type AddressRelatedWalletsQuery = z.output<typeof addressRelatedWalletsSchema>;

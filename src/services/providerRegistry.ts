@@ -46,6 +46,7 @@ export const providerRegistry: ProviderRecord[] = [
   { id: "quickIntel", label: "Quick Intel", category: "risk", folder: "Risk/Quick_Intel", env: ["QUICKINTEL_API_KEY"], endpoints: ["fullAudit", "marketOverview"] },
   { id: "telegramChannel", label: "Telegram Channel", category: "sentiment", folder: "Sentiment/LowCaps/Telegram_groups/Channel", env: ["TELEGRAM_BOT_TOKEN"], endpoints: ["fudSearch", "marketOverview"] },
   { id: "telegramListingAlert", label: "Telegram Listing Alert", category: "sentiment", folder: "Sentiment/LowCaps/Telegram_groups/ListingAlert", env: ["TELEGRAM_BOT_TOKEN"], endpoints: ["fudSearch", "marketOverview"] },
+  { id: "xApi", label: "X API", category: "sentiment", folder: "Sentiment/LowCaps/X", env: ["X_BEARER_TOKEN"], endpoints: ["xSearch", "xCountRecent", "xUserByUsername", "xUserLikes", "xUserFollowers", "fudSearch", "marketOverview"] },
   { id: "xCaAnalysis", label: "X CA Analysis", category: "sentiment", folder: "Sentiment/LowCaps/X/Ca_Analysis", env: ["X_BEARER_TOKEN"], endpoints: ["fudSearch", "marketOverview"] },
   { id: "xKol", label: "X KOL", category: "sentiment", folder: "Sentiment/LowCaps/X/KOL", env: ["X_BEARER_TOKEN"], endpoints: ["fudSearch", "marketOverview"] },
   { id: "xProjectAccount", label: "X Project Account Analysis", category: "sentiment", folder: "Sentiment/LowCaps/X/ProjectAccountAnalysis", env: ["X_BEARER_TOKEN"], endpoints: ["fudSearch", "marketOverview"] },
