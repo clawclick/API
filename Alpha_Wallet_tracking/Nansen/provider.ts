@@ -18,6 +18,11 @@ type NansenPaginationResponse = {
   is_last_page?: boolean;
 };
 
+export type NansenDateRange = {
+  from: string;
+  to: string;
+};
+
 type NansenSortOrder = {
   field?: string;
   direction?: NansenSortDirection;
@@ -238,6 +243,80 @@ export async function getAddressRelatedWallets(
   body: NansenAddressRelatedWalletsRequest,
 ): Promise<NansenAddressRelatedWalletsResponse> {
   return postNansen<NansenAddressRelatedWalletsResponse>("/api/v1/profiler/address/related-wallets", body as Record<string, unknown>);
+}
+
+export type NansenAddressPnlSummaryRequest = {
+  address?: string;
+  entity_name?: string;
+  chain: string;
+  date: NansenDateRange;
+};
+
+export type NansenAddressPnlSummaryTopToken = {
+  realized_pnl?: number;
+  realized_roi?: number;
+  token_address?: string;
+  token_symbol?: string;
+  chain?: string;
+};
+
+export type NansenAddressPnlSummaryResponse = {
+  pagination?: NansenPaginationResponse;
+  top5_tokens?: NansenAddressPnlSummaryTopToken[];
+  traded_token_count?: number;
+  traded_times?: number;
+  realized_pnl_usd?: number;
+  realized_pnl_percent?: number;
+  win_rate?: number;
+};
+
+export async function getAddressPnlSummary(
+  body: NansenAddressPnlSummaryRequest,
+): Promise<NansenAddressPnlSummaryResponse> {
+  return postNansen<NansenAddressPnlSummaryResponse>("/api/v1/profiler/address/pnl-summary", body as Record<string, unknown>);
+}
+
+export type NansenAddressPnlRequest = {
+  address?: string;
+  entity_name?: string;
+  chain: string;
+  date?: NansenDateRange;
+  filters?: Record<string, unknown>;
+  pagination?: NansenPaginationRequest;
+  order_by?: NansenSortOrder[];
+};
+
+export type NansenAddressPnlRow = {
+  token_address?: string;
+  token_symbol?: string;
+  token_name?: string;
+  chain?: string;
+  realized_pnl?: number;
+  realized_roi?: number;
+  unrealized_pnl?: number;
+  unrealized_roi?: number;
+  pnl_usd_realised?: number;
+  pnl_usd_unrealised?: number;
+  pnl_percent_realised?: number;
+  pnl_percent_unrealised?: number;
+  average_buy_price?: number;
+  average_sell_price?: number;
+  amount_bought?: number;
+  amount_sold?: number;
+  amount_held?: number;
+  cost_basis?: number;
+  last_trade_at?: string;
+};
+
+export type NansenAddressPnlResponse = {
+  data?: NansenAddressPnlRow[];
+  pagination?: NansenPaginationResponse;
+};
+
+export async function getAddressPnl(
+  body: NansenAddressPnlRequest,
+): Promise<NansenAddressPnlResponse> {
+  return postNansen<NansenAddressPnlResponse>("/api/v1/profiler/address/pnl", body as Record<string, unknown>);
 }
 
 export type NansenJupiterDcasRequest = {

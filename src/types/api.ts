@@ -46,6 +46,24 @@ export type WalletApproval = {
   spenderCount: number;
 };
 
+export type WalletPerformanceToken = {
+  tokenAddress: string | null;
+  tokenSymbol: string | null;
+  tokenName: string | null;
+  chain: string | null;
+  realizedPnlUsd: number | null;
+  realizedRoiPct: number | null;
+  unrealizedPnlUsd: number | null;
+  unrealizedRoiPct: number | null;
+  averageBuyPrice: number | null;
+  averageSellPrice: number | null;
+  amountBought: number | null;
+  amountSold: number | null;
+  amountHeld: number | null;
+  costBasisUsd: number | null;
+  lastTradeAt: string | null;
+};
+
 export type WalletReviewResponse = {
   endpoint: "walletReview";
   status: "live" | "partial";
@@ -70,6 +88,26 @@ export type WalletReviewResponse = {
     recentApprovals: number;
     recentInteractions: number;
   };
+  performance: {
+    winRate: number | null;
+    tradedTokenCount: number | null;
+    tradedTimes: number | null;
+    realizedPnlUsd: number | null;
+    realizedPnlPercent: number | null;
+    pagination: {
+      page: number | null;
+      perPage: number | null;
+      isLastPage: boolean | null;
+    } | null;
+    topTokens: Array<{
+      tokenAddress: string | null;
+      tokenSymbol: string | null;
+      chain: string | null;
+      realizedPnlUsd: number | null;
+      realizedRoiPct: number | null;
+    }>;
+  };
+  tokenPerformance: WalletPerformanceToken[];
   topHoldings: WalletHolding[];
   topProtocols: WalletProtocol[];
   recentActivity: WalletActivity[];

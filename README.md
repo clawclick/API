@@ -1089,7 +1089,7 @@ Major mode behavior:
 
 ### `GET /walletReview`
 
-Comprehensive wallet analysis — PnL, holdings, protocols, activity, and risky approvals. Uses Moralis, Birdeye, DeBank, and Zerion as fallback sources.
+Comprehensive wallet analysis — PnL, holdings, protocols, activity, and risky approvals. Uses Nansen profiler data as the primary source, with Moralis, Birdeye, and Zerion as supporting/fallback sources.
 
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
@@ -1128,8 +1128,38 @@ GET /walletReview?chain=sol&walletAddress=8X35r...&days=30&pageCount=10
     "recentApprovals": 0,
     "recentInteractions": 25
   },
+  "performance": {
+    "winRate": 62.5,
+    "tradedTokenCount": 14,
+    "tradedTimes": 150,
+    "realizedPnlUsd": 15000,
+    "realizedPnlPercent": 23.5,
+    "pagination": { "page": 1, "perPage": 25, "isLastPage": true },
+    "topTokens": [
+      { "tokenAddress": "So111...", "tokenSymbol": "SOL", "chain": "solana", "realizedPnlUsd": 4200, "realizedRoiPct": 31.2 }
+    ]
+  },
+  "tokenPerformance": [
+    {
+      "tokenAddress": "So111...",
+      "tokenSymbol": "SOL",
+      "tokenName": "Solana",
+      "chain": "solana",
+      "realizedPnlUsd": 4200,
+      "realizedRoiPct": 31.2,
+      "unrealizedPnlUsd": 800,
+      "unrealizedRoiPct": 5.1,
+      "averageBuyPrice": 145,
+      "averageSellPrice": 170,
+      "amountBought": 100,
+      "amountSold": 80,
+      "amountHeld": 20,
+      "costBasisUsd": 14500,
+      "lastTradeAt": "2026-03-20T12:00:00Z"
+    }
+  ],
   "topHoldings": [
-    { "tokenAddress": "So111...", "chain": "sol", "symbol": "SOL", "amount": 500, "priceUsd": 160, "valueUsd": 80000, "source": "moralis" }
+    { "tokenAddress": "So111...", "chain": "solana", "symbol": "SOL", "amount": 20, "priceUsd": null, "valueUsd": 800, "source": "nansen" }
   ],
   "topProtocols": [
     { "id": "raydium", "chain": "sol", "name": "Raydium", "netUsdValue": 5000 }
@@ -2609,7 +2639,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `ZERION_API_KEY` | walletReview (PnL fallback) |
 | `CMC_API_KEY` | tokenPoolInfo, marketOverview |
 | `GOPLUS_ACCESS_TOKEN` | isScam, fullAudit |
-| `DEBANK_API_KEY` | walletReview (protocols, approvals) |
+| `DEBANK_API_KEY` | holderAnalysis |
 | `ARKHAM_API_KEY` | walletReview, holderAnalysis |
 | `DUNE_API_KEY` + `DUNE_QUERY_ID` | holderAnalysis |
 | `SIM_API_KEY` | tokenHolders (EVM only) |
