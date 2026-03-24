@@ -1008,12 +1008,13 @@ Search for FUD mentions across social platforms.
 | Param | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `chain` | string | no | `eth` | Chain |
-| `tokenAddress` | string | no | — | Token address |
-| `symbol` | string | no | — | Token symbol (**required**: symbol or tokenName) |
-| `tokenName` | string | no | — | Token name (**required**: symbol or tokenName) |
+| `tokenAddress` | string | conditional | — | Token address |
+| `symbol` | string | conditional | — | Token symbol, required with `tokenName` when `tokenAddress` is omitted |
+| `tokenName` | string | conditional | — | Token name, required with `symbol` when `tokenAddress` is omitted |
 
 ```
-GET /fudSearch?chain=eth&symbol=PEPE
+GET /fudSearch?chain=eth&tokenAddress=0x6982508145454ce325ddbe47a25d4ec3d2311933
+GET /fudSearch?chain=eth&tokenName=Pepe&symbol=PEPE
 ```
 
 **Response:**

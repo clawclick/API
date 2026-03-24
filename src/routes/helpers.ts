@@ -44,8 +44,8 @@ export const fudSearchSchema = z.object({
   tokenAddress: z.string().optional(),
   symbol: z.string().optional(),
   tokenName: z.string().optional()
-}).refine((value) => Boolean(value.symbol || value.tokenName), {
-  message: "Provide tokenName or symbol."
+}).refine((value) => Boolean(value.tokenAddress || (value.tokenName && value.symbol)), {
+  message: "Provide tokenAddress or both tokenName and symbol."
 });
 
 export const walletReviewSchema = z.object({
