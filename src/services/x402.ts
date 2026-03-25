@@ -132,7 +132,7 @@ const X402_MAINNET = {
 
 let x402RuntimePromise: Promise<X402Runtime> | null = null;
 let x402RuntimeSignature: string | null = null;
-const X402_LEARN_MORE_URL = "api.claw.click/api";
+const X402_LEARN_MORE_URL = "claw.click/api";
 
 export const x402SdkDescriptor: X402SdkDescriptor = {
   facilitatorClient: {
