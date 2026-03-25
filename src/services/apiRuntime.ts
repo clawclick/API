@@ -246,6 +246,8 @@ const PROTECTED_PREFIXES = [
   "/approve",
   "/unwrap",
   "/trendingTokens",
+  "/getTopEthTokens",
+  "/getNewEthTradableTokens",
   "/newPairs",
   "/topTraders",
   "/gasFeed",

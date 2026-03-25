@@ -6,7 +6,7 @@ import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
 import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, isTrackedMetricPath, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
 import { recordLiveAgentRequest } from "#services/agentStatsStream";
-import { isX402ActiveRoute, processX402Request, processX402Settlement, type X402VerifiedRequest } from "#services/x402";
+import { getX402RouteSpec, isX402ActiveRoute, processX402Request, processX402Settlement, type X402VerifiedRequest } from "#services/x402";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
@@ -62,7 +62,11 @@ export function buildApp() {
       return;
     }
 
-    if (isX402ActiveRoute(request.method, pathname)) {
+    const x402RouteSpec = isX402ActiveRoute(request.method, pathname)
+      ? getX402RouteSpec(request.method, pathname)
+      : null;
+
+    if (x402RouteSpec?.accessPolicy === "payment_required") {
       const x402Result = await processX402Request(request, reply);
       if (x402Result.handled) {
         return;
@@ -71,6 +75,32 @@ export function buildApp() {
       if (x402Result.verifiedRequest) {
         (request as unknown as AuthenticatedRequest).x402VerifiedRequest = x402Result.verifiedRequest;
         return;
+      }
+    }
+
+    if (x402RouteSpec?.accessPolicy === "payment_fallback") {
+      try {
+        const resolved = await requireApiKey(request.headers as Record<string, unknown>);
+        enforceApiKeyRateLimit(resolved.id, pathname);
+        (request as unknown as AuthenticatedRequest).apiKeyId = resolved.id;
+        (request as unknown as AuthenticatedRequest).agentId = resolved.agentId;
+        return;
+      } catch (error) {
+        if (!(error instanceof AccessError) || (error.statusCode !== 401 && error.statusCode !== 429)) {
+          throw error;
+        }
+
+        const x402Result = await processX402Request(request, reply);
+        if (x402Result.handled) {
+          return;
+        }
+
+        if (x402Result.verifiedRequest) {
+          (request as unknown as AuthenticatedRequest).x402VerifiedRequest = x402Result.verifiedRequest;
+          return;
+        }
+
+        throw error;
       }
     }
 

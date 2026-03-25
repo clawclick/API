@@ -10,7 +10,7 @@ export type X402Method = "GET" | "POST";
 export type X402RouteTier = "starter" | "standard" | "premium";
 export type X402SchemeKey = "exact-evm" | "exact-svm";
 export type X402AccessPolicy = "payment_required" | "payment_fallback";
-export type X402RouteFamily = "pilot" | "cheap" | "codex" | "nansen" | "x";
+export type X402RouteFamily = "pilot" | "cheap" | "codex" | "nansen" | "x" | "core";
 
 export type X402ImportTarget = {
   importPath: string;
@@ -155,6 +155,9 @@ export const x402SdkDescriptor: X402SdkDescriptor = {
   ],
 };
 
+// Best-effort upstream cost model as of 2026-03-24.
+// Published self-serve request/CU pricing is marked up by 30%.
+// Public/free-provider and local-only routes use a $0.0001 billing floor.
 export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
   {
     routeId: "GET /holderAnalysis",
@@ -162,13 +165,27 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/holderAnalysis",
     endpointName: "holderAnalysis",
     family: "pilot",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.015",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0037",
     description: "Holder concentration and whale distribution analysis",
     mimeType: "application/json",
     tier: "standard",
     rolloutPhase: 1,
     rationale: "Pilot the x402 flow on one valuable read route before broad rollout.",
+  },
+  {
+    routeId: "GET /tokenPriceHistory",
+    method: "GET",
+    path: "/tokenPriceHistory",
+    endpointName: "tokenPriceHistory",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
+    description: "Historical OHLCV price data for a token",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Core research route available by API key or x402 overflow.",
   },
   {
     routeId: "GET /tokenPoolInfo",
@@ -177,11 +194,11 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     endpointName: "tokenPoolInfo",
     family: "cheap",
     accessPolicy: "payment_fallback",
-    priceUsd: "$0.005",
+    priceUsd: "$0.0001",
     description: "Premium token pool and liquidity intelligence",
     mimeType: "application/json",
     tier: "starter",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Cheap route that can stay free for API-key holders until they exceed limits.",
   },
   {
@@ -191,11 +208,11 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     endpointName: "marketOverview",
     family: "cheap",
     accessPolicy: "payment_fallback",
-    priceUsd: "$0.01",
+    priceUsd: "$0.0070",
     description: "Combined market, sentiment, and risk overview for a token",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Useful entry-tier route that can flip to x402 when API-key access is unavailable.",
   },
   {
@@ -205,11 +222,11 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     endpointName: "isScam",
     family: "cheap",
     accessPolicy: "payment_fallback",
-    priceUsd: "$0.005",
+    priceUsd: "$0.0001",
     description: "Fast risk screen for a token or contract",
     mimeType: "application/json",
     tier: "starter",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Good low-cost fallback route when a caller has no key or is over free usage.",
   },
   {
@@ -219,26 +236,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     endpointName: "tokenSearch",
     family: "cheap",
     accessPolicy: "payment_fallback",
-    priceUsd: "$0.002",
+    priceUsd: "$0.0001",
     description: "Search tokens by name, symbol, or address",
     mimeType: "application/json",
     tier: "starter",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Natural fallback route for no-key and over-limit traffic.",
-  },
-  {
-    routeId: "GET /swapQuote",
-    method: "GET",
-    path: "/swapQuote",
-    endpointName: "swapQuote",
-    family: "cheap",
-    accessPolicy: "payment_fallback",
-    priceUsd: "$0.003",
-    description: "Retrieve a swap quote for a token pair",
-    mimeType: "application/json",
-    tier: "starter",
-    rolloutPhase: 2,
-    rationale: "Good candidate for overflow monetization after free API-key usage is exhausted.",
   },
   {
     routeId: "GET /detailedTokenStats",
@@ -246,12 +249,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/detailedTokenStats",
     endpointName: "detailedTokenStats",
     family: "codex",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.01",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0005",
     description: "Detailed token statistics from Codex-backed market data",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Core Codex-backed route that should be part of the paid analytics bundle.",
   },
   {
@@ -260,12 +263,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/priceHistoryIndicators",
     endpointName: "priceHistoryIndicators",
     family: "codex",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.015",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
     description: "Historical price data with technical indicators and aggregate signal",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Computed Codex-style signal endpoint that fits direct payment gating.",
   },
   {
@@ -274,12 +277,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/rateMyEntry",
     endpointName: "rateMyEntry",
     family: "codex",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.015",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0018",
     description: "Codex-assisted swing-trade entry score for a token",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "High-signal derived endpoint that works well as a paid research action.",
   },
   {
@@ -288,12 +291,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/filterTokens",
     endpointName: "filterTokens",
     family: "codex",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.01",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0005",
     description: "Filter tokens by market and performance metrics",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Primary Codex screening route and a natural paid query surface.",
   },
   {
@@ -302,40 +305,97 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/volatilityScanner",
     endpointName: "volatilityScanner",
     family: "codex",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.01",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0096",
     description: "Volatility scan for swing-trade opportunities",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Distinct Codex-style scan endpoint that belongs in the paid analytics set.",
   },
   {
-    routeId: "GET /nansenPresets",
+    routeId: "GET /fullAudit",
     method: "GET",
-    path: "/nansenPresets",
-    endpointName: "nansenPresets",
-    family: "nansen",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.003",
-    description: "List preset templates for Nansen-backed workflows",
+    path: "/fullAudit",
+    endpointName: "fullAudit",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Deep token audit including taxes, ownership, and trading flags",
     mimeType: "application/json",
-    tier: "starter",
-    rolloutPhase: 2,
-    rationale: "Keeps the full Nansen workflow inside the same payment system from the start.",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Higher-cost risk route available as x402 overflow.",
   },
+  {
+    routeId: "GET /holders",
+    method: "GET",
+    path: "/holders",
+    endpointName: "holders",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0032",
+    description: "Top holder rows for a token",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Useful on-demand holder lookup with pay-per-request fallback.",
+  },
+  {
+    routeId: "GET /fudSearch",
+    method: "GET",
+    path: "/fudSearch",
+    endpointName: "fudSearch",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0065",
+    description: "Search social mentions for FUD signals",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Social sentiment endpoint available to continue after API-key limits.",
+  },
+  {
+    routeId: "GET /walletReview",
+    method: "GET",
+    path: "/walletReview",
+    endpointName: "walletReview",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0132",
+    description: "Comprehensive wallet review covering holdings, activity, and approvals",
+    mimeType: "application/json",
+    tier: "premium",
+    rolloutPhase: 1,
+    rationale: "High-value wallet route that should remain accessible via x402 overflow.",
+  },
+  {
+    routeId: "GET /pnl",
+    method: "GET",
+    path: "/pnl",
+    endpointName: "pnl",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0007",
+    description: "Wallet profit and loss summary by chain",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Common wallet analytics route for free-or-pay access.",
+  },
+ 
   {
     routeId: "GET /xSearch",
     method: "GET",
     path: "/xSearch",
     endpointName: "xSearch",
     family: "x",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.02",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0033",
     description: "Search recent X posts for token or topic intelligence",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Core X intelligence endpoint and an obvious paid agent action.",
   },
   {
@@ -344,12 +404,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/xCountRecent",
     endpointName: "xCountRecent",
     family: "x",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.01",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0019",
     description: "Count recent X posts for a query",
     mimeType: "application/json",
     tier: "starter",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Complements X search and belongs in the same paid social intelligence surface.",
   },
   {
@@ -358,12 +418,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/xUserByUsername",
     endpointName: "xUserByUsername",
     family: "x",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.01",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
     description: "Look up an X user profile by username",
     mimeType: "application/json",
     tier: "starter",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Useful profile primitive for agents working across social endpoints.",
   },
   {
@@ -372,12 +432,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/xUserLikes",
     endpointName: "xUserLikes",
     family: "x",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.015",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0039",
     description: "Get liked X posts for a user",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Deeper social graph query that should sit behind x402 from launch.",
   },
   {
@@ -386,12 +446,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/xUserFollowers",
     endpointName: "xUserFollowers",
     family: "x",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.015",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0039",
     description: "Get followers for an X user",
     mimeType: "application/json",
     tier: "standard",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "High-value social graph lookup that fits the paid X bundle.",
   },
   {
@@ -400,12 +460,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/tokenScreener",
     endpointName: "tokenScreener",
     family: "nansen",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.05",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
     description: "Nansen-backed smart-money token screening",
     mimeType: "application/json",
     tier: "premium",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Primary Nansen analytics route and a strong paid workflow candidate.",
   },
   {
@@ -414,12 +474,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/addressRelatedWallets",
     endpointName: "addressRelatedWallets",
     family: "nansen",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.08",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
     description: "Cluster related wallets and trace fund movement",
     mimeType: "application/json",
     tier: "premium",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "High-value Nansen investigation route that should be paid from launch.",
   },
   {
@@ -428,12 +488,12 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/jupiterDcas",
     endpointName: "jupiterDcas",
     family: "nansen",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.05",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0013",
     description: "Nansen Solana Jupiter DCA insights for a token",
     mimeType: "application/json",
     tier: "premium",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "Premium Nansen route with clear external cost and value.",
   },
   {
@@ -442,13 +502,125 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     path: "/smartMoneyNetflow",
     endpointName: "smartMoneyNetflow",
     family: "nansen",
-    accessPolicy: "payment_required",
-    priceUsd: "$0.06",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0065",
     description: "Smart-money inflow and outflow analytics across chains",
     mimeType: "application/json",
     tier: "premium",
-    rolloutPhase: 2,
+    rolloutPhase: 1,
     rationale: "High-signal Nansen route that belongs in the paid launch set.",
+  },
+  {
+    routeId: "GET /trendingTokens",
+    method: "GET",
+    path: "/trendingTokens",
+    endpointName: "trendingTokens",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Currently trending tokens across supported providers",
+    mimeType: "application/json",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Discovery route that stays reachable when API-key access is unavailable.",
+  },
+  {
+    routeId: "GET /getTopEthTokens",
+    method: "GET",
+    path: "/getTopEthTokens",
+    endpointName: "getTopEthTokens",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Top Ethereum tokens list",
+    mimeType: "application/json",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Simple market listing route available behind free-or-pay access.",
+  },
+  {
+    routeId: "GET /getNewEthTradableTokens",
+    method: "GET",
+    path: "/getNewEthTradableTokens",
+    endpointName: "getNewEthTradableTokens",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "New tradable Ethereum tokens list",
+    mimeType: "application/json",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Discovery listing route available via x402 overflow.",
+  },
+  {
+    routeId: "GET /newPairs",
+    method: "GET",
+    path: "/newPairs",
+    endpointName: "newPairs",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Recently created token pairs and pools",
+    mimeType: "application/json",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Fresh-discovery route that should stay accessible after API-key limits.",
+  },
+  {
+    routeId: "GET /topTraders",
+    method: "GET",
+    path: "/topTraders",
+    endpointName: "topTraders",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0004",
+    description: "Top trader intelligence for a token",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Research-heavy route that can continue via pay-per-request.",
+  },
+  {
+    routeId: "GET /gasFeed",
+    method: "GET",
+    path: "/gasFeed",
+    endpointName: "gasFeed",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Current gas prices for supported EVM chains",
+    mimeType: "application/json",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Utility endpoint available via x402 fallback.",
+  },
+  {
+    routeId: "GET /tokenHolders",
+    method: "GET",
+    path: "/tokenHolders",
+    endpointName: "tokenHolders",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0006",
+    description: "Raw token-holder ledger for EVM and Solana tokens",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Detailed ledger route available for continued paid access.",
+  },
+  {
+    routeId: "GET /strats/:id",
+    method: "GET",
+    path: "/strats/:id",
+    endpointName: "strats/:id",
+    family: "core",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0001",
+    description: "Fetch a specific strategy guide",
+    mimeType: "text/markdown",
+    tier: "starter",
+    rolloutPhase: 1,
+    rationale: "Content route available when clients want to continue beyond API-key access.",
   },
 ] as const;
 
@@ -482,6 +654,20 @@ function getConfiguredBasePayTo(): string {
 
 function getConfiguredSolanaPayTo(): string {
   return getOptionalEnv("X402_SOLANA_PAY_TO", getOptionalEnv("X402_SVM_PAY_TO"));
+}
+
+function pathMatchesPattern(pattern: string, path: string): boolean {
+  if (pattern === path) {
+    return true;
+  }
+
+  const patternParts = pattern.split("/").filter(Boolean);
+  const pathParts = path.split("/").filter(Boolean);
+  if (patternParts.length !== pathParts.length) {
+    return false;
+  }
+
+  return patternParts.every((part, index) => part.startsWith(":") || part === pathParts[index]);
 }
 
 function getRequestPathname(url: string): string {
@@ -794,8 +980,8 @@ export function getX402Config(): X402ResolvedConfig {
 }
 
 export function getX402RouteSpec(method: string, path: string): X402PaidRouteSpec | null {
-  const routeId = `${method.toUpperCase()} ${path}` as `${X402Method} ${string}`;
-  return x402PaidRouteCatalog.find((route) => route.routeId === routeId) ?? null;
+  const normalizedMethod = method.toUpperCase() as X402Method;
+  return x402PaidRouteCatalog.find((route) => route.method === normalizedMethod && pathMatchesPattern(route.path, path)) ?? null;
 }
 
 export function isX402CandidateRoute(method: string, path: string): boolean {
@@ -803,8 +989,11 @@ export function isX402CandidateRoute(method: string, path: string): boolean {
 }
 
 export function isX402ActiveRoute(method: string, path: string): boolean {
-  const routeId = `${method.toUpperCase()} ${path}`;
-  return Object.prototype.hasOwnProperty.call(getX402Config().routeConfigMap, routeId);
+  const routeSpec = getX402RouteSpec(method, path);
+  if (!routeSpec) {
+    return false;
+  }
+  return Object.prototype.hasOwnProperty.call(getX402Config().routeConfigMap, routeSpec.routeId);
 }
 
 export async function processX402Request(request: FastifyRequest, reply: FastifyReply): Promise<X402RequestHandlingResult> {
