@@ -38,10 +38,21 @@ export type X402PaymentOption = {
   payTo: string;
 };
 
+export type X402BazaarExtension = {
+  discoverable: true;
+  category: string;
+  tags: string[];
+};
+
+export type X402RouteExtensions = {
+  bazaar: X402BazaarExtension;
+};
+
 export type X402RouteConfig = {
   accepts: X402PaymentOption[];
   description: string;
   mimeType: string;
+  extensions?: X402RouteExtensions;
 };
 
 export type X402PaidRouteSpec = {
@@ -195,7 +206,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "cheap",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0001",
-    description: "Premium token pool and liquidity intelligence",
+    description: "Token price, liquidity, volume, market cap, and primary pool details",
     mimeType: "application/json",
     tier: "starter",
     rolloutPhase: 1,
@@ -251,7 +262,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "codex",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0005",
-    description: "Detailed token statistics from Codex-backed market data",
+    description: "Token statistics across recent time windows",
     mimeType: "application/json",
     tier: "standard",
     rolloutPhase: 1,
@@ -279,7 +290,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "codex",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0018",
-    description: "Codex-assisted swing-trade entry score for a token",
+    description: "Swing-trade entry score with levels, momentum, and risk checks",
     mimeType: "application/json",
     tier: "standard",
     rolloutPhase: 1,
@@ -462,7 +473,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "nansen",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0013",
-    description: "Nansen-backed smart-money token screening",
+    description: "Token screening by smart-money flow, liquidity, volume, and age",
     mimeType: "application/json",
     tier: "premium",
     rolloutPhase: 1,
@@ -476,7 +487,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "nansen",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0013",
-    description: "Cluster related wallets and trace fund movement",
+    description: "Related wallets for an address with linked activity details",
     mimeType: "application/json",
     tier: "premium",
     rolloutPhase: 1,
@@ -490,7 +501,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "nansen",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0013",
-    description: "Nansen Solana Jupiter DCA insights for a token",
+    description: "Active dollar-cost-averaging orders for a token",
     mimeType: "application/json",
     tier: "premium",
     rolloutPhase: 1,
@@ -518,7 +529,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "core",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0001",
-    description: "Currently trending tokens across supported providers",
+    description: "Trending tokens with momentum and discovery signals",
     mimeType: "application/json",
     tier: "starter",
     rolloutPhase: 1,
@@ -532,7 +543,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "core",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0001",
-    description: "Top Ethereum tokens list",
+    description: "Top Ethereum tokens ranked by market activity",
     mimeType: "application/json",
     tier: "starter",
     rolloutPhase: 1,
@@ -546,7 +557,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "core",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0001",
-    description: "New tradable Ethereum tokens list",
+    description: "Newly tradable Ethereum tokens",
     mimeType: "application/json",
     tier: "starter",
     rolloutPhase: 1,
@@ -574,7 +585,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "core",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0004",
-    description: "Top trader intelligence for a token",
+    description: "Top trader wallets and activity for a token",
     mimeType: "application/json",
     tier: "standard",
     rolloutPhase: 1,
@@ -588,7 +599,7 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     family: "core",
     accessPolicy: "payment_fallback",
     priceUsd: "$0.0001",
-    description: "Current gas prices for supported EVM chains",
+    description: "Current gas prices and fee estimates for supported EVM chains",
     mimeType: "application/json",
     tier: "starter",
     rolloutPhase: 1,
@@ -880,6 +891,185 @@ function buildAcceptsForRoute(
   return accepts;
 }
 
+function getBazaarCategory(spec: X402PaidRouteSpec): string {
+  switch (spec.endpointName) {
+    case "holderAnalysis":
+    case "holders":
+    case "tokenHolders":
+      return "holders";
+    case "walletReview":
+    case "pnl":
+    case "addressRelatedWallets":
+      return "wallets";
+    case "fudSearch":
+    case "xSearch":
+    case "xCountRecent":
+    case "xUserByUsername":
+    case "xUserLikes":
+    case "xUserFollowers":
+      return "social";
+    case "isScam":
+    case "fullAudit":
+      return "risk";
+    case "strats/:id":
+      return "strategy";
+    case "gasFeed":
+      return "gas";
+    case "newPairs":
+    case "trendingTokens":
+    case "getTopEthTokens":
+    case "getNewEthTradableTokens":
+    case "tokenSearch":
+      return "discovery";
+    case "tokenScreener":
+    case "filterTokens":
+    case "volatilityScanner":
+      return "screening";
+    default:
+      return "market-data";
+  }
+}
+
+function getBazaarTags(spec: X402PaidRouteSpec): string[] {
+  const tags = new Set<string>([
+    "claw.click",
+    spec.method.toLowerCase(),
+    spec.tier,
+  ]);
+
+  switch (spec.endpointName) {
+    case "holderAnalysis":
+      tags.add("distribution");
+      tags.add("whales");
+      break;
+    case "tokenPriceHistory":
+      tags.add("ohlcv");
+      tags.add("history");
+      break;
+    case "tokenPoolInfo":
+      tags.add("liquidity");
+      tags.add("price");
+      break;
+    case "marketOverview":
+      tags.add("sentiment");
+      tags.add("overview");
+      break;
+    case "isScam":
+    case "fullAudit":
+      tags.add("security");
+      tags.add("token-risk");
+      break;
+    case "tokenSearch":
+      tags.add("search");
+      tags.add("tokens");
+      break;
+    case "detailedTokenStats":
+      tags.add("stats");
+      tags.add("windows");
+      break;
+    case "priceHistoryIndicators":
+      tags.add("indicators");
+      tags.add("technical-analysis");
+      break;
+    case "rateMyEntry":
+      tags.add("swing-trading");
+      tags.add("entry-score");
+      break;
+    case "filterTokens":
+      tags.add("screening");
+      tags.add("filters");
+      break;
+    case "volatilityScanner":
+      tags.add("volatility");
+      tags.add("swings");
+      break;
+    case "holders":
+    case "tokenHolders":
+      tags.add("wallets");
+      tags.add("ownership");
+      break;
+    case "fudSearch":
+      tags.add("sentiment");
+      tags.add("mentions");
+      break;
+    case "walletReview":
+      tags.add("portfolio");
+      tags.add("wallet-analysis");
+      break;
+    case "pnl":
+      tags.add("portfolio");
+      tags.add("performance");
+      break;
+    case "xSearch":
+    case "xCountRecent":
+    case "xUserByUsername":
+    case "xUserLikes":
+    case "xUserFollowers":
+      tags.add("social");
+      tags.add("profiles");
+      break;
+    case "tokenScreener":
+      tags.add("screening");
+      tags.add("smart-money");
+      break;
+    case "addressRelatedWallets":
+      tags.add("wallet-analysis");
+      tags.add("clusters");
+      break;
+    case "jupiterDcas":
+      tags.add("dca");
+      tags.add("orders");
+      break;
+    case "smartMoneyNetflow":
+      tags.add("smart-money");
+      tags.add("flows");
+      break;
+    case "trendingTokens":
+      tags.add("trending");
+      tags.add("discovery");
+      break;
+    case "getTopEthTokens":
+      tags.add("ethereum");
+      tags.add("rankings");
+      break;
+    case "getNewEthTradableTokens":
+      tags.add("ethereum");
+      tags.add("new-listings");
+      break;
+    case "newPairs":
+      tags.add("dex");
+      tags.add("new-pairs");
+      break;
+    case "topTraders":
+      tags.add("traders");
+      tags.add("rankings");
+      break;
+    case "gasFeed":
+      tags.add("fees");
+      tags.add("evm");
+      break;
+    case "strats/:id":
+      tags.add("guide");
+      tags.add("playbook");
+      break;
+    default:
+      tags.add("analytics");
+      break;
+  }
+
+  return [...tags];
+}
+
+function buildRouteExtensions(spec: X402PaidRouteSpec): X402RouteExtensions {
+  return {
+    bazaar: {
+      discoverable: true,
+      category: getBazaarCategory(spec),
+      tags: getBazaarTags(spec),
+    },
+  };
+}
+
 export function getX402RouteSpecs(maxPhase = normalizeRolloutPhase(getOptionalEnv("X402_ROLLOUT_PHASE", "1"))): X402PaidRouteSpec[] {
   return x402PaidRouteCatalog.filter((route) => route.rolloutPhase <= maxPhase);
 }
@@ -924,6 +1114,7 @@ export function getX402RouteConfigMap(
       accepts,
       description: spec.description,
       mimeType: spec.mimeType,
+      extensions: buildRouteExtensions(spec),
     };
     return acc;
   }, {});
