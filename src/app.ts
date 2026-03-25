@@ -6,12 +6,14 @@ import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
 import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, isTrackedMetricPath, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
 import { recordLiveAgentRequest } from "#services/agentStatsStream";
+import { isX402ActiveRoute, processX402Request, processX402Settlement, type X402VerifiedRequest } from "#services/x402";
 import { registerRoutes } from "#routes/index";
 
 type AuthenticatedRequest = {
   apiKeyId?: string;
   agentId?: string | null;
   metricsStartedAtNs?: bigint;
+  x402VerifiedRequest?: X402VerifiedRequest;
 };
 
 function getPathname(url: string): string {
@@ -39,7 +41,7 @@ export function buildApp() {
 
   app.register(fastifyWebSocket);
 
-  app.addHook("onRequest", async (request) => {
+  app.addHook("onRequest", async (request, reply) => {
     if (request.method === "OPTIONS") return;
 
     (request as unknown as AuthenticatedRequest).metricsStartedAtNs = process.hrtime.bigint();
@@ -60,6 +62,18 @@ export function buildApp() {
       return;
     }
 
+    if (isX402ActiveRoute(request.method, pathname)) {
+      const x402Result = await processX402Request(request, reply);
+      if (x402Result.handled) {
+        return;
+      }
+
+      if (x402Result.verifiedRequest) {
+        (request as unknown as AuthenticatedRequest).x402VerifiedRequest = x402Result.verifiedRequest;
+        return;
+      }
+    }
+
     // Require API key for all non-public routes (protected and other non-public)
     try {
       const resolved = await requireApiKey(request.headers as Record<string, unknown>);
@@ -75,13 +89,22 @@ export function buildApp() {
   app.addHook("onSend", async (request, reply, payload) => {
     const authRequest = request as typeof request & AuthenticatedRequest;
     const path = request.routeOptions.url || getPathname(request.raw.url ?? request.url);
+
+    let nextPayload = payload;
+    if (authRequest.x402VerifiedRequest && reply.statusCode < 400) {
+      const settlementPayload = await processX402Settlement(request, reply, authRequest.x402VerifiedRequest);
+      if (typeof settlementPayload !== "undefined") {
+        nextPayload = settlementPayload;
+      }
+    }
+
+    if (!isTrackedMetricPath(path)) {
+      return nextPayload;
+    }
+
     const durationMs = authRequest.metricsStartedAtNs
       ? Number(process.hrtime.bigint() - authRequest.metricsStartedAtNs) / 1_000_000
       : undefined;
-
-    if (!isTrackedMetricPath(path)) {
-      return payload;
-    }
 
     try {
       await recordRequestMetric({
@@ -99,7 +122,7 @@ export function buildApp() {
       request.log.error({ err: error, path }, "Failed to record request metrics");
     }
 
-    return payload;
+    return nextPayload;
   });
 
   app.addHook("preHandler", async (request) => {
