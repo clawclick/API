@@ -132,6 +132,7 @@ const X402_MAINNET = {
 
 let x402RuntimePromise: Promise<X402Runtime> | null = null;
 let x402RuntimeSignature: string | null = null;
+const X402_LEARN_MORE_URL = "api.claw.click/api";
 
 export const x402SdkDescriptor: X402SdkDescriptor = {
   facilitatorClient: {
@@ -937,6 +938,18 @@ function getBazaarTags(spec: X402PaidRouteSpec): string[] {
     spec.tier,
   ]);
 
+  const isSentimentRoute = spec.endpointName === "fudSearch"
+    || spec.endpointName === "xSearch"
+    || spec.endpointName === "xCountRecent"
+    || spec.endpointName === "xUserByUsername"
+    || spec.endpointName === "xUserLikes"
+    || spec.endpointName === "xUserFollowers";
+
+  if (!isSentimentRoute) {
+    tags.add("defi");
+    tags.add("web3");
+  }
+
   switch (spec.endpointName) {
     case "holderAnalysis":
       tags.add("distribution");
@@ -1070,6 +1083,11 @@ function buildRouteExtensions(spec: X402PaidRouteSpec): X402RouteExtensions {
   };
 }
 
+function buildRouteDescription(spec: X402PaidRouteSpec): string {
+  const base = spec.description.trim().replace(/[. ]+$/, "");
+  return `${base}. Learn more at ${X402_LEARN_MORE_URL}`;
+}
+
 export function getX402RouteSpecs(maxPhase = normalizeRolloutPhase(getOptionalEnv("X402_ROLLOUT_PHASE", "1"))): X402PaidRouteSpec[] {
   return x402PaidRouteCatalog.filter((route) => route.rolloutPhase <= maxPhase);
 }
@@ -1112,7 +1130,7 @@ export function getX402RouteConfigMap(
 
     acc[spec.routeId] = {
       accepts,
-      description: spec.description,
+      description: buildRouteDescription(spec),
       mimeType: spec.mimeType,
       extensions: buildRouteExtensions(spec),
     };
