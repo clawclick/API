@@ -1234,13 +1234,21 @@ GET /xUserFollowers?username=XDevelopers&maxResults=10
 
 ### `GET /xKolVolume`
 
-Analyze volume and price movement around an X post that mentions a contract address or token name or symbol or using the tweetUrl. Responses are cached in-memory for 6 hours.
+Analyze volume and price movement around an X post. You can either pass a direct `tweetUrl`, or let the endpoint search recent X posts by `tokenAddress`, `tokenName`, or `symbol` and analyze the best match. Responses are cached in-memory for 6 hours.
 
 ```http
 GET /xKolVolume?tweetUrl=https%3A%2F%2Fx.com%2FGemsofRa%2Fstatus%2F2033569275579937003&chain=base&timeWindowMinutes=60
 ```
 
-**Response:** normalized follower rows plus `nextToken` when another page exists.
+```http
+GET /xKolVolume?tokenAddress=0x1234...&chain=base&timeWindowMinutes=60
+```
+
+```http
+GET /xKolVolume?tokenName=Bonk&symbol=BONK&chain=sol&maxResults=10
+```
+
+**Response:** one analyzed tweet impact result plus any matched tweets used to choose it.
 
 ---
 
@@ -2777,10 +2785,9 @@ Live SIGNAL_SOL worker stream over WebSocket. The web dyno reads live events fro
 
 ```
 1. Connect:    ws://api.claw.click/ws/signals
-2. Receive:    {"type":"info","data":"Connected. Send JSON like ..."}
-3. Send:       {"streams":["bottomsUp","newPump"]}
-4. Receive:    {"type":"subscribed","data":{"streams":[...],"snapshots":[...]}}
-5. Receive:    {"type":"signalEvent","data":{...}}  (continuous stream)
+2. Send:       {"streams":["bottomsUp","newPump"]}
+3. Receive:    {"type":"subscribed","data":{"streams":[...],"snapshots":[...]}}
+4. Receive:    {"type":"signalEvent","data":{...}}  (continuous stream)
 ```
 
 #### Subscription Payloads
@@ -2794,7 +2801,13 @@ Global streams:
 All global streams:
 
 ```json
-{ "stream": "all" }
+{ "streams": "all" }
+```
+
+Default all globals:
+
+```json
+{}
 ```
 
 Per-token chart health:
@@ -2810,6 +2823,7 @@ Supported global stream names:
 - `newPump`
 
 Each subscription reply includes the latest cached snapshot/state for the selected streams or chart-health tokens before live events begin.
+If you subscribe with `{"streams":"bottomsUp"}` or `{"streams":["bottomsUp"]}`, you only receive live `bottomsUp` `signal_detected` events.
 
 ---
 

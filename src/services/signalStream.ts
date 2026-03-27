@@ -20,8 +20,7 @@ type ClientSubscription = {
 };
 
 type SubscriptionMessage = {
-  stream?: string;
-  streams?: string[];
+  streams?: string | string[];
   tokenAddress?: string;
   tokenAddresses?: string[];
   chartHealth?: string[];
@@ -49,7 +48,7 @@ function normalizeSubscriptions(raw: unknown): {
 
   const message = raw as SubscriptionMessage;
   const streamValues = [
-    ...(typeof message.stream === "string" ? [message.stream] : []),
+    ...(typeof message.streams === "string" ? [message.streams] : []),
     ...(Array.isArray(message.streams) ? message.streams : []),
   ]
     .map((value) => value.trim())
