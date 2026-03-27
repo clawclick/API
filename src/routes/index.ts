@@ -1,5 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import {
+  runArtificialVolumeScan,
+  runBottomsUp,
+  runChartHealth,
+  runMomentumGains,
+  runMomentumStart,
+  runNewPump
+} from "#services/signalSolEndpoints";
+import {
   getDetailedTokenStats,
   getFullAudit,
   getFudSearch,
@@ -33,11 +41,89 @@ import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
 import { getRateMyEntry } from "#services/rateMyEntry";
 import { getXCountRecent, getXSearch, getXUserByUsernameData, getXUserFollowersData, getXUserLikesData } from "#services/x";
-import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
+import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, signalSolChartHealthSchema, signalSolTokenSchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
 import { recordSwapVolume } from "#services/apiRuntime";
+
+type SignalSolHeaders = Record<string, string | string[] | undefined>;
+
+function getSignalSolApiKey(headers: SignalSolHeaders): string | null {
+  const directHeader = headers["x-api-key"];
+  const xApiKey = Array.isArray(directHeader) ? directHeader[0]?.trim() : directHeader?.trim();
+  if (xApiKey) {
+    return xApiKey;
+  }
+
+  const authorizationHeader = headers.authorization;
+  const authorization = Array.isArray(authorizationHeader) ? authorizationHeader[0]?.trim() : authorizationHeader?.trim();
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  return bearerMatch?.[1]?.trim() ?? null;
+}
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
+
+  // SIGNAL_SOL endpoints
+  app.get("/signalSol/artificialVolumeScan", async (request, reply) => {
+    const query = parseQuery(signalSolTokenSchema, request.query);
+    try {
+      return await runArtificialVolumeScan(query.tokenAddress, {
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signalSol/bottomsUp", async (request, reply) => {
+    try {
+      return runBottomsUp({
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signalSol/chartHealth", async (request, reply) => {
+    const query = parseQuery(signalSolChartHealthSchema, request.query);
+    try {
+      return runChartHealth(query.tokenAddress, query.tokenName, {
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signalSol/momentumGains", async (request, reply) => {
+    try {
+      return runMomentumGains({
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signalSol/momentumStart", async (request, reply) => {
+    try {
+      return runMomentumStart({
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signalSol/newPump", async (request, reply) => {
+    try {
+      return runNewPump({
+        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
+      });
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
 
   app.get("/providers", async () => ({ providers: getProviderHealth() }));
 

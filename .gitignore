@@ -7,3 +7,5 @@ scripts/
 api.env
 api.env 2
 test-swap.ts
+.runtime/signal-sol/
+SIGNAL_SOL/tracking/

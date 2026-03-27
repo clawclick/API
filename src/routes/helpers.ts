@@ -362,6 +362,18 @@ export const apiKeyDeleteSchema = z.object({
 
 export type ApiKeyDeleteQuery = z.output<typeof apiKeyDeleteSchema>;
 
+export const signalSolTokenSchema = z.object({
+  tokenAddress: z.string().trim().min(1),
+});
+
+export type SignalSolTokenQuery = z.output<typeof signalSolTokenSchema>;
+
+export const signalSolChartHealthSchema = signalSolTokenSchema.extend({
+  tokenName: z.string().trim().min(1).optional(),
+});
+
+export type SignalSolChartHealthQuery = z.output<typeof signalSolChartHealthSchema>;
+
 export const statsAgentsSchema = z.object({
   agentId: z.string().trim().min(1).max(120).optional(),
   includeKeys: z.preprocess((value) => value === "true" || value === true, z.boolean().default(false)),

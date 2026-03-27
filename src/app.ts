@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
 import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, isTrackedMetricPath, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
 import { recordLiveAgentRequest } from "#services/agentStatsStream";
+import { stopAllSignalSolProcesses } from "#services/signalSolEndpoints";
 import { getX402RouteSpec, isX402ActiveRoute, processX402Request, processX402Settlement, type X402VerifiedRequest } from "#services/x402";
 import { registerRoutes } from "#routes/index";
 
@@ -161,7 +162,11 @@ export function buildApp() {
   });
 
   app.addHook("onClose", async () => {
-    await flushBufferedAnalytics();
+    try {
+      await flushBufferedAnalytics();
+    } finally {
+      stopAllSignalSolProcesses();
+    }
   });
 
   /* ── Global error handler ─────────────────────────────── */

@@ -110,6 +110,44 @@ npx tsx src/server.ts   # starts on port 3000
 | `/ws/agentStats` | WS | Live rolling 60-minute request and latency stats per agentId |
 | `/ws/xFilteredStream` | WS | Real-time X filtered stream proxy |
 
+| `/signalSol/artificialVolumeScan` | GET | Run a one-shot Solana artificial volume analysis for a token |
+| `/signalSol/bottomsUp` | GET | Start the background Solana bottom reversal scanner |
+| `/signalSol/chartHealth` | GET | Start or reuse a background chart-health tracker for one token |
+| `/signalSol/momentumGains` | GET | Start the background Solana momentum gains scanner |
+| `/signalSol/momentumStart` | GET | Start the background early-momentum new-pairs scanner |
+| `/signalSol/newPump` | GET | Start the background fresh-token discovery engine |
+---
+
+## SIGNAL_SOL Endpoints Usage
+
+### `GET /signalSol/artificialVolumeScan`
+**Params:** `tokenAddress` (string, required)  
+**Behavior:** runs once and returns the script stdout as `output`
+
+### `GET /signalSol/bottomsUp`
+**Params:** none  
+**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+
+### `GET /signalSol/chartHealth`
+**Params:** `tokenAddress` (string, required), `tokenName` (string, optional)  
+**Behavior:** starts or reuses a per-token background tracker and returns `status`, `pid`, `logFile`, and `trackingFile`
+
+### `GET /signalSol/momentumGains`
+**Params:** none  
+**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+
+### `GET /signalSol/momentumStart`
+**Params:** none  
+**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+
+### `GET /signalSol/newPump`
+**Params:** none  
+**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+
+All `signalSol` routes require the same client API key auth as the rest of the protected API.
+
+When started through this API, the server injects `SIGNAL_SOL_API_BASE_URL` and `SIGNAL_SOL_API_KEY` into child scripts automatically. If you want the background scanners to use a dedicated internal key or a non-local API base, set those optional env vars in the server environment.
+
 ---
 
 ## Supported Chains

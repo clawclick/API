@@ -217,6 +217,7 @@ const ADMIN_PATHS = new Set([
   "/ws/agentStats",
 ]);
 const PROTECTED_PREFIXES = [
+  "/signalSol",
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
@@ -270,6 +271,12 @@ const TRACKED_METRIC_PATHS = new Set([
   "/admin/stats/user",
   "/admin/stats/agents",
   "/admin/stats/volume",
+  "/signalSol/artificialVolumeScan",
+  "/signalSol/bottomsUp",
+  "/signalSol/chartHealth",
+  "/signalSol/momentumGains",
+  "/signalSol/momentumStart",
+  "/signalSol/newPump",
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
