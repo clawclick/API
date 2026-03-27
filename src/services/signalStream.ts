@@ -2,11 +2,9 @@ import WebSocket from "ws";
 
 import {
   GLOBAL_SIGNAL_STREAMS,
-  getChartHealthState,
   getGlobalSignalState,
   isSignalRedisConfigured,
   subscribeToSignalEvents,
-  touchChartHealthInterest,
   type GlobalSignalStream,
   type SignalEvent,
 } from "#services/signalBus";
@@ -14,20 +12,14 @@ import {
 type ClientSubscription = {
   globalStreams: Set<GlobalSignalStream>;
   allGlobals: boolean;
-  chartHealthTokens: Set<string>;
-  refreshTimer: NodeJS.Timeout | null;
   pingTimer: NodeJS.Timeout | null;
 };
 
 type SubscriptionMessage = {
   streams?: string | string[];
-  tokenAddress?: string;
-  tokenAddresses?: string[];
-  chartHealth?: string[];
 };
 
 const clients = new Map<WebSocket, ClientSubscription>();
-const CHART_HEALTH_REFRESH_INTERVAL_MS = 60 * 1000;
 const CLIENT_PING_INTERVAL_MS = 25 * 1000;
 let unsubscribeSignalEvents: (() => Promise<void>) | null = null;
 
@@ -40,10 +32,9 @@ function send(socket: WebSocket, payload: unknown): void {
 function normalizeSubscriptions(raw: unknown): {
   allGlobals: boolean;
   globalStreams: GlobalSignalStream[];
-  chartHealthTokens: string[];
 } {
   if (typeof raw !== "object" || raw === null) {
-    throw new Error("Expected a JSON object with streams and/or chartHealth tokens.");
+    throw new Error("Expected a JSON object with streams.");
   }
 
   const message = raw as SubscriptionMessage;
@@ -61,46 +52,23 @@ function normalizeSubscriptions(raw: unknown): {
       GLOBAL_SIGNAL_STREAMS as readonly string[]
     ).includes(value)))];
 
-  const chartHealthTokens = [
-    ...(typeof message.tokenAddress === "string" ? [message.tokenAddress] : []),
-    ...(Array.isArray(message.tokenAddresses) ? message.tokenAddresses : []),
-    ...(Array.isArray(message.chartHealth) ? message.chartHealth : []),
-  ]
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (!allGlobals && globalStreams.length === 0 && chartHealthTokens.length === 0) {
+  if (!allGlobals && globalStreams.length === 0) {
     return {
       allGlobals: true,
       globalStreams: [...GLOBAL_SIGNAL_STREAMS],
-      chartHealthTokens: [],
     };
-  }
-
-  if (chartHealthTokens.length > 100) {
-    throw new Error("Subscribe to at most 100 chartHealth tokens per socket.");
   }
 
   return {
     allGlobals,
     globalStreams,
-    chartHealthTokens: [...new Set(chartHealthTokens)],
   };
 }
 
 function matchesSubscription(subscription: ClientSubscription, event: SignalEvent): boolean {
-  if (event.scope === "global") {
-    return subscription.allGlobals || subscription.globalStreams.has(event.stream as GlobalSignalStream);
-  }
-
-  return !!event.tokenAddress && subscription.chartHealthTokens.has(event.tokenAddress);
-}
-
-function clearRefreshTimer(subscription: ClientSubscription): void {
-  if (subscription.refreshTimer) {
-    clearInterval(subscription.refreshTimer);
-    subscription.refreshTimer = null;
-  }
+  return event.scope === "global" && (
+    subscription.allGlobals || subscription.globalStreams.has(event.stream as GlobalSignalStream)
+  );
 }
 
 function clearPingTimer(subscription: ClientSubscription): void {
@@ -116,7 +84,6 @@ function cleanupClient(socket: WebSocket): void {
     return;
   }
 
-  clearRefreshTimer(subscription);
   clearPingTimer(subscription);
   clients.delete(socket);
 }
@@ -151,52 +118,31 @@ async function ensureSignalSubscriber(): Promise<void> {
   });
 }
 
-async function refreshChartHealthTokens(tokens: Iterable<string>): Promise<void> {
-  await Promise.all([...tokens].map((tokenAddress) => touchChartHealthInterest(tokenAddress)));
-}
-
 async function setClientSubscription(
   socket: WebSocket,
   parsed: ReturnType<typeof normalizeSubscriptions>,
 ): Promise<void> {
   const previous = clients.get(socket);
-  if (previous) {
-    clearRefreshTimer(previous);
-  }
 
   const next: ClientSubscription = {
     globalStreams: new Set(parsed.globalStreams),
     allGlobals: parsed.allGlobals,
-    chartHealthTokens: new Set(parsed.chartHealthTokens),
-    refreshTimer: null,
     pingTimer: previous?.pingTimer ?? null,
   };
   clients.set(socket, next);
   ensureClientPing(socket, next);
-
-  if (next.chartHealthTokens.size > 0) {
-    await refreshChartHealthTokens(next.chartHealthTokens);
-    next.refreshTimer = setInterval(() => {
-      void refreshChartHealthTokens(next.chartHealthTokens);
-    }, CHART_HEALTH_REFRESH_INTERVAL_MS);
-    next.refreshTimer.unref?.();
-  }
 
   const globalSnapshots = parsed.globalStreams.length > 0
     ? await Promise.all(parsed.globalStreams.map((stream) => getGlobalSignalState(stream)))
     : parsed.allGlobals
       ? await Promise.all(GLOBAL_SIGNAL_STREAMS.map((stream) => getGlobalSignalState(stream)))
       : [];
-  const chartSnapshots = parsed.chartHealthTokens.length > 0
-    ? await Promise.all(parsed.chartHealthTokens.map((tokenAddress) => getChartHealthState(tokenAddress)))
-    : [];
 
   send(socket, {
     type: "subscribed",
     data: {
       streams: parsed.allGlobals ? ["all"] : parsed.globalStreams,
-      chartHealthTokens: parsed.chartHealthTokens,
-      snapshots: [...globalSnapshots, ...chartSnapshots],
+      snapshots: globalSnapshots,
     },
   });
 }
@@ -213,8 +159,6 @@ export async function handleSignalStreamClient(socket: WebSocket): Promise<void>
   const initialSubscription: ClientSubscription = {
     globalStreams: new Set(),
     allGlobals: false,
-    chartHealthTokens: new Set(),
-    refreshTimer: null,
     pingTimer: null,
   };
   clients.set(socket, initialSubscription);

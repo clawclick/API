@@ -109,56 +109,44 @@ npx tsx src/server.ts   # starts on port 3000
 | `/strats/:id` | GET | Fetch a strategy guide (markdown) |
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 | `/ws/agentStats` | WS | Live rolling 60-minute request and latency stats per agentId |
+| `/ws/chartHealth` | WS | Per-token chart-health websocket stream that stays active only while subscribed |
 | `/ws/xFilteredStream` | WS | Real-time X filtered stream proxy |
-| `/ws/signals` | WS | Live Redis-backed signal stream for SIGNAL_SOL workers |
+| `/ws/signals` | WS | Live Redis-backed global SIGNAL_SOL signal stream |
 
-| `/signalSol/artificialVolumeScan` | GET | Run a one-shot Solana artificial volume analysis for a token |
-| `/signalSol/bottomsUp` | GET | Return the latest cached bottom-reversal scan state |
-| `/signalSol/chartHealth` | GET | Touch/start per-token chart-health tracking and return latest cached state |
-| `/signalSol/momentumGains` | GET | Return the latest cached momentum-gains scan state |
-| `/signalSol/momentumStart` | GET | Return the latest cached early-momentum scan state |
-| `/signalSol/newPump` | GET | Return the latest cached fresh-token discovery state |
-| `/signals/bottomsUp` | GET | Alias for the latest cached bottom-reversal state |
-| `/signals/chartHealth` | GET | Alias for per-token chart-health latest state |
-| `/signals/momentumGains` | GET | Alias for the latest cached momentum-gains state |
-| `/signals/momentumStart` | GET | Alias for the latest cached early-momentum state |
-| `/signals/newPump` | GET | Alias for the latest cached fresh-token discovery state |
+| `/artificialVolumeScan` | GET | Run a one-shot Solana artificial volume analysis for a token |
+| `/bottomsUp` | GET | Return the latest cached bottom-reversal scan state |
+| `/momentumGains` | GET | Return the latest cached momentum-gains scan state |
+| `/momentumStart` | GET | Return the latest cached early-momentum scan state |
+| `/newPump` | GET | Return the latest cached fresh-token discovery state |
 ---
 
 ## SIGNAL_SOL Endpoints Usage
 
-### `GET /signalSol/artificialVolumeScan`
+### `GET /artificialVolumeScan`
 **Params:** `tokenAddress` (string, required)  
 **Behavior:** runs once and returns the script stdout as `output`
 
-### `GET /signalSol/bottomsUp`
+### `GET /bottomsUp`
 **Params:** none  
 **Behavior:** returns the latest Redis-cached worker state (`status`, `running`, `lastSummary`, `recentSignals`)
 
-### `GET /signalSol/chartHealth`
-**Params:** `tokenAddress` (string, required), `tokenName` (string, optional)  
-**Behavior:** marks the token as active for worker tracking, then returns the latest Redis-cached token health state
-
-### `GET /signalSol/momentumGains`
+### `GET /momentumGains`
 **Params:** none  
 **Behavior:** returns the latest Redis-cached worker state
 
-### `GET /signalSol/momentumStart`
+### `GET /momentumStart`
 **Params:** none  
 **Behavior:** returns the latest Redis-cached worker state
 
-### `GET /signalSol/newPump`
+### `GET /newPump`
 **Params:** none  
 **Behavior:** returns the latest Redis-cached worker state
 
-### `GET /signals/*`
-These are REST aliases for the cached worker-backed `signalSol` reads above. Use whichever path you prefer.
-
-All `signalSol` routes require the same client API key auth as the rest of the protected API.
+All signal routes require the same client API key auth as the rest of the protected API.
 
 Deployment notes:
-- `web` dyno serves the API, REST reads, and `/ws/signals`
-- `worker` dyno runs the loop scanners and chart-health token workers
+- `web` dyno serves the API, REST reads, `/ws/signals`, and `/ws/chartHealth`
+- `worker` dyno runs the loop scanners and only spins up chart-health token workers while clients remain subscribed
 - `REDIS_URL`, `REDISCLOUD`, or `REDISCLOUD_URL` can provide the Redis connection string
 - `SIGNAL_SOL_API_BASE_URL` should point the worker dyno at the web API base URL in production
 - `SIGNAL_SOL_API_KEY` should be an internal protected API key the worker can use for its own scanner calls
@@ -2810,20 +2798,45 @@ Default all globals:
 {}
 ```
 
-Per-token chart health:
-
-```json
-{ "chartHealth": ["So11111111111111111111111111111111111111112"] }
-```
-
 Supported global stream names:
 - `bottomsUp`
 - `momentumGains`
 - `momentumStart`
 - `newPump`
 
-Each subscription reply includes the latest cached snapshot/state for the selected streams or chart-health tokens before live events begin.
+Each subscription reply includes the latest cached snapshot/state for the selected streams before live events begin.
 If you subscribe with `{"streams":"bottomsUp"}` or `{"streams":["bottomsUp"]}`, you only receive live `bottomsUp` `signal_detected` events.
+
+---
+
+### `WS /ws/chartHealth`
+
+Live per-token chart-health stream over WebSocket. Subscribe with one or more token addresses and the worker will keep that token monitored only while at least one websocket stays subscribed.
+
+#### Connection Flow
+
+```
+1. Connect:    ws://api.claw.click/ws/chartHealth
+2. Send:       {"tokenAddress":"So11111111111111111111111111111111111111112"}
+3. Receive:    {"type":"subscribed","data":{"tokenAddresses":[...],"snapshots":[...]}}
+4. Receive:    {"type":"chartHealthEvent","data":{...}}  (continuous stream)
+```
+
+#### Subscription Payloads
+
+Single token:
+
+```json
+{ "tokenAddress": "So11111111111111111111111111111111111111112" }
+```
+
+Multiple tokens:
+
+```json
+{ "tokenAddresses": ["So11111111111111111111111111111111111111112", "DezXAZ8z7PnrnRJjz3wXBoRgixCa6nVb23SY7yk1pump"] }
+```
+
+You will receive the latest cached snapshot first, then live `chartHealthEvent` messages for that token. Once the last subscriber disconnects, the background chart-health worker is allowed to expire and stop shortly after.
 
 ---
 

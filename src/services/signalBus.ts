@@ -53,6 +53,7 @@ const CHART_HEALTH_ACTIVE_SET_KEY = "signals:chartHealth:active_tokens";
 const SIGNAL_RECENT_LIMIT = Number(getOptionalEnv("SIGNAL_RECENT_LIMIT", "25"));
 const SIGNAL_STREAM_MAXLEN = Number(getOptionalEnv("SIGNAL_STREAM_MAXLEN", "1000"));
 const CHART_HEALTH_TTL_MS = Number(getOptionalEnv("SIGNAL_CHART_HEALTH_TTL_MS", String(15 * 60 * 1000)));
+const CHART_HEALTH_WS_TTL_MS = Number(getOptionalEnv("SIGNAL_CHART_HEALTH_WS_TTL_MS", "15000"));
 
 type RedisConnection = ReturnType<typeof createClient>;
 
@@ -293,6 +294,10 @@ export function getChartHealthInterestTtlMs(): number {
   return CHART_HEALTH_TTL_MS;
 }
 
+export function getChartHealthWsTtlMs(): number {
+  return CHART_HEALTH_WS_TTL_MS;
+}
+
 export async function publishSignalEvent(input: Omit<SignalEvent, "id">): Promise<SignalEvent> {
   const client = await getCommandClient();
 
@@ -338,9 +343,10 @@ export async function getChartHealthState(tokenAddress: string): Promise<SignalL
 export async function touchChartHealthInterest(
   tokenAddress: string,
   tokenName?: string,
+  ttlMs = CHART_HEALTH_TTL_MS,
 ): Promise<SignalLatestState> {
   const client = await getCommandClient();
-  const expiresAtMs = Date.now() + CHART_HEALTH_TTL_MS;
+  const expiresAtMs = Date.now() + ttlMs;
   await client.zAdd(CHART_HEALTH_ACTIVE_SET_KEY, [{ score: expiresAtMs, value: tokenAddress }]);
 
   const previous = await getChartHealthState(tokenAddress);

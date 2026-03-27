@@ -29,8 +29,9 @@ import { getFilteredTokens } from "#services/filterTokens";
 // import { getWalletStats } from "#services/walletStats";
 import { getTokenHolders } from "#services/tokenHolders";
 import { handleAgentStatsClient } from "#services/agentStatsStream";
+import { handleChartHealthStreamClient } from "#services/chartHealthStream";
 import { handleClient } from "#services/launchpadStream";
-import { getChartHealthState, getGlobalSignalState, touchChartHealthInterest } from "#services/signalBus";
+import { getGlobalSignalState } from "#services/signalBus";
 import { handleSignalStreamClient } from "#services/signalStream";
 import { handleXFilteredStreamClient } from "#services/xFilteredStream";
 import { listStrategies, getStrategy } from "#services/strategies";
@@ -38,7 +39,7 @@ import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
 import { getRateMyEntry } from "#services/rateMyEntry";
 import { getXCountRecent, getXKolVolumeData, getXSearch, getXUserByUsernameData, getXUserFollowersData, getXUserLikesData } from "#services/x";
-import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, signalSolChartHealthSchema, signalSolTokenSchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xKolVolumeSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
+import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, signalSolTokenSchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xKolVolumeSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
 import { recordSwapVolume } from "#services/apiRuntime";
 
 type SignalSolHeaders = Record<string, string | string[] | undefined>;
@@ -60,7 +61,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/health", async () => ({ status: "ok", service: "super-api" }));
 
   // SIGNAL_SOL endpoints
-  app.get("/signalSol/artificialVolumeScan", async (request, reply) => {
+  app.get("/artificialVolumeScan", async (request, reply) => {
     const query = parseQuery(signalSolTokenSchema, request.query);
     try {
       return await runArtificialVolumeScan(query.tokenAddress, {
@@ -71,7 +72,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get("/signalSol/bottomsUp", async (request, reply) => {
+  app.get("/bottomsUp", async (request, reply) => {
     try {
       return await getGlobalSignalState("bottomsUp");
     } catch (error) {
@@ -79,17 +80,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get("/signalSol/chartHealth", async (request, reply) => {
-    const query = parseQuery(signalSolChartHealthSchema, request.query);
-    try {
-      await touchChartHealthInterest(query.tokenAddress, query.tokenName);
-      return await getChartHealthState(query.tokenAddress);
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signalSol/momentumGains", async (request, reply) => {
+  app.get("/momentumGains", async (request, reply) => {
     try {
       return await getGlobalSignalState("momentumGains");
     } catch (error) {
@@ -97,7 +88,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get("/signalSol/momentumStart", async (request, reply) => {
+  app.get("/momentumStart", async (request, reply) => {
     try {
       return await getGlobalSignalState("momentumStart");
     } catch (error) {
@@ -105,49 +96,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.get("/signalSol/newPump", async (request, reply) => {
-    try {
-      return await getGlobalSignalState("newPump");
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signals/bottomsUp", async (request, reply) => {
-    try {
-      return await getGlobalSignalState("bottomsUp");
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signals/chartHealth", async (request, reply) => {
-    const query = parseQuery(signalSolChartHealthSchema, request.query);
-    try {
-      await touchChartHealthInterest(query.tokenAddress, query.tokenName);
-      return await getChartHealthState(query.tokenAddress);
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signals/momentumGains", async (request, reply) => {
-    try {
-      return await getGlobalSignalState("momentumGains");
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signals/momentumStart", async (request, reply) => {
-    try {
-      return await getGlobalSignalState("momentumStart");
-    } catch (error) {
-      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
-  app.get("/signals/newPump", async (request, reply) => {
+  app.get("/newPump", async (request, reply) => {
     try {
       return await getGlobalSignalState("newPump");
     } catch (error) {
@@ -265,6 +214,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/ws/agentStats", { websocket: true }, (socket) => {
     handleAgentStatsClient(socket);
+  });
+
+  app.get("/ws/chartHealth", { websocket: true }, (socket) => {
+    void handleChartHealthStreamClient(socket).catch((error) => {
+      console.error("[ws/chartHealth] initialization failed:", error);
+      if (socket.readyState === 1) {
+        socket.send(JSON.stringify({
+          type: "error",
+          data: error instanceof Error ? error.message : "Failed to initialize chartHealth stream.",
+        }));
+      }
+      socket.close(1011, "init_failed");
+    });
   });
 
   app.get("/ws/xFilteredStream", { websocket: true }, (socket) => {
