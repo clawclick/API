@@ -272,13 +272,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/ws/signals", { websocket: true }, (socket) => {
     void handleSignalStreamClient(socket).catch((error) => {
+      console.error("[ws/signals] initialization failed:", error);
       if (socket.readyState === 1) {
         socket.send(JSON.stringify({
           type: "error",
           data: error instanceof Error ? error.message : "Failed to initialize signal stream.",
         }));
       }
-      socket.close();
+      socket.close(1011, "init_failed");
     });
   });
 }

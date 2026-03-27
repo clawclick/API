@@ -175,7 +175,7 @@ async function setClientSubscription(
 export async function handleSignalStreamClient(socket: WebSocket): Promise<void> {
   if (!isSignalRedisConfigured()) {
     send(socket, { type: "error", data: "REDIS_URL is not configured for signal streaming." });
-    socket.close();
+    socket.close(1011, "redis_not_configured");
     return;
   }
 
@@ -211,6 +211,7 @@ export async function handleSignalStreamClient(socket: WebSocket): Promise<void>
         type: "error",
         data: error instanceof Error ? error.message : "Failed to subscribe to signals.",
       });
+      socket.close(1011, "subscribe_failed");
     });
   });
 

@@ -232,10 +232,10 @@ export function runMomentumStart(context: SignalSolRunContext = {}): SignalSolBa
   });
 }
 
-export function runNewPump(context: SignalSolRunContext = {}): SignalSolBackgroundResult {
-  return startBackgroundSignalSolScript({
-    script: "newPump.js",
-    key: "newPump",
-    context,
-  });
-}
+// export function runNewPump(context: SignalSolRunContext = {}): SignalSolBackgroundResult {
+//   return startBackgroundSignalSolScript({
+//     script: "newPump.js",
+//     key: "newPump",
+//     context,
+//   });
+// }

@@ -39,6 +39,13 @@ const GLOBAL_SCRIPT_CONFIG: Record<GlobalSignalStream, string> = {
   newPump: "newPump.js",
 };
 
+const WORKER_AUTOSTART_STREAMS = [
+  "bottomsUp",
+  "momentumGains",
+  "momentumStart",
+  // "newPump",
+] as const;
+
 const globalChildren = new Map<GlobalSignalStream, ManagedChild>();
 const chartHealthChildren = new Map<string, ManagedChild>();
 const chartHealthRestartTimers = new Map<string, NodeJS.Timeout>();
@@ -341,7 +348,7 @@ export async function startSignalWorker(): Promise<void> {
   }
 
   console.log("[signal-worker] Starting global SIGNAL_SOL workers...");
-  for (const stream of GLOBAL_SIGNAL_STREAMS) {
+  for (const stream of WORKER_AUTOSTART_STREAMS) {
     await startGlobalChild(stream);
   }
 
