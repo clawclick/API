@@ -16,6 +16,7 @@ type ClientSubscription = {
   allGlobals: boolean;
   chartHealthTokens: Set<string>;
   refreshTimer: NodeJS.Timeout | null;
+  pingTimer: NodeJS.Timeout | null;
 };
 
 type SubscriptionMessage = {
@@ -28,6 +29,7 @@ type SubscriptionMessage = {
 
 const clients = new Map<WebSocket, ClientSubscription>();
 const CHART_HEALTH_REFRESH_INTERVAL_MS = 60 * 1000;
+const CLIENT_PING_INTERVAL_MS = 25 * 1000;
 let unsubscribeSignalEvents: (() => Promise<void>) | null = null;
 
 function send(socket: WebSocket, payload: unknown): void {
@@ -98,6 +100,13 @@ function clearRefreshTimer(subscription: ClientSubscription): void {
   }
 }
 
+function clearPingTimer(subscription: ClientSubscription): void {
+  if (subscription.pingTimer) {
+    clearInterval(subscription.pingTimer);
+    subscription.pingTimer = null;
+  }
+}
+
 function cleanupClient(socket: WebSocket): void {
   const subscription = clients.get(socket);
   if (!subscription) {
@@ -105,7 +114,18 @@ function cleanupClient(socket: WebSocket): void {
   }
 
   clearRefreshTimer(subscription);
+  clearPingTimer(subscription);
   clients.delete(socket);
+}
+
+function ensureClientPing(socket: WebSocket, subscription: ClientSubscription): void {
+  clearPingTimer(subscription);
+  subscription.pingTimer = setInterval(() => {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.ping();
+    }
+  }, CLIENT_PING_INTERVAL_MS);
+  subscription.pingTimer.unref?.();
 }
 
 async function ensureSignalSubscriber(): Promise<void> {
@@ -114,6 +134,10 @@ async function ensureSignalSubscriber(): Promise<void> {
   }
 
   unsubscribeSignalEvents = await subscribeToSignalEvents((event) => {
+    if (event.type !== "signal_detected") {
+      return;
+    }
+
     for (const [client, subscription] of clients) {
       if (!matchesSubscription(subscription, event)) {
         continue;
@@ -142,8 +166,10 @@ async function setClientSubscription(
     allGlobals: parsed.allGlobals,
     chartHealthTokens: new Set(parsed.chartHealthTokens),
     refreshTimer: null,
+    pingTimer: previous?.pingTimer ?? null,
   };
   clients.set(socket, next);
+  ensureClientPing(socket, next);
 
   if (next.chartHealthTokens.size > 0) {
     await refreshChartHealthTokens(next.chartHealthTokens);
@@ -181,10 +207,15 @@ export async function handleSignalStreamClient(socket: WebSocket): Promise<void>
 
   await ensureSignalSubscriber();
 
-  send(socket, {
-    type: "info",
-    data: "Connected. Send JSON like {\"streams\":[\"bottomsUp\",\"newPump\"]} or {\"stream\":\"all\"} or {\"chartHealth\":[\"So111...\"]}.",
-  });
+  const initialSubscription: ClientSubscription = {
+    globalStreams: new Set(),
+    allGlobals: false,
+    chartHealthTokens: new Set(),
+    refreshTimer: null,
+    pingTimer: null,
+  };
+  clients.set(socket, initialSubscription);
+  ensureClientPing(socket, initialSubscription);
 
   socket.on("message", (data) => {
     let parsed: unknown;
