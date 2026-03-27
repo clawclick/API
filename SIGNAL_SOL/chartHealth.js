@@ -28,8 +28,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { configureSignalSolLogging } from './logging.js';
 import { emitSignalEvent } from './signalEmitter.js';
 import { API_HEADERS, BASE_URL } from './runtimeConfig.js';
+
+configureSignalSolLogging();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

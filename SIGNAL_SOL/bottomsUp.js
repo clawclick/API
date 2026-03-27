@@ -36,8 +36,11 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+import { configureSignalSolLogging } from "./logging.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
+
+configureSignalSolLogging();
 
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 

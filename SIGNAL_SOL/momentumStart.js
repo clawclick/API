@@ -12,8 +12,11 @@
  * Signals tokens that show strong early momentum traits before price explodes.
  */
 
+import { configureSignalSolLogging } from "./logging.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
+
+configureSignalSolLogging();
 
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 const SOLSCAN_API = "https://api-v2.solscan.io";
