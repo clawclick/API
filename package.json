@@ -10,6 +10,7 @@
     "start": "tsx src/server.ts",
     "start:worker": "tsx src/worker.ts",
     "check": "tsc --noEmit",
+    "test:signals-ws": "node scripts/test_signal_ws.mjs",
     "backtest:scalping": "tsx CEX/Backtesting/scalping-backtest.ts"
   },
   "engines": {

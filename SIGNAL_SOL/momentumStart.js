@@ -449,11 +449,11 @@ async function start() {
   
   await scan();
   
-  // Scan every 10 seconds for new pairs
+  // Scan every 5 minutes for new pairs
   setInterval(async () => {
     console.log("\n⏰ Running periodic scan...");
     await scan();
-  }, 10 * 1000);
+  }, 5 * 60 * 1000);
 }
 
 // Export
