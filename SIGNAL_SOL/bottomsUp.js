@@ -45,7 +45,6 @@ import {
   getPairPriceUsd,
   getPairTxns,
   getPairVolume,
-} from "./dexScreener.js";
 } from "../Market_data/LowCaps/DEX_Screener/dexScreener.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
