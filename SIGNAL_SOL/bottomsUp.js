@@ -37,12 +37,19 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 import { configureSignalSolLogging } from "./logging.js";
+import {
+  fetchDexScreenerPair,
+  getPairLiquidityUsd,
+  getPairMarketCapUsd,
+  getPairPriceChange,
+  getPairPriceUsd,
+  getPairTxns,
+  getPairVolume,
+} from "./dexScreener.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 configureSignalSolLogging();
-
-const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 
 // ===== CONFIG =====
 const CONFIG = {
@@ -114,16 +121,11 @@ async function fetchBottomCandidates() {
     
     for (const token of candidates) {
       try {
-        const dexRes = await fetch(`${DEXSCREENER_API}/${token.address}`);
-        if (!dexRes.ok) continue;
-        
-        const dexData = await dexRes.json();
-        const mainPair = dexData.pairs?.[0];
-        
+        const { pair: mainPair } = await fetchDexScreenerPair(token.address);
         if (!mainPair) continue;
         
-        const change24h = mainPair.priceChange?.h24 || 0;
-        const change1h = mainPair.priceChange?.h1 || 0;
+        const change24h = getPairPriceChange(mainPair, "h24");
+        const change1h = getPairPriceChange(mainPair, "h1");
         
         // Need: down in 24h but up 20-50% in 1h (bounce signal)
         const matches24h = change24h >= CONFIG.minChangeFrom24hPct && change24h <= CONFIG.maxChangeFrom24hPct;
@@ -134,12 +136,12 @@ async function fetchBottomCandidates() {
             address: token.address,
             symbol: token.symbol,
             name: token.name,
-            priceUsd: parseFloat(mainPair.priceUsd),
+            priceUsd: getPairPriceUsd(mainPair),
             change24h: change24h,
             change1h: change1h,
             volume24h: token.volume24h,
-            liquidity: mainPair.liquidity?.usd || 0,
-            marketCap: mainPair.marketCap?.usd || 0
+            liquidity: getPairLiquidityUsd(mainPair),
+            marketCap: getPairMarketCapUsd(mainPair)
           });
         }
         
@@ -214,17 +216,12 @@ async function verifyBottomSignal(token) {
     console.log(`   24h change: ${token.change24h?.toFixed(2)}%, 1h change: ${token.change1h?.toFixed(2)}%`);
     
     // Fetch real-time data from DexScreener
-    const dexResponse = await fetch(`${DEXSCREENER_API}/${tokenAddress}`);
-    if (!dexResponse.ok) throw new Error(`DexScreener HTTP ${dexResponse.status}`);
-    
-    const dexData = await dexResponse.json();
-    const mainPair = dexData.pairs?.[0];
-    
+    const { pair: mainPair } = await fetchDexScreenerPair(tokenAddress);
     if (!mainPair) throw new Error('No pair found');
     
-    const currentPrice = parseFloat(mainPair.priceUsd) || 0;
-    const change1h = mainPair.priceChange?.h1 || 0;
-    const change24h = mainPair.priceChange?.h24 || 0;
+    const currentPrice = getPairPriceUsd(mainPair);
+    const change1h = getPairPriceChange(mainPair, "h1");
+    const change24h = getPairPriceChange(mainPair, "h24");
     
     // Verify 1h gain is in range
     if (change1h < CONFIG.minChange1hPct || change1h > CONFIG.maxChange1hPct) {
@@ -243,18 +240,16 @@ async function verifyBottomSignal(token) {
     }
     
     // Check buy pressure
-    const buys = mainPair.txns?.m5?.buys || 0;
-    const sells = mainPair.txns?.m5?.sells || 0;
-    const totalTxns = buys + sells;
-    const buyRatioPct = totalTxns > 0 ? (buys / totalTxns) * 100 : 0;
+    const txns5m = getPairTxns(mainPair, "m5");
+    const buyRatioPct = txns5m.buyRatio * 100;
     
     if (buyRatioPct < CONFIG.minBuyRatioPct) {
       console.log(`   ❌ Buy ratio ${buyRatioPct.toFixed(1)}% below threshold ${CONFIG.minBuyRatioPct}%`);
       return null;
     }
     
-    if (buys < CONFIG.minBuyCountTx) {
-      console.log(`   ❌ Buy count ${buys} below threshold ${CONFIG.minBuyCountTx}`);
+    if (txns5m.buys < CONFIG.minBuyCountTx) {
+      console.log(`   ❌ Buy count ${txns5m.buys} below threshold ${CONFIG.minBuyCountTx}`);
       return null;
     }
     
@@ -269,11 +264,11 @@ async function verifyBottomSignal(token) {
       change1h: change1h,
       athDropPct: athDropPct,
       buyRatioPct: buyRatioPct,
-      buyCount5m: buys,
-      volume5m: mainPair.volume?.m5 || 0,
-      volume1h: mainPair.volume?.h1 || 0,
-      liquidity: mainPair.liquidity?.usd || 0,
-      marketCap: mainPair.marketCap?.usd || 0,
+      buyCount5m: txns5m.buys,
+      volume5m: getPairVolume(mainPair, "m5"),
+      volume1h: getPairVolume(mainPair, "h1"),
+      liquidity: getPairLiquidityUsd(mainPair),
+      marketCap: getPairMarketCapUsd(mainPair),
       detectedAt: new Date().toLocaleTimeString()
     };
     

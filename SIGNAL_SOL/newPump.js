@@ -25,12 +25,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 import { configureSignalSolLogging } from "./logging.js";
+import { fetchDexScreenerPair, getPairTxns, getPairVolume } from "../Market_data/LowCaps/DEX_Screener/dexScreener.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 configureSignalSolLogging();
-
-const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 
 // ===== CONFIG =====
 const CONFIG = {
@@ -165,51 +164,9 @@ async function getTokenDetails(address) {
   }
 }
 
-// ===== GET REAL-TIME ACTIVITY FROM DEXSCREENER =====
-function selectDexScreenerPair(pairs, tokenAddress, preferredPairAddress = null) {
-  if (!Array.isArray(pairs) || pairs.length === 0) {
-    return null;
-  }
-
-  const normalizedTokenAddress = tokenAddress?.toLowerCase();
-  const normalizedPreferredPairAddress = preferredPairAddress?.toLowerCase();
-
-  if (normalizedPreferredPairAddress) {
-    const exactPair = pairs.find((pair) =>
-      pair?.chainId === "solana" &&
-      pair?.pairAddress?.toLowerCase() === normalizedPreferredPairAddress
-    );
-    if (exactPair) {
-      return exactPair;
-    }
-  }
-
-  const solanaPairs = pairs.filter((pair) => {
-    if (pair?.chainId !== "solana") {
-      return false;
-    }
-
-    const baseAddress = pair?.baseToken?.address?.toLowerCase();
-    const quoteAddress = pair?.quoteToken?.address?.toLowerCase();
-    return baseAddress === normalizedTokenAddress || quoteAddress === normalizedTokenAddress;
-  });
-
-  if (solanaPairs.length === 0) {
-    return null;
-  }
-
-  return solanaPairs.sort((a, b) =>
-    (Number(b?.liquidity?.usd) || 0) - (Number(a?.liquidity?.usd) || 0)
-  )[0];
-}
-
 async function getDexScreenerMetrics(address, preferredPairAddress = null) {
   try {
-    const res = await fetch(`${DEXSCREENER_API}/${address}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const data = await res.json();
-    const mainPair = selectDexScreenerPair(data.pairs, address, preferredPairAddress);
+    const { pair: mainPair } = await fetchDexScreenerPair(address, { preferredPairAddress });
     if (!mainPair) {
       return {
         txCount5m: 0,
@@ -221,10 +178,10 @@ async function getDexScreenerMetrics(address, preferredPairAddress = null) {
       };
     }
 
-    const txCount5m = (mainPair.txns?.m5?.buys || 0) + (mainPair.txns?.m5?.sells || 0);
-    const txCount1h = (mainPair.txns?.h1?.buys || 0) + (mainPair.txns?.h1?.sells || 0);
-    const volume1h = Number(mainPair.volume?.h1) || 0;
-    const volume24h = Number(mainPair.volume?.h24) || 0;
+    const txCount5m = getPairTxns(mainPair, "m5").total;
+    const txCount1h = getPairTxns(mainPair, "h1").total;
+    const volume1h = getPairVolume(mainPair, "h1");
+    const volume24h = getPairVolume(mainPair, "h24");
 
     // Approximate 24h-equivalent transaction activity from the recent 1h window
     const txCount = txCount1h * 24;

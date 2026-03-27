@@ -36,12 +36,17 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
 import { configureSignalSolLogging } from "./logging.js";
+import {
+  fetchDexScreenerPair,
+  getPairPriceChange,
+  getPairPriceUsd,
+  getPairTxns,
+  getPairVolume,
+} from "../Market_data/LowCaps/DEX_Screener/dexScreener.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 configureSignalSolLogging();
-
-const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 
 // ===== CONFIG =====
 const CONFIG = {
@@ -105,28 +110,15 @@ async function fetchHighGainTokens() {
       const token = candidates[i];
       try {
         console.log(`   [${i+1}/${candidates.length}] ${token.symbol}...`);
-        
-        const dexRes = await fetch(`${DEXSCREENER_API}/${token.address}`);
-        if (!dexRes.ok) {
-          console.log(`      ⚠️ DexScreener 404`);
-          continue;
-        }
-        
-        const dexData = await dexRes.json();
-        const mainPair = dexData.pairs?.[0];
-        
+
+        const { pair: mainPair } = await fetchDexScreenerPair(token.address);
         if (!mainPair) {
           console.log(`      ⚠️ No pair`);
           continue;
         }
         
-        const change1h = mainPair.priceChange?.h1 || 0;
-        const buyRatio = (() => {
-          const buys = mainPair.txns?.m5?.buys || 0;
-          const sells = mainPair.txns?.m5?.sells || 0;
-          const total = buys + sells;
-          return total > 0 ? (buys / total) * 100 : 0;
-        })();
+        const change1h = getPairPriceChange(mainPair, "h1");
+        const buyRatio = getPairTxns(mainPair, "m5").buyRatio * 100;
         
         console.log(`      1h: ${change1h.toFixed(2)}%, buy: ${buyRatio.toFixed(1)}%`);
         
@@ -168,30 +160,21 @@ async function fetchHighGainTokens() {
 // ===== FETCH REAL-TIME PRICE SNAPSHOT =====
 async function fetchPriceSnapshot(tokenAddress) {
   try {
-    const dexResponse = await fetch(`${DEXSCREENER_API}/${tokenAddress}`);
-    if (!dexResponse.ok) throw new Error(`DexScreener HTTP ${dexResponse.status}`);
-    
-    const dexData = await dexResponse.json();
-    const mainPair = dexData.pairs?.[0];
-    
+    const { pair: mainPair } = await fetchDexScreenerPair(tokenAddress);
     if (!mainPair) throw new Error('No pair found');
-    
+
+    const txns5m = getPairTxns(mainPair, "m5");
     return {
       timestamp: Date.now(),
-      priceUsd: parseFloat(mainPair.priceUsd) || 0,
-      priceChange1h: mainPair.priceChange?.h1 || 0,
-      priceChange5m: mainPair.priceChange?.m5 || 0,
-      volume5m: mainPair.volume?.m5 || 0,
-      volume1h: mainPair.volume?.h1 || 0,
+      priceUsd: getPairPriceUsd(mainPair),
+      priceChange1h: getPairPriceChange(mainPair, "h1"),
+      priceChange5m: getPairPriceChange(mainPair, "m5"),
+      volume5m: getPairVolume(mainPair, "m5"),
+      volume1h: getPairVolume(mainPair, "h1"),
       txns5m: {
-        buys: mainPair.txns?.m5?.buys || 0,
-        sells: mainPair.txns?.m5?.sells || 0,
-        buyRatio: (() => {
-          const buys = mainPair.txns?.m5?.buys || 0;
-          const sells = mainPair.txns?.m5?.sells || 0;
-          const total = buys + sells;
-          return total > 0 ? buys / total : 0;
-        })()
+        buys: txns5m.buys,
+        sells: txns5m.sells,
+        buyRatio: txns5m.buyRatio
       }
     };
   } catch (error) {

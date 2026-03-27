@@ -4,6 +4,7 @@ const ROLLING_WINDOW_MINUTES = 60;
 const BUCKET_DURATION_MS = 60 * 1000;
 const BROADCAST_INTERVAL_MS = 1000;
 const AGENT_WINDOW_TTL_MS = 2 * 60 * 60 * 1000;
+const CLIENT_PING_INTERVAL_MS = 25 * 1000;
 
 type RollingBucket = {
   minuteStartMs: number;
@@ -35,6 +36,7 @@ type AgentStatsSubscriptionMessage = {
 const agentWindows = new Map<string, AgentWindow>();
 const subscribersByAgentId = new Map<string, Set<WebSocket>>();
 const clientSubscriptions = new Map<WebSocket, Set<string>>();
+const clientPingTimers = new Map<WebSocket, NodeJS.Timeout>();
 const dirtyAgentIds = new Set<string>();
 
 let broadcastTimer: NodeJS.Timeout | null = null;
@@ -191,6 +193,12 @@ function setClientSubscriptions(client: WebSocket, agentIds: string[]): void {
 }
 
 function cleanupClient(client: WebSocket): void {
+  const pingTimer = clientPingTimers.get(client);
+  if (pingTimer) {
+    clearInterval(pingTimer);
+    clientPingTimers.delete(client);
+  }
+
   const subscriptions = clientSubscriptions.get(client);
   if (!subscriptions) {
     return;
@@ -208,6 +216,21 @@ function cleanupClient(client: WebSocket): void {
   }
 
   clientSubscriptions.delete(client);
+}
+
+function ensureClientPing(client: WebSocket): void {
+  const existing = clientPingTimers.get(client);
+  if (existing) {
+    clearInterval(existing);
+  }
+
+  const timer = setInterval(() => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.ping();
+    }
+  }, CLIENT_PING_INTERVAL_MS);
+  timer.unref?.();
+  clientPingTimers.set(client, timer);
 }
 
 export function recordLiveAgentRequest(input: { agentId?: string | null; durationMs?: number }): void {
@@ -243,6 +266,8 @@ export function recordLiveAgentRequest(input: { agentId?: string | null; duratio
 }
 
 export function handleAgentStatsClient(clientWs: WebSocket): void {
+  ensureClientPing(clientWs);
+
   clientWs.send(JSON.stringify({
     type: "info",
     data: "Connected. Send JSON like {\"agentId\":\"scanner-alpha\"} or {\"agentIds\":[\"scanner-alpha\",\"scanner-beta\"]} to receive rolling 60-minute request counts and average response times.",

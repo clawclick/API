@@ -13,12 +13,19 @@
  */
 
 import { configureSignalSolLogging } from "./logging.js";
+import {
+  fetchDexScreenerPair,
+  getPairPriceChange,
+  getPairPriceUsd,
+  getPairTxns,
+  getPairVolume,
+  getTrackedTokenInfo,
+  toDexNumber,
+} from "../Market_data/LowCaps/DEX_Screener/dexScreener.js";
 import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 configureSignalSolLogging();
-
-const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 const SOLSCAN_API = "https://api-v2.solscan.io";
 
 // ===== CONFIG =====
@@ -157,71 +164,49 @@ async function fetchNewPairsFallback() {
 // ===== FETCH DETAILED METRICS =====
 async function fetchDetailedMetrics(tokenAddress) {
   try {
-    const dexRes = await fetch(`${DEXSCREENER_API}/${tokenAddress}`);
-    if (!dexRes.ok) return null;
-    
-    const dexData = await dexRes.json();
-    const mainPair = dexData.pairs?.[0];
-    
+    const { pair: mainPair } = await fetchDexScreenerPair(tokenAddress);
     if (!mainPair) return null;
     
-    // Extract symbol and name - try multiple sources
-    let symbol = null;
-    let name = null;
-    
-    // Try baseToken first (usually the actual token, not the pair)
-    if (mainPair.baseToken) {
-      symbol = mainPair.baseToken.symbol || null;
-      name = mainPair.baseToken.name || null;
-    }
-    
-    // Fallback to direct properties
-    if (!symbol) symbol = mainPair.tokenSymbol || mainPair.symbol || null;
-    if (!name) name = mainPair.tokenName || mainPair.name || null;
-    
-    // Calculate buy ratio from last 5 minutes
-    const buys = mainPair.txns?.m5?.buys || 0;
-    const sells = mainPair.txns?.m5?.sells || 0;
-    const totalTxns = buys + sells;
-    const buyRatio = totalTxns > 0 ? (buys / totalTxns) * 100 : 50;
+    const tokenInfo = getTrackedTokenInfo(mainPair, tokenAddress);
+    const txns5m = getPairTxns(mainPair, "m5");
     
     // Calculate volume spike
-    const vol5m = mainPair.volume?.m5 || 0;
-    const vol1h = mainPair.volume?.h1 || 1; // Avoid division by zero
+    const vol5m = getPairVolume(mainPair, "m5");
+    const vol1h = getPairVolume(mainPair, "h1") || 1; // Avoid division by zero
     const volumeSpike = vol1h > 0 ? vol5m / vol1h : 0;
     
     return {
       timestamp: Date.now(),
       address: tokenAddress,
-      symbol: symbol,
-      name: name,
-      priceUsd: parseFloat(mainPair.priceUsd) || 0,
-      priceChange5m: mainPair.priceChange?.m5 || 0,
-      priceChange15m: mainPair.priceChange?.m15 || 0,
-      priceChange1h: mainPair.priceChange?.h1 || 0,
+      symbol: tokenInfo?.symbol || null,
+      name: tokenInfo?.name || null,
+      priceUsd: getPairPriceUsd(mainPair),
+      priceChange5m: getPairPriceChange(mainPair, "m5"),
+      priceChange15m: getPairPriceChange(mainPair, "m15"),
+      priceChange1h: getPairPriceChange(mainPair, "h1"),
       
       volume: {
         vol5m: vol5m,
         vol1h: vol1h,
-        vol24h: mainPair.volume?.h24 || 0,
+        vol24h: getPairVolume(mainPair, "h24"),
         spike: volumeSpike
       },
       
       transactions: {
-        buys: buys,
-        sells: sells,
-        total: totalTxns,
-        buyRatio: buyRatio
+        buys: txns5m.buys,
+        sells: txns5m.sells,
+        total: txns5m.total,
+        buyRatio: txns5m.total > 0 ? txns5m.buyRatio * 100 : 50
       },
       
       liquidity: {
-        usd: mainPair.liquidity?.usd || 0,
-        base: mainPair.liquidity?.base || 0,
-        quote: mainPair.liquidity?.quote || 0
+        usd: toDexNumber(mainPair.liquidity?.usd),
+        base: toDexNumber(mainPair.liquidity?.base),
+        quote: toDexNumber(mainPair.liquidity?.quote)
       },
       
-      holders: mainPair.holders || 0,
-      pairCreated: mainPair.pairCreatedAt || 0
+      holders: 0,
+      pairCreated: toDexNumber(mainPair.pairCreatedAt)
     };
   } catch (error) {
     console.error(`Error fetching metrics for ${tokenAddress}:`, error.message);

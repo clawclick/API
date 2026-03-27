@@ -29,6 +29,15 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { configureSignalSolLogging } from './logging.js';
+import {
+  fetchDexScreenerPair,
+  getPairMarketCapUsd,
+  getPairPriceChange,
+  getPairPriceUsd,
+  getPairTxns,
+  getPairVolume,
+  toDexNumber,
+} from './dexScreener.js';
 import { emitSignalEvent } from './signalEmitter.js';
 import { API_HEADERS, BASE_URL } from './runtimeConfig.js';
 
@@ -36,8 +45,6 @@ configureSignalSolLogging();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
 
 // ===== TRACKING CONFIG =====
 const TRACKING_CONFIG = {
@@ -125,25 +132,7 @@ async function fetchCurrentSnapshot(tokenAddress) {
   
   try {
     console.log(`🔍 Fetching real-time snapshot for ${tokenAddress}...`);
-    
-    // Fetch DexScreener first (most reliable for real-time)
-    let dexResponse = await fetch(`${DEXSCREENER_API}/${tokenAddress}`);
-    if (!dexResponse.ok) throw new Error(`DexScreener HTTP ${dexResponse.status}`);
-    dexData = await dexResponse.json();
-    
-    // Get main pair from DexScreener
-    const mainPair = dexData.pairs?.[0];
-    if (!mainPair) {
-      throw new Error('No trading pair found on DexScreener');
-    }
-    
-    console.log('🔍 DexScreener data preview:', {
-      pairFound: !!mainPair,
-      m5Txns: mainPair.txns?.m5,
-      h1Txns: mainPair.txns?.h1,
-      price: mainPair.priceUsd
-    });
-    
+
     // Fetch pool info from claw.click (with retry for rate limits)
     let poolResponse;
     while (retries < maxRetries) {
@@ -168,6 +157,19 @@ async function fetchCurrentSnapshot(tokenAddress) {
     if (!poolData) {
       console.log('⚠️ Pool API failed, using DexScreener fallback for all values');
     }
+
+    const dexSnapshot = await fetchDexScreenerPair(tokenAddress, {
+      preferredPairAddress: poolData?.pairAddress ?? null
+    });
+    dexData = dexSnapshot.data;
+
+    const mainPair = dexSnapshot.pair;
+    if (!mainPair) {
+      throw new Error('No trading pair found on DexScreener');
+    }
+
+    const txns5m = getPairTxns(mainPair, 'm5');
+    const txns1h = getPairTxns(mainPair, 'h1');
     
     // Extract current real-time values - PREFER DexScreener for fresh data
     const snapshot = {
@@ -175,53 +177,33 @@ async function fetchCurrentSnapshot(tokenAddress) {
       
       // Core values that change in real-time
       // Use DexScreener price as primary (more real-time), fall back to pool data
-      currentPrice: parseFloat(mainPair.priceUsd) || parseFloat(poolData?.priceUsd) || 0,
-      currentLiquidity: parseFloat(mainPair.liquidity?.usd) || parseFloat(poolData?.liquidityUsd) || 0,
-      currentMarketCap: parseFloat(mainPair.marketCap?.usd) || parseFloat(poolData?.marketCapUsd) || 0,
+      currentPrice: getPairPriceUsd(mainPair) || parseFloat(poolData?.priceUsd) || 0,
+      currentLiquidity: toDexNumber(mainPair.liquidity?.usd) || parseFloat(poolData?.liquidityUsd) || 0,
+      currentMarketCap: getPairMarketCapUsd(mainPair) || parseFloat(poolData?.marketCapUsd) || 0,
       
       // Transaction activity (this changes frequently)  
       txns5m: {
-        total: (mainPair.txns?.m5?.buys || 0) + (mainPair.txns?.m5?.sells || 0),
-        buys: mainPair.txns?.m5?.buys || 0,
-        sells: mainPair.txns?.m5?.sells || 0,
-        buyRatio: (() => {
-          try {
-            const buys = mainPair.txns?.m5?.buys || 0;
-            const sells = mainPair.txns?.m5?.sells || 0;
-            const total = buys + sells;
-            return total > 0 ? buys / total : 0;
-          } catch (e) {
-            console.log('⚠️ Error calculating 5m buy ratio:', e.message);
-            return 0;
-          }
-        })()
+        total: txns5m.total,
+        buys: txns5m.buys,
+        sells: txns5m.sells,
+        buyRatio: txns5m.buyRatio
       },
       
       txns1h: {
-        total: (mainPair.txns?.h1?.buys || 0) + (mainPair.txns?.h1?.sells || 0),
-        buys: mainPair.txns?.h1?.buys || 0,
-        sells: mainPair.txns?.h1?.sells || 0,
-        buyRatio: (() => {
-          try {
-            const buys = mainPair.txns?.h1?.buys || 0;
-            const sells = mainPair.txns?.h1?.sells || 0;
-            const total = buys + sells;
-            return total > 0 ? buys / total : 0;
-          } catch (e) {
-            console.log('⚠️ Error calculating 1h buy ratio:', e.message);
-            return 0;
-          }
-        })()
+        total: txns1h.total,
+        buys: txns1h.buys,
+        sells: txns1h.sells,
+        buyRatio: txns1h.buyRatio
       },
       
       // Volume in different time windows (for context)
-      volume5m: mainPair.volume?.m5 || 0,
-      volume1h: mainPair.volume?.h1 || 0,
-      volume24h: mainPair.volume?.h24 || 0,
+      volume5m: getPairVolume(mainPair, 'm5'),
+      volume1h: getPairVolume(mainPair, 'h1'),
+      volume24h: getPairVolume(mainPair, 'h24'),
       
       // Price changes from DexScreener (for context)
-      priceChange5m: mainPair.priceChange?.m5 || 0,
-      priceChange1h: mainPair.priceChange?.h1 || 0,
+      priceChange5m: getPairPriceChange(mainPair, 'm5'),
+      priceChange1h: getPairPriceChange(mainPair, 'h1'),
       
       // Meta
       dex: mainPair.dexId || poolData?.dex || 'Unknown',
