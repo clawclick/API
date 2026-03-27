@@ -43,7 +43,7 @@ const WORKER_AUTOSTART_STREAMS = [
   "bottomsUp",
   "momentumGains",
   "momentumStart",
-  // "newPump",
+  "newPump",
 ] as const;
 
 const globalChildren = new Map<GlobalSignalStream, ManagedChild>();

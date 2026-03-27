@@ -30,6 +30,8 @@ import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 configureSignalSolLogging();
 
+const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
+
 // ===== CONFIG =====
 const CONFIG = {
   limit: 100,
@@ -163,28 +165,92 @@ async function getTokenDetails(address) {
   }
 }
 
-// ===== GET TOKEN STATS FROM CODEX =====
-async function getTokenStats(address) {
+// ===== GET REAL-TIME ACTIVITY FROM DEXSCREENER =====
+function selectDexScreenerPair(pairs, tokenAddress, preferredPairAddress = null) {
+  if (!Array.isArray(pairs) || pairs.length === 0) {
+    return null;
+  }
+
+  const normalizedTokenAddress = tokenAddress?.toLowerCase();
+  const normalizedPreferredPairAddress = preferredPairAddress?.toLowerCase();
+
+  if (normalizedPreferredPairAddress) {
+    const exactPair = pairs.find((pair) =>
+      pair?.chainId === "solana" &&
+      pair?.pairAddress?.toLowerCase() === normalizedPreferredPairAddress
+    );
+    if (exactPair) {
+      return exactPair;
+    }
+  }
+
+  const solanaPairs = pairs.filter((pair) => {
+    if (pair?.chainId !== "solana") {
+      return false;
+    }
+
+    const baseAddress = pair?.baseToken?.address?.toLowerCase();
+    const quoteAddress = pair?.quoteToken?.address?.toLowerCase();
+    return baseAddress === normalizedTokenAddress || quoteAddress === normalizedTokenAddress;
+  });
+
+  if (solanaPairs.length === 0) {
+    return null;
+  }
+
+  return solanaPairs.sort((a, b) =>
+    (Number(b?.liquidity?.usd) || 0) - (Number(a?.liquidity?.usd) || 0)
+  )[0];
+}
+
+async function getDexScreenerMetrics(address, preferredPairAddress = null) {
   try {
-    const res = await fetch(`${BASE_URL}/detailedTokenStats?chain=sol&tokenAddress=${address}&durations=hour1,day1`, {
-      headers: API_HEADERS
-    });
+    const res = await fetch(`${DEXSCREENER_API}/${address}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
+
     const data = await res.json();
-    
+    const mainPair = selectDexScreenerPair(data.pairs, address, preferredPairAddress);
+    if (!mainPair) {
+      return {
+        txCount5m: 0,
+        txCount1h: 0,
+        txCount: 0,
+        volume1h: 0,
+        volume24h: 0,
+        volumeChange24h: 0
+      };
+    }
+
+    const txCount5m = (mainPair.txns?.m5?.buys || 0) + (mainPair.txns?.m5?.sells || 0);
+    const txCount1h = (mainPair.txns?.h1?.buys || 0) + (mainPair.txns?.h1?.sells || 0);
+    const volume1h = Number(mainPair.volume?.h1) || 0;
+    const volume24h = Number(mainPair.volume?.h24) || 0;
+
+    // Approximate 24h-equivalent transaction activity from the recent 1h window
+    const txCount = txCount1h * 24;
+
+    // Compare the current 1h run-rate against the trailing 24h average
+    const hourlyRunRate24h = volume1h * 24;
+    const volumeChange24h = volume24h > 0
+      ? ((hourlyRunRate24h - volume24h) / volume24h) * 100
+      : 0;
+
     return {
-      txCount24h: data.durations?.day1?.statsUsd?.transactions?.currentValue || 0,
-      volume1h: data.durations?.hour1?.statsUsd?.volume?.currentValue || 0,
-      volumeChange1h: data.durations?.hour1?.statsUsd?.volume?.change || 0,
-      volumeChange24h: data.durations?.day1?.statsUsd?.volume?.change || 0
+      txCount5m,
+      txCount1h,
+      txCount,
+      volume1h,
+      volume24h,
+      volumeChange24h
     };
   } catch (error) {
-    console.error(`Error getting token stats for ${address}:`, error.message);
+    console.error(`Error getting DexScreener metrics for ${address}:`, error.message);
     return {
-      txCount24h: 0,
+      txCount5m: 0,
+      txCount1h: 0,
+      txCount: 0,
       volume1h: 0,
-      volumeChange1h: 0,
+      volume24h: 0,
       volumeChange24h: 0
     };
   }
@@ -199,11 +265,8 @@ async function enrichToken(tokenAddress, originalTokenData = null, delayBeforeMs
   
   const details = await getTokenDetails(tokenAddress);
   if (!details) return null;
-  
-  // Small delay between details and stats calls
-  await new Promise(resolve => setTimeout(resolve, 250));
-  
-  const stats = await getTokenStats(tokenAddress);
+
+  const activity = await getDexScreenerMetrics(tokenAddress, details.pairAddress);
   
   // FIXED CALCULATIONS
   const momentum = details.volume24hUsd > 0 && details.marketCapUsd > 0 
@@ -223,12 +286,15 @@ async function enrichToken(tokenAddress, originalTokenData = null, delayBeforeMs
     marketCap: details.marketCapUsd,
     price: details.priceUsd,
     priceChange24h: details.priceChange24hPct,
-    txCount: stats.txCount24h,
+    txCount: activity.txCount,
+    txCount5m: activity.txCount5m,
+    txCount1h: activity.txCount1h,
     momentum: momentum,
     lpToMc: lpToMc,
     pairAddress: details.pairAddress,
     dex: details.dex,
-    volumeChange24h: stats.volumeChange24h,
+    volume1h: activity.volume1h,
+    volumeChange24h: activity.volumeChange24h,
     createdAt: originalTokenData?.createdAt || null // Preserve original createdAt
   };
 }
@@ -371,26 +437,25 @@ async function run() {
   console.time("run");
   
   try {
-    console.log("🔍 Starting token discovery...");
+    // console.log("🔍 Starting token discovery...");
     
     // Fetch tokens from multiple sources sequentially to avoid rate limiting
-    console.log("📡 Fetching new pairs...");
+    // console.log("📡 Fetching new pairs...");
     const newPairs = await fetchNewPairs();
     await new Promise(resolve => setTimeout(resolve, 300)); // Brief pause between fetches
     
-    console.log("📡 Fetching trending tokens...");
+    // console.log("📡 Fetching trending tokens...");
     const trendingTokens = await fetchTrendingTokens();
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    console.log("📡 Fetching filtered tokens...");
-    const filteredTokens = await fetchFilteredTokens();
+    // console.log("📡 Fetching filtered tokens...");
+    // const filteredTokens = await fetchFilteredTokens();
     
     // Combine and extract addresses
     const allTokens = [
       ...filterSolana(newPairs),
-      ...filterSolana(trendingTokens),
-      ...filteredTokens
-    ];
+      ...filterSolana(trendingTokens)
+      ];
     
     // Create a map of address -> token data to preserve createdAt info
     const tokenDataMap = new Map();
@@ -402,16 +467,16 @@ async function run() {
     });
     
     const uniqueAddresses = [...tokenDataMap.keys()];
-    console.log(`📊 Found ${uniqueAddresses.length} unique Solana tokens to analyze`);
+    // console.log(`📊 Found ${uniqueAddresses.length} unique Solana tokens to analyze`);
     
     // Process tokens in batches
-    console.log("📈 Enriching token data...");
+    // console.log("📈 Enriching token data...");
     const enrichedTokens = await processTokens(uniqueAddresses, tokenDataMap);
-    console.log(`✅ Successfully enriched ${enrichedTokens.length} tokens`);
+    // console.log(`✅ Successfully enriched ${enrichedTokens.length} tokens`);
     
     // Apply filters
     const filteredTokens2 = applyFilters(enrichedTokens);
-    console.log(`🔍 ${filteredTokens2.length} tokens passed filters`);
+    // console.log(`🔍 ${filteredTokens2.length} tokens passed filters`);
     
     // Rank tokens
     const rankedTokens = rankTokens(filteredTokens2);
@@ -419,10 +484,10 @@ async function run() {
     // Remove previously seen tokens
     const newSignals = deduplicateTokens(rankedTokens);
     
-    console.log(`🆕 Found ${newSignals.length} new signals`);
+    // console.log(`🆕 Found ${newSignals.length} new signals`);
     
     if (newSignals.length > 0) {
-      console.log("\n🎯 === TOP NEW SIGNALS ===");
+      // console.log("\n🎯 === TOP NEW SIGNALS ===");
       
       // Filter by age at display time - only show tokens 1-180 minutes old
       const freshSignals = newSignals
@@ -439,7 +504,7 @@ async function run() {
       
       if (freshSignals.length > 0) {
         const topFreshSignals = freshSignals.slice(0, 10);
-        console.log(`🔥 Found ${freshSignals.length} fresh signals (1-180 minutes old):`);
+        // console.log(`🔥 Found ${freshSignals.length} fresh signals (1-180 minutes old):`);
         
         for (const token of topFreshSignals) {
           emitSignalEvent("newPump", "signal_detected", token);
