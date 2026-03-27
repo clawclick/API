@@ -19,12 +19,12 @@ const STRATEGY_REGISTRY: StrategyListItem[] = [
     description: "Find volatile high-volume tokens with 10%+ price swings and place entries/exits at support & resistance levels. Includes hold-off rules for failed rebounds.",
     path: "/strats/swing-trade",
   },
-  // {
-  //   id: "scalping",
-  //   name: "Hardened Scalper",
-  //   description: "SOL-first, BSC-fallback intraday scalping guide focused on small, fast profits with strict liquidity, safety, slippage, and execution gates.",
-  //   path: "/strats/scalping",
-  // },
+  {
+    id: "scalping",
+    name: "Hardened Scalper",
+    description: "SOL-first, BSC-fallback intraday scalping guide focused on small, fast profits with strict liquidity, safety, slippage, and execution gates.",
+    path: "/strats/scalping",
+  },
 ];
 
 export function listStrategies(): { strategies: StrategyListItem[] } {
