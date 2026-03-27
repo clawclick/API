@@ -404,7 +404,7 @@ async function start() {
   setInterval(async () => {
     console.log("\n⏰ Running periodic scan...");
     await scan();
-  }, 4 * 60 * 1000);
+  }, 6 * 60 * 1000);
 }
 
 // Export for testing

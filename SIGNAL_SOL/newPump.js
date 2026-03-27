@@ -529,7 +529,7 @@ async function start() {
   setInterval(async () => {
     console.log("\n⏰ Running periodic scan...");
     await run();
-  }, 3 * 60 * 1000); // Every 3 minutes
+  }, 10 * 60 * 1000); // Every 10 minutes
 }
 
 // Export for testing
