@@ -35,6 +35,7 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
@@ -293,6 +294,12 @@ async function captureSnapshots() {
           ...signal,
           timestamp: Date.now()
         });
+        emitSignalEvent("momentumGains", "signal_detected", {
+          tokenAddress,
+          symbol: tracker.token.symbol,
+          name: tracker.token.name,
+          ...signal,
+        });
         
         console.log(`\n${'═'.repeat(80)}`);
         console.log(`🚀 MOMENTUM SIGNAL DETECTED!`);
@@ -377,9 +384,16 @@ async function scan() {
     cleanupStaleTracking();
     
     console.log(`📊 Tracking: ${trackedTokens.size} tokens\n`);
+    emitSignalEvent("momentumGains", "scan_completed", {
+      trackedTokens: trackedTokens.size,
+      candidatesFound: candidates.length,
+    });
     
   } catch (error) {
     console.error("❌ Scan error:", error);
+    emitSignalEvent("momentumGains", "error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
   
   console.timeEnd("scan");
@@ -389,6 +403,10 @@ async function scan() {
 // ===== STARTUP =====
 async function start() {
   console.log("🚀 Starting momentum gains detector...");
+  emitSignalEvent("momentumGains", "status", {
+    status: "running",
+    running: true,
+  });
   console.log(`📋 Config: Max 3-day tokens with +${CONFIG.minPriceChange1h}% 1h gains`);
   console.log(`⏱ Tracking: ${CONFIG.trackingDurationMinutes} minutes with ${CONFIG.snapshotIntervalSeconds}s snapshots`);
   console.log(`🎯 Signal: ${CONFIG.minGainThreshold}% consecutive gains or ${CONFIG.sustainedGainTarget}% total\n`);

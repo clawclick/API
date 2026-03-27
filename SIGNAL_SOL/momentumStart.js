@@ -12,6 +12,7 @@
  * Signals tokens that show strong early momentum traits before price explodes.
  */
 
+import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
@@ -351,6 +352,12 @@ async function captureSnapshots() {
       if (signal) {
         tracker.signals.push(signal);
         detectedSignals.set(tokenAddress, signal);
+        emitSignalEvent("momentumStart", "signal_detected", {
+          tokenAddress,
+          symbol: metrics.symbol || tracker.pair.symbol || null,
+          name: metrics.name || tracker.pair.name || null,
+          ...signal,
+        });
         
         const tokenName = metrics.name || tracker.pair.name || 'Unknown Token';
         const tokenTicker = metrics.symbol || tracker.pair.symbol || 'UNKNOWN';
@@ -413,9 +420,17 @@ async function scan() {
     await captureSnapshots();
     
     console.log(`\n📊 Tracking: ${trackedTokens.size} new pairs | Signals detected: ${detectedSignals.size}\n`);
+    emitSignalEvent("momentumStart", "scan_completed", {
+      trackedTokens: trackedTokens.size,
+      detectedSignals: detectedSignals.size,
+      pairsFound: pairs.length,
+    });
     
   } catch (error) {
     console.error("❌ Scan error:", error);
+    emitSignalEvent("momentumStart", "error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
   
   console.timeEnd("scan");
@@ -425,6 +440,10 @@ async function scan() {
 // ===== STARTUP =====
 async function start() {
   console.log("🚀 Starting early momentum detector for Solana new pairs...");
+  emitSignalEvent("momentumStart", "status", {
+    status: "running",
+    running: true,
+  });
   console.log(`📋 Looking for: New pairs (${CONFIG.minLiquidityUsd}-${CONFIG.maxLiquidityUsd} liquidity, <${CONFIG.maxAgeMinutes}m old)`);
   console.log(`🎯 Signals: ${CONFIG.minInitialBuyRatio}%+ buy pressure + volume + ${CONFIG.minEarlyGainPct}%+ early gains\n`);
   

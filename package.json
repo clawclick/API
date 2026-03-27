@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
     "build": "tsc --noEmit",
     "start": "tsx src/server.ts",
+    "start:worker": "tsx src/worker.ts",
     "check": "tsc --noEmit",
     "backtest:scalping": "tsx CEX/Backtesting/scalping-backtest.ts"
   },
@@ -77,6 +79,7 @@
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "pg": "^8.20.0",
+    "redis": "^5.11.0",
     "tsx": "^4.19.3",
     "ws": "^8.18.0",
     "zod": "^3.24.2"

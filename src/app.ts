@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import { ChainError } from "#lib/chains";
 import { AccessError, classifyPath, enforceApiKeyRateLimit, enterRequestMetricsContext, flushBufferedAnalytics, flushProviderMetrics, isTrackedMetricPath, recordRequestMetric, requireAdminKey, requireAdminKeyForWebSocket, requireApiKey } from "#services/apiRuntime";
 import { recordLiveAgentRequest } from "#services/agentStatsStream";
+import { closeSignalBus } from "#services/signalBus";
 import { stopAllSignalSolProcesses } from "#services/signalSolEndpoints";
 import { getX402RouteSpec, isX402ActiveRoute, processX402Request, processX402Settlement, type X402VerifiedRequest } from "#services/x402";
 import { registerRoutes } from "#routes/index";
@@ -166,6 +167,7 @@ export function buildApp() {
       await flushBufferedAnalytics();
     } finally {
       stopAllSignalSolProcesses();
+      await closeSignalBus();
     }
   });
 
@@ -240,7 +242,7 @@ export function buildApp() {
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
       error: "Not found",
-      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/walletChart, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /rateMyEntry, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /xSearch, /xCountRecent, /xUserByUsername, /xUserLikes, /xUserFollowers, /walletReview, /pnl, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, ws:/ws/launchpadEvents, ws:/ws/agentStats, ws:/ws/xFilteredStream`,
+      message: `Route ${request.method} ${request.url} does not exist. Available endpoints: /health, /providers, /admin/apiKeys/generate, /admin/apiKeys, /admin/walletChart, /admin/stats, /admin/stats/requests, /admin/stats/users, /admin/stats/user, /admin/stats/agents, /admin/stats/volume, /tokenPoolInfo, /tokenPriceHistory, /priceHistoryIndicators, /rateMyEntry, /detailedTokenStats, /isScam, /fullAudit, /holderAnalysis, /holders, /fudSearch, /marketOverview, /xSearch, /xCountRecent, /xUserByUsername, /xUserLikes, /xUserFollowers, /walletReview, /pnl, /swap, /swapQuote, /swapDexes, /approve, /unwrap, /trendingTokens, /newPairs, /topTraders, /gasFeed, /tokenSearch, /tokenHolders, /filterTokens, /volatilityScanner, /strats, /strats/:id, /signals/bottomsUp, /signals/chartHealth, /signals/momentumGains, /signals/momentumStart, /signals/newPump, ws:/ws/launchpadEvents, ws:/ws/agentStats, ws:/ws/xFilteredStream, ws:/ws/signals`,
     });
   });
 

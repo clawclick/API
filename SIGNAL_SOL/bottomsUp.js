@@ -36,6 +36,7 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 const DEXSCREENER_API = "https://api.dexscreener.com/latest/dex/tokens";
@@ -349,6 +350,7 @@ async function scan() {
         candidates.set(tokenAddress, signal);
         signalHistory.add(tokenAddress);
         signalCount++;
+        emitSignalEvent("bottomsUp", "signal_detected", signal);
       }
       
       // Rate limit between verifications (2 API calls per token)
@@ -357,9 +359,17 @@ async function scan() {
     
     console.log(`\n✅ Scan complete: ${signalCount} bottom reversals detected`);
     console.log(`📊 Active signals: ${signalHistory.size} (dedup'd today)\n`);
+    emitSignalEvent("bottomsUp", "scan_completed", {
+      signalCount,
+      activeSignals: signalHistory.size,
+      candidatesScanned: Math.min(CONFIG.maxCandidatesTracked, looseCandidates.length),
+    });
     
   } catch (error) {
     console.error("❌ Scan error:", error);
+    emitSignalEvent("bottomsUp", "error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
   
   console.timeEnd("scan");
@@ -369,6 +379,10 @@ async function scan() {
 // ===== STARTUP =====
 async function start() {
   console.log("🚀 Starting bottom reversal detector...");
+  emitSignalEvent("bottomsUp", "status", {
+    status: "running",
+    running: true,
+  });
   console.log(`\n📋 SIGNAL CRITERIA:`);
   console.log(`   • Down ${Math.abs(CONFIG.minDropFromAthPct)}-${Math.abs(CONFIG.maxDropFromAthPct)}% from 3-month ATH`);
   console.log(`   • Up ${CONFIG.minChange1hPct}-${CONFIG.maxChange1hPct}% in last hour (bouncing)`);

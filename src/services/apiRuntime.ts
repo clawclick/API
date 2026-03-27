@@ -218,6 +218,7 @@ const ADMIN_PATHS = new Set([
 ]);
 const PROTECTED_PREFIXES = [
   "/signalSol",
+  "/signals",
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
@@ -257,6 +258,7 @@ const PROTECTED_PREFIXES = [
   "/filterTokens",
   "/volatilityScanner",
   "/ws/launchpadEvents",
+  "/ws/signals",
   "/ws/xFilteredStream",
 ];
 const TRACKED_METRIC_PATHS = new Set([
@@ -277,6 +279,11 @@ const TRACKED_METRIC_PATHS = new Set([
   "/signalSol/momentumGains",
   "/signalSol/momentumStart",
   "/signalSol/newPump",
+  "/signals/bottomsUp",
+  "/signals/chartHealth",
+  "/signals/momentumGains",
+  "/signals/momentumStart",
+  "/signals/newPump",
   "/tokenPoolInfo",
   "/tokenPriceHistory",
   "/priceHistoryIndicators",
@@ -319,6 +326,7 @@ const TRACKED_METRIC_PATHS = new Set([
   "/strats/:id",
   "/ws/launchpadEvents",
   "/ws/agentStats",
+  "/ws/signals",
   "/ws/xFilteredStream",
 ]);
 const ALL_TIME_REQUESTS_CACHE_TTL_MS = 5 * 60 * 1000;

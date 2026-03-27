@@ -1,11 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
   runArtificialVolumeScan,
-  runBottomsUp,
-  runChartHealth,
-  runMomentumGains,
-  runMomentumStart,
-  runNewPump
 } from "#services/signalSolEndpoints";
 import {
   getDetailedTokenStats,
@@ -35,6 +30,8 @@ import { getFilteredTokens } from "#services/filterTokens";
 import { getTokenHolders } from "#services/tokenHolders";
 import { handleAgentStatsClient } from "#services/agentStatsStream";
 import { handleClient } from "#services/launchpadStream";
+import { getChartHealthState, getGlobalSignalState, touchChartHealthInterest } from "#services/signalBus";
+import { handleSignalStreamClient } from "#services/signalStream";
 import { handleXFilteredStreamClient } from "#services/xFilteredStream";
 import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
@@ -76,9 +73,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/signalSol/bottomsUp", async (request, reply) => {
     try {
-      return runBottomsUp({
-        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
-      });
+      return await getGlobalSignalState("bottomsUp");
     } catch (error) {
       reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -87,9 +82,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/signalSol/chartHealth", async (request, reply) => {
     const query = parseQuery(signalSolChartHealthSchema, request.query);
     try {
-      return runChartHealth(query.tokenAddress, query.tokenName, {
-        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
-      });
+      await touchChartHealthInterest(query.tokenAddress, query.tokenName);
+      return await getChartHealthState(query.tokenAddress);
     } catch (error) {
       reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -97,9 +91,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/signalSol/momentumGains", async (request, reply) => {
     try {
-      return runMomentumGains({
-        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
-      });
+      return await getGlobalSignalState("momentumGains");
     } catch (error) {
       reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -107,9 +99,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/signalSol/momentumStart", async (request, reply) => {
     try {
-      return runMomentumStart({
-        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
-      });
+      return await getGlobalSignalState("momentumStart");
     } catch (error) {
       reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -117,9 +107,49 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/signalSol/newPump", async (request, reply) => {
     try {
-      return runNewPump({
-        apiKey: getSignalSolApiKey(request.headers as SignalSolHeaders),
-      });
+      return await getGlobalSignalState("newPump");
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signals/bottomsUp", async (request, reply) => {
+    try {
+      return await getGlobalSignalState("bottomsUp");
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signals/chartHealth", async (request, reply) => {
+    const query = parseQuery(signalSolChartHealthSchema, request.query);
+    try {
+      await touchChartHealthInterest(query.tokenAddress, query.tokenName);
+      return await getChartHealthState(query.tokenAddress);
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signals/momentumGains", async (request, reply) => {
+    try {
+      return await getGlobalSignalState("momentumGains");
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signals/momentumStart", async (request, reply) => {
+    try {
+      return await getGlobalSignalState("momentumStart");
+    } catch (error) {
+      reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/signals/newPump", async (request, reply) => {
+    try {
+      return await getGlobalSignalState("newPump");
     } catch (error) {
       reply.status(500).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -238,5 +268,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/ws/xFilteredStream", { websocket: true }, (socket) => {
     handleXFilteredStreamClient(socket);
+  });
+
+  app.get("/ws/signals", { websocket: true }, (socket) => {
+    void handleSignalStreamClient(socket).catch((error) => {
+      if (socket.readyState === 1) {
+        socket.send(JSON.stringify({
+          type: "error",
+          data: error instanceof Error ? error.message : "Failed to initialize signal stream.",
+        }));
+      }
+      socket.close();
+    });
   });
 }

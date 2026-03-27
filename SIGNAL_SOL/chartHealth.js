@@ -28,6 +28,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { emitSignalEvent } from './signalEmitter.js';
 import { API_HEADERS, BASE_URL } from './runtimeConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -498,6 +499,13 @@ export async function trackToken(tokenAddress, tokenName = '') {
   const tracker = new TokenTracker(tokenAddress, tokenName);
   
   console.log(`🎯 Starting REAL-TIME tracking for ${tokenName || tokenAddress}`);
+  emitSignalEvent('chartHealth', 'status', {
+    status: 'running',
+    running: true
+  }, {
+    scope: 'token',
+    tokenAddress
+  });
   console.log('📊 Capturing live snapshots every 3 minutes to track momentum changes');
   console.log('💾 Data will be saved to:', tracker.dataFile);
   
@@ -526,10 +534,31 @@ export async function trackToken(tokenAddress, tokenName = '') {
           const trends = calculateRealTimeTrends(tracker.data.dataPoints);
           const scores = calculateHealthScores(trends, currentSnapshot);
           const newAlerts = detectAlerts(trends, currentSnapshot);
+
+          emitSignalEvent('chartHealth', 'snapshot', {
+            tokenAddress,
+            tokenName: tracker.name || tokenName || null,
+            snapshot: currentSnapshot,
+            scores,
+            trends
+          }, {
+            scope: 'token',
+            tokenAddress
+          });
           
           // Add new alerts
           if (newAlerts && newAlerts.length > 0) {
             tracker.data.alerts.push(...newAlerts);
+            newAlerts.forEach((alert) => {
+              emitSignalEvent('chartHealth', 'alert', {
+                tokenAddress,
+                tokenName: tracker.name || tokenName || null,
+                ...alert
+              }, {
+                scope: 'token',
+                tokenAddress
+              });
+            });
           }
           
           // Display live status
@@ -549,6 +578,16 @@ export async function trackToken(tokenAddress, tokenName = '') {
         }
       } else {
         console.log(`📊 Building trend history... ${tracker.data.dataPoints.length}/2 snapshots for comparison`);
+        emitSignalEvent('chartHealth', 'snapshot', {
+          tokenAddress,
+          tokenName: tracker.name || tokenName || null,
+          snapshot: currentSnapshot,
+          scores: null,
+          trends: {}
+        }, {
+          scope: 'token',
+          tokenAddress
+        });
       }
       
       // Save data
@@ -557,6 +596,12 @@ export async function trackToken(tokenAddress, tokenName = '') {
       
     } catch (error) {
       console.error('❌ Tracking error:', error.message);
+      emitSignalEvent('chartHealth', 'error', {
+        message: error instanceof Error ? error.message : String(error)
+      }, {
+        scope: 'token',
+        tokenAddress
+      });
     }
     
     // Schedule next snapshot
@@ -574,6 +619,13 @@ export async function trackToken(tokenAddress, tokenName = '') {
 export function stopTracking(tracker) {
   if (tracker) {
     tracker.isTracking = false;
+    emitSignalEvent('chartHealth', 'status', {
+      status: 'stopped',
+      running: false
+    }, {
+      scope: 'token',
+      tokenAddress: tracker.tokenAddress
+    });
     console.log(`\n⏹️ Stopped real-time tracking ${tracker.tokenAddress}`);
     console.log(`💾 Data saved to: ${tracker.dataFile}`);
   }

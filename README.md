@@ -109,13 +109,19 @@ npx tsx src/server.ts   # starts on port 3000
 | `/ws/launchpadEvents` | WS | Real-time launchpad token event stream |
 | `/ws/agentStats` | WS | Live rolling 60-minute request and latency stats per agentId |
 | `/ws/xFilteredStream` | WS | Real-time X filtered stream proxy |
+| `/ws/signals` | WS | Live Redis-backed signal stream for SIGNAL_SOL workers |
 
 | `/signalSol/artificialVolumeScan` | GET | Run a one-shot Solana artificial volume analysis for a token |
-| `/signalSol/bottomsUp` | GET | Start the background Solana bottom reversal scanner |
-| `/signalSol/chartHealth` | GET | Start or reuse a background chart-health tracker for one token |
-| `/signalSol/momentumGains` | GET | Start the background Solana momentum gains scanner |
-| `/signalSol/momentumStart` | GET | Start the background early-momentum new-pairs scanner |
-| `/signalSol/newPump` | GET | Start the background fresh-token discovery engine |
+| `/signalSol/bottomsUp` | GET | Return the latest cached bottom-reversal scan state |
+| `/signalSol/chartHealth` | GET | Touch/start per-token chart-health tracking and return latest cached state |
+| `/signalSol/momentumGains` | GET | Return the latest cached momentum-gains scan state |
+| `/signalSol/momentumStart` | GET | Return the latest cached early-momentum scan state |
+| `/signalSol/newPump` | GET | Return the latest cached fresh-token discovery state |
+| `/signals/bottomsUp` | GET | Alias for the latest cached bottom-reversal state |
+| `/signals/chartHealth` | GET | Alias for per-token chart-health latest state |
+| `/signals/momentumGains` | GET | Alias for the latest cached momentum-gains state |
+| `/signals/momentumStart` | GET | Alias for the latest cached early-momentum state |
+| `/signals/newPump` | GET | Alias for the latest cached fresh-token discovery state |
 ---
 
 ## SIGNAL_SOL Endpoints Usage
@@ -126,27 +132,35 @@ npx tsx src/server.ts   # starts on port 3000
 
 ### `GET /signalSol/bottomsUp`
 **Params:** none  
-**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+**Behavior:** returns the latest Redis-cached worker state (`status`, `running`, `lastSummary`, `recentSignals`)
 
 ### `GET /signalSol/chartHealth`
 **Params:** `tokenAddress` (string, required), `tokenName` (string, optional)  
-**Behavior:** starts or reuses a per-token background tracker and returns `status`, `pid`, `logFile`, and `trackingFile`
+**Behavior:** marks the token as active for worker tracking, then returns the latest Redis-cached token health state
 
 ### `GET /signalSol/momentumGains`
 **Params:** none  
-**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+**Behavior:** returns the latest Redis-cached worker state
 
 ### `GET /signalSol/momentumStart`
 **Params:** none  
-**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+**Behavior:** returns the latest Redis-cached worker state
 
 ### `GET /signalSol/newPump`
 **Params:** none  
-**Behavior:** starts a singleton background scanner and returns `status`, `pid`, and `logFile`
+**Behavior:** returns the latest Redis-cached worker state
+
+### `GET /signals/*`
+These are REST aliases for the cached worker-backed `signalSol` reads above. Use whichever path you prefer.
 
 All `signalSol` routes require the same client API key auth as the rest of the protected API.
 
-When started through this API, the server injects `SIGNAL_SOL_API_BASE_URL` and `SIGNAL_SOL_API_KEY` into child scripts automatically. If you want the background scanners to use a dedicated internal key or a non-local API base, set those optional env vars in the server environment.
+Deployment notes:
+- `web` dyno serves the API, REST reads, and `/ws/signals`
+- `worker` dyno runs the loop scanners and chart-health token workers
+- `REDIS_URL`, `REDISCLOUD`, or `REDISCLOUD_URL` can provide the Redis connection string
+- `SIGNAL_SOL_API_BASE_URL` should point the worker dyno at the web API base URL in production
+- `SIGNAL_SOL_API_KEY` should be an internal protected API key the worker can use for its own scanner calls
 
 ---
 
@@ -2743,6 +2757,50 @@ or
 Notes:
 - The stream is in-memory and low overhead: request tracking is constant-time and websocket broadcasts are coalesced to roughly once per second.
 - This is process-local. On multiple dynos/processes, each instance only knows about traffic it handled. Use Redis or another shared pub/sub store if you need one globally merged live stream across horizontal scaling.
+
+---
+
+### `WS /ws/signals`
+
+Live SIGNAL_SOL worker stream over WebSocket. The web dyno reads live events from Redis and fans them out to subscribed clients.
+
+#### Connection Flow
+
+```
+1. Connect:    ws://localhost:3000/ws/signals
+2. Receive:    {"type":"info","data":"Connected. Send JSON like ..."}
+3. Send:       {"streams":["bottomsUp","newPump"]}
+4. Receive:    {"type":"subscribed","data":{"streams":[...],"snapshots":[...]}}
+5. Receive:    {"type":"signalEvent","data":{...}}  (continuous stream)
+```
+
+#### Subscription Payloads
+
+Global streams:
+
+```json
+{ "streams": ["bottomsUp", "momentumGains"] }
+```
+
+All global streams:
+
+```json
+{ "stream": "all" }
+```
+
+Per-token chart health:
+
+```json
+{ "chartHealth": ["So11111111111111111111111111111111111111112"] }
+```
+
+Supported global stream names:
+- `bottomsUp`
+- `momentumGains`
+- `momentumStart`
+- `newPump`
+
+Each subscription reply includes the latest cached snapshot/state for the selected streams or chart-health tokens before live events begin.
 
 ---
 

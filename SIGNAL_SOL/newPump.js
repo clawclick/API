@@ -24,6 +24,7 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
+import { emitSignalEvent } from "./signalEmitter.js";
 import { API_HEADERS, BASE_URL } from "./runtimeConfig.js";
 
 // ===== CONFIG =====
@@ -438,6 +439,7 @@ async function run() {
         console.log(`🔥 Found ${freshSignals.length} fresh signals (1-180 minutes old):`);
         
         for (const token of topFreshSignals) {
+          emitSignalEvent("newPump", "signal_detected", token);
           console.log({
             ca: token.ca,
             name: token.name,
@@ -454,12 +456,30 @@ async function run() {
       } else {
         console.log("📭 No fresh signals found (1-180 minutes old)");
       }
+
+      emitSignalEvent("newPump", "scan_completed", {
+        uniqueAddresses: uniqueAddresses.length,
+        enrichedTokens: enrichedTokens.length,
+        passedFilters: filteredTokens2.length,
+        newSignals: newSignals.length,
+        freshSignals: freshSignals.length,
+      });
     } else {
       console.log("📭 No new signals found in this scan");
+      emitSignalEvent("newPump", "scan_completed", {
+        uniqueAddresses: uniqueAddresses.length,
+        enrichedTokens: enrichedTokens.length,
+        passedFilters: filteredTokens2.length,
+        newSignals: 0,
+        freshSignals: 0,
+      });
     }
     
   } catch (error) {
     console.error("❌ Run error:", error);
+    emitSignalEvent("newPump", "error", {
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
   
   console.timeEnd("run");
@@ -469,6 +489,10 @@ async function run() {
 // ===== STARTUP =====
 async function start() {
   console.log("🚀 Starting newPump discovery engine...");
+  emitSignalEvent("newPump", "status", {
+    status: "running",
+    running: true,
+  });
   console.log("📋 Config:", CONFIG);
   console.log("⏱ Age Filter: Only display tokens 1-180 minutes old");
   console.log("📊 Processing: ~100 tokens per scan with 500ms batch delays");
