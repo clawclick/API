@@ -716,6 +716,56 @@ export type XUserFollowersResponse = {
   providers: ProviderStatus[];
 };
 
+export type XKolVolumeResponse = {
+  endpoint: "xKolVolume";
+  status: "live" | "partial";
+  cached: boolean;
+  chain: string;
+  tweetUrl: string | null;
+  tweetId: string | null;
+  timeWindowMinutes: number;
+  searchQuery: string | null;
+  requestedTokenAddress: string | null;
+  requestedTokenName: string | null;
+  requestedSymbol: string | null;
+  matchedTweets: XPostItem[];
+  tweet: XPostItem | null;
+  contractAddresses: string[];
+  contractAddress: string | null;
+  token: {
+    name: string | null;
+    symbol: string | null;
+    priceUsd: number | null;
+    marketCapUsd: number | null;
+    liquidityUsd: number | null;
+    pairAddress: string | null;
+    dex: string | null;
+  } | null;
+  windows: {
+    beforeStartAt: string | null;
+    postAt: string | null;
+    afterEndAt: string | null;
+    beforeCount: number;
+    afterCount: number;
+  };
+  volume: {
+    beforeUsd: number | null;
+    afterUsd: number | null;
+    diffUsd: number | null;
+    diffPct: number | null;
+  };
+  price: {
+    beforePostUsd: number | null;
+    atPostUsd: number | null;
+    afterPostUsd: number | null;
+    athAfterPostUsd: number | null;
+    changeFromPostPct: number | null;
+    athFromPostPct: number | null;
+  };
+  error: string | null;
+  providers: ProviderStatus[];
+};
+
 export type FudSearchResponse = {
   endpoint: "fudSearch";
   status: "live" | "partial";

@@ -2,7 +2,7 @@
 
 A single Fastify server that aggregates 50+ crypto data providers behind clean REST endpoints (and one WebSocket stream). Designed for AI agents and trading bots.
 
-**Base URL:** `http://localhost:3000`
+**Base URL:** `http://api.claw.click`
 
 ---
 
@@ -80,6 +80,7 @@ npx tsx src/server.ts   # starts on port 3000
 | `/xUserByUsername` | GET | Look up an X user profile by username |
 | `/xUserLikes` | GET | Get liked X posts for a user |
 | `/xUserFollowers` | GET | Get followers for an X user |
+| `/xKolVolume` | GET | Analyze token volume and price impact around an X post |
 | `/admin/walletChart` | GET | Admin-only Zerion wallet balance chart with optional chain override |
 | `/walletReview` | GET | Wallet PnL, holdings, protocols, activity, approvals |
 | `/pnl` | GET | Focused wallet PnL summary by chain |
@@ -1229,6 +1230,14 @@ Get followers for an X user.
 
 ```
 GET /xUserFollowers?username=XDevelopers&maxResults=10
+```
+
+### `GET /xKolVolume`
+
+Analyze volume and price movement around an X post that mentions a contract address or token name or symbol or using the tweetUrl. Responses are cached in-memory for 6 hours.
+
+```http
+GET /xKolVolume?tweetUrl=https%3A%2F%2Fx.com%2FGemsofRa%2Fstatus%2F2033569275579937003&chain=base&timeWindowMinutes=60
 ```
 
 **Response:** normalized follower rows plus `nextToken` when another page exists.
@@ -2601,7 +2610,7 @@ Real-time launchpad token event stream via WebSocket. Streams new token launches
 #### Connection Flow
 
 ```
-1. Connect:    ws://localhost:3000/ws/launchpadEvents
+1. Connect:    ws://api.claw.click/ws/launchpadEvents
 2. Receive:    {"type": "info", "data": "Connected. Send a JSON message with your filter..."}
 3. Send:       {"protocol": "PumpDotFun", "eventType": "Created"}
 4. Receive:    {"type": "subscribed", "data": {"filter": {...}}}
@@ -2692,7 +2701,7 @@ Send `{}` (empty object) to receive all events across all protocols.
 
 ```javascript
 const WebSocket = require('ws');
-const ws = new WebSocket('ws://localhost:3000/ws/launchpadEvents');
+const ws = new WebSocket('ws://api.claw.click/ws/launchpadEvents');
 
 ws.on('message', (data) => {
   const msg = JSON.parse(data);
@@ -2719,7 +2728,7 @@ Authentication:
 #### Connection Flow
 
 ```
-1. Connect:    ws://localhost:3000/ws/agentStats?adminKey=...
+1. Connect:    ws://api.claw.click/ws/agentStats?adminKey=...
 2. Receive:    {"type":"info","data":"Connected. Send JSON ..."}
 3. Send:       {"agentId":"scanner-alpha"}
 4. Receive:    {"type":"subscribed","data":{"agentIds":["scanner-alpha"],"snapshots":[...]}}
@@ -2767,7 +2776,7 @@ Live SIGNAL_SOL worker stream over WebSocket. The web dyno reads live events fro
 #### Connection Flow
 
 ```
-1. Connect:    ws://localhost:3000/ws/signals
+1. Connect:    ws://api.claw.click/ws/signals
 2. Receive:    {"type":"info","data":"Connected. Send JSON like ..."}
 3. Send:       {"streams":["bottomsUp","newPump"]}
 4. Receive:    {"type":"subscribed","data":{"streams":[...],"snapshots":[...]}}
@@ -2811,11 +2820,12 @@ Real-time X filtered stream proxy over WebSocket.
 #### Connection Flow
 
 ```
-1. Connect:    ws://localhost:3000/ws/xFilteredStream
+1. Connect:    ws://api.claw.click/ws/xFilteredStream
 2. Receive:    {"type":"info","data":"Connected. Send JSON like ..."}
 3. Send:       {"rules":[{"value":"bitcoin lang:en -is:retweet","tag":"btc"}]}
 4. Receive:    {"type":"subscribed","data":{"rules":[...]}}
-5. Receive:    {"type":"post","data":{...}}  (continuous stream)
+5. Receive:    {"type":"backfill","data":{"posts":[...]}}  (optional, if requested)
+6. Receive:    {"type":"post","data":{...}}  (continuous stream)
 ```
 
 #### Subscription Payload
@@ -2824,7 +2834,8 @@ Real-time X filtered stream proxy over WebSocket.
 {
   "rules": [
     { "value": "bitcoin lang:en -is:retweet", "tag": "btc" }
-  ]
+  ],
+  "backfillMinutes": 30
 }
 ```
 
@@ -2850,6 +2861,21 @@ or
 ```
 
 User subscriptions are converted into X stream rules like `from:XDevelopers -is:reply -is:retweet`.
+
+If you include `backfillMinutes`, the websocket sends a one-time `backfill` message right after `subscribed` with recent matching posts before continuing with live `post` events:
+
+```json
+{
+  "type": "backfill",
+  "data": {
+    "backfillMinutes": 30,
+    "count": 12,
+    "partial": false,
+    "failedRules": [],
+    "posts": [{ "...": "..." }]
+  }
+}
+```
 
 ---
 
@@ -2929,7 +2955,7 @@ Copy `.env.example` to `.env` and fill in the keys you have. The API works with 
 | `SIM_API_KEY` | tokenHolders (EVM only) |
 | `LUNARCRUSH_API_KEY` | marketOverview (sentiment) |
 | `REDDIT_CLIENT_ID` + `SECRET` + `USER_AGENT` | fudSearch, marketOverview |
-| `X_BEARER_TOKEN` | fudSearch, marketOverview, xSearch, xCountRecent, xUserByUsername, xUserLikes, xUserFollowers, ws/xFilteredStream |
+| `X_BEARER_TOKEN` | fudSearch, marketOverview, xSearch, xCountRecent, xUserByUsername, xUserLikes, xUserFollowers, xKolVolume, ws/xFilteredStream |
 | `TELEGRAM_BOT_TOKEN` | fudSearch |
 | `BUBBLEMAPS_API_KEY` | holderAnalysis |
 | `QUICKINTEL_API_KEY` | isScam, fullAudit |

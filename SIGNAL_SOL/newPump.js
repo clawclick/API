@@ -424,16 +424,16 @@ async function run() {
     });
     
     const uniqueAddresses = [...tokenDataMap.keys()];
-    // console.log(`📊 Found ${uniqueAddresses.length} unique Solana tokens to analyze`);
+    console.log(`📊 Found ${uniqueAddresses.length} unique Solana tokens to analyze`);
     
     // Process tokens in batches
-    // console.log("📈 Enriching token data...");
+    console.log("📈 Enriching token data...");
     const enrichedTokens = await processTokens(uniqueAddresses, tokenDataMap);
-    // console.log(`✅ Successfully enriched ${enrichedTokens.length} tokens`);
+    console.log(`✅ Successfully enriched ${enrichedTokens.length} tokens`);
     
     // Apply filters
     const filteredTokens2 = applyFilters(enrichedTokens);
-    // console.log(`🔍 ${filteredTokens2.length} tokens passed filters`);
+    console.log(`🔍 ${filteredTokens2.length} tokens passed filters`);
     
     // Rank tokens
     const rankedTokens = rankTokens(filteredTokens2);
@@ -441,10 +441,10 @@ async function run() {
     // Remove previously seen tokens
     const newSignals = deduplicateTokens(rankedTokens);
     
-    // console.log(`🆕 Found ${newSignals.length} new signals`);
+    console.log(`🆕 Found ${newSignals.length} new signals`);
     
     if (newSignals.length > 0) {
-      // console.log("\n🎯 === TOP NEW SIGNALS ===");
+      console.log("\n🎯 === TOP NEW SIGNALS ===");
       
       // Filter by age at display time - only show tokens 1-180 minutes old
       const freshSignals = newSignals
@@ -461,7 +461,7 @@ async function run() {
       
       if (freshSignals.length > 0) {
         const topFreshSignals = freshSignals.slice(0, 10);
-        // console.log(`🔥 Found ${freshSignals.length} fresh signals (1-180 minutes old):`);
+        console.log(`🔥 Found ${freshSignals.length} fresh signals (1-180 minutes old):`);
         
         for (const token of topFreshSignals) {
           emitSignalEvent("newPump", "signal_detected", token);

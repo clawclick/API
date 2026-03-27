@@ -467,6 +467,20 @@ export const x402PaidRouteCatalog: readonly X402PaidRouteSpec[] = [
     rationale: "High-value social graph lookup that fits the paid X bundle.",
   },
   {
+    routeId: "GET /xKolVolume",
+    method: "GET",
+    path: "/xKolVolume",
+    endpointName: "xKolVolume",
+    family: "x",
+    accessPolicy: "payment_fallback",
+    priceUsd: "$0.0049",
+    description: "Analyze token volume and price movement around an X post",
+    mimeType: "application/json",
+    tier: "standard",
+    rolloutPhase: 1,
+    rationale: "Combines X lookup and token market history, so it belongs in the paid social intelligence bundle.",
+  },
+  {
     routeId: "POST /tokenScreener",
     method: "POST",
     path: "/tokenScreener",
@@ -908,6 +922,7 @@ function getBazaarCategory(spec: X402PaidRouteSpec): string {
     case "xUserByUsername":
     case "xUserLikes":
     case "xUserFollowers":
+    case "xKolVolume":
       return "social";
     case "isScam":
     case "fullAudit":
@@ -943,7 +958,8 @@ function getBazaarTags(spec: X402PaidRouteSpec): string[] {
     || spec.endpointName === "xCountRecent"
     || spec.endpointName === "xUserByUsername"
     || spec.endpointName === "xUserLikes"
-    || spec.endpointName === "xUserFollowers";
+    || spec.endpointName === "xUserFollowers"
+    || spec.endpointName === "xKolVolume";
 
   if (!isSentimentRoute) {
     tags.add("defi");
@@ -1018,6 +1034,7 @@ function getBazaarTags(spec: X402PaidRouteSpec): string[] {
     case "xUserByUsername":
     case "xUserLikes":
     case "xUserFollowers":
+    case "xKolVolume":
       tags.add("social");
       tags.add("profiles");
       break;

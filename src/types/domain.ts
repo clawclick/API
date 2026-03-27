@@ -33,6 +33,7 @@ export type EndpointName =
   | "xUserByUsername"
   | "xUserLikes"
   | "xUserFollowers"
+  | "xKolVolume"
   | "filterTokens"
   | "filterWallets"
   | "tokenWallets"

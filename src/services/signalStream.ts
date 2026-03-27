@@ -71,7 +71,11 @@ function normalizeSubscriptions(raw: unknown): {
     .filter(Boolean);
 
   if (!allGlobals && globalStreams.length === 0 && chartHealthTokens.length === 0) {
-    throw new Error("Subscribe to one or more global streams, chartHealth tokens, or use stream=all.");
+    return {
+      allGlobals: true,
+      globalStreams: [...GLOBAL_SIGNAL_STREAMS],
+      chartHealthTokens: [],
+    };
   }
 
   if (chartHealthTokens.length > 100) {

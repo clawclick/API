@@ -92,6 +92,18 @@ export const xUserFollowersSchema = z.object({
   message: "Provide username or userId.",
 });
 
+export const xKolVolumeSchema = z.object({
+  tweetUrl: z.string().url().optional(),
+  tokenAddress: z.string().min(1).optional(),
+  tokenName: z.string().min(1).optional(),
+  symbol: z.string().min(1).optional(),
+  chain: z.string().min(1).default("base"),
+  timeWindowMinutes: z.coerce.number().int().min(1).max(24 * 60).default(60),
+  maxResults: z.coerce.number().int().min(1).max(25).default(10),
+}).refine((value) => Boolean(value.tweetUrl || value.tokenAddress || value.tokenName || value.symbol), {
+  message: "Provide tweetUrl, tokenAddress, tokenName, or symbol.",
+});
+
 export const pnlSchema = z.object({
   chain: z.string().min(1).default("eth"),
   walletAddress: z.string().min(1),
@@ -176,6 +188,7 @@ export type XCountRecentQuery = z.output<typeof xCountRecentSchema>;
 export type XUserByUsernameQuery = z.output<typeof xUserByUsernameSchema>;
 export type XUserLikesQuery = z.output<typeof xUserLikesSchema>;
 export type XUserFollowersQuery = z.output<typeof xUserFollowersSchema>;
+export type XKolVolumeQuery = z.output<typeof xKolVolumeSchema>;
 export type PnlQuery = z.output<typeof pnlSchema>;
 export type TokenScreenerQuery = z.output<typeof tokenScreenerSchema>;
 export type AddressRelatedWalletsQuery = z.output<typeof addressRelatedWalletsSchema>;

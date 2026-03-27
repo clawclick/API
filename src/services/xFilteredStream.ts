@@ -2,6 +2,7 @@ import { getRequiredEnv } from "#config/env";
 import {
   isXConfigured,
   listFilteredStreamRules,
+  searchRecentPosts,
   updateFilteredStreamRules,
 } from "#providers/sentiment/x";
 import type { XPostItem } from "#types/api";
@@ -22,6 +23,9 @@ type ClientConfig = {
 type ClientState = {
   socket: WebSocket;
   ruleKeys: Set<string>;
+  hydratingBackfill: boolean;
+  bufferedPosts: XPostItem[];
+  bufferedPostIds: Set<string>;
 };
 
 type ManagedRule = {
@@ -65,6 +69,7 @@ type XStreamEnvelope = {
 };
 
 const STREAM_URL = "https://api.x.com/2/tweets/search/stream";
+const MAX_BACKFILL_MINUTES = 24 * 60;
 const clients = new Map<WebSocket, ClientState>();
 const managedRules = new Map<string, ManagedRule>();
 let upstreamAbort: AbortController | null = null;
@@ -79,6 +84,125 @@ function send(socket: WebSocket, payload: unknown): void {
   if (socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
+}
+
+function mapSearchPost(
+  post: {
+    id?: string;
+    text?: string;
+    created_at?: string;
+    author_id?: string;
+    public_metrics?: {
+      like_count?: number;
+      retweet_count?: number;
+      reply_count?: number;
+      impression_count?: number;
+      quote_count?: number;
+      bookmark_count?: number;
+    };
+  },
+  users: Array<{
+    id: string;
+    name?: string;
+    username?: string;
+    verified?: boolean;
+    public_metrics?: {
+      followers_count?: number;
+    };
+  }> | undefined,
+): XPostItem | null {
+  if (!post.id) {
+    return null;
+  }
+
+  const userMap = new Map((users ?? []).map((user) => [user.id, user]));
+  const user = post.author_id ? userMap.get(post.author_id) : undefined;
+
+  return {
+    id: post.id,
+    text: post.text ?? "",
+    createdAt: post.created_at ?? null,
+    authorId: post.author_id ?? null,
+    authorName: user?.name ?? null,
+    authorUsername: user?.username ?? null,
+    authorVerified: user?.verified ?? null,
+    authorFollowers: user?.public_metrics?.followers_count ?? null,
+    url: user?.username ? `https://x.com/${user.username}/status/${post.id}` : null,
+    metrics: {
+      likes: post.public_metrics?.like_count ?? null,
+      replies: post.public_metrics?.reply_count ?? null,
+      reposts: post.public_metrics?.retweet_count ?? null,
+      quotes: post.public_metrics?.quote_count ?? null,
+      bookmarks: post.public_metrics?.bookmark_count ?? null,
+      impressions: post.public_metrics?.impression_count ?? null,
+    },
+  };
+}
+
+function normalizeBackfillMinutes(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(Math.max(Math.floor(value ?? 0), 0), MAX_BACKFILL_MINUTES);
+}
+
+function postTimestamp(post: XPostItem): number {
+  if (!post.createdAt) {
+    return 0;
+  }
+
+  const parsed = Date.parse(post.createdAt);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function fetchBackfillPosts(
+  rules: Array<{ value: string; tag?: string }>,
+  backfillMinutes: number,
+): Promise<{
+  posts: XPostItem[];
+  partial: boolean;
+  failedRules: Array<{ value: string; tag?: string; error: string }>;
+}> {
+  if (backfillMinutes <= 0 || rules.length === 0) {
+    return { posts: [], partial: false, failedRules: [] };
+  }
+
+  const cutoff = Date.now() - backfillMinutes * 60 * 1000;
+  const postsById = new Map<string, XPostItem>();
+  const failedRules: Array<{ value: string; tag?: string; error: string }> = [];
+
+  for (const rule of rules) {
+    try {
+      const result = await searchRecentPosts(rule.value, 100);
+      for (const post of result.data ?? []) {
+        const mapped = mapSearchPost(post, result.includes?.users);
+        if (!mapped) {
+          continue;
+        }
+
+        const createdAt = postTimestamp(mapped);
+        if (createdAt < cutoff) {
+          continue;
+        }
+
+        postsById.set(mapped.id, mapped);
+      }
+    } catch (error) {
+      failedRules.push({
+        value: rule.value,
+        tag: rule.tag,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const posts = [...postsById.values()].sort((left, right) => postTimestamp(left) - postTimestamp(right));
+  return {
+    posts,
+    partial: failedRules.length > 0,
+    failedRules,
+  };
 }
 
 function normalizeUsername(value: string): string {
@@ -282,6 +406,14 @@ async function startUpstream(): Promise<void> {
           });
 
           if (shouldSend) {
+            if (client.hydratingBackfill) {
+              if (!client.bufferedPostIds.has(post.id)) {
+                client.bufferedPostIds.add(post.id);
+                client.bufferedPosts.push(post);
+              }
+              continue;
+            }
+
             send(client.socket, { type: "post", data: post });
           }
         }
@@ -358,6 +490,12 @@ async function applyClientConfig(socket: WebSocket, config: ClientConfig): Promi
   await deleteRules(ruleIdsToDelete);
 
   state.ruleKeys = nextKeys;
+  state.hydratingBackfill = false;
+  state.bufferedPosts = [];
+  state.bufferedPostIds.clear();
+
+  const appliedBackfillMinutes = normalizeBackfillMinutes(config.backfillMinutes);
+
   send(socket, {
     type: "subscribed",
     data: {
@@ -365,11 +503,43 @@ async function applyClientConfig(socket: WebSocket, config: ClientConfig): Promi
         const rule = managedRules.get(key);
         return { value: rule?.value ?? null, tag: rule?.tag ?? null, id: rule?.id ?? null };
       }),
-      backfillMinutes: config.backfillMinutes ?? null,
+      backfillMinutes: appliedBackfillMinutes || null,
     },
   });
 
+  state.hydratingBackfill = appliedBackfillMinutes > 0;
   await ensureUpstream();
+
+  if (!state.hydratingBackfill) {
+    return;
+  }
+
+  const { posts, partial, failedRules } = await fetchBackfillPosts(configRules, appliedBackfillMinutes);
+  if (!clients.has(socket)) {
+    return;
+  }
+
+  send(socket, {
+    type: "backfill",
+    data: {
+      backfillMinutes: appliedBackfillMinutes,
+      count: posts.length,
+      partial,
+      failedRules,
+      posts,
+    },
+  });
+
+  const backfillIds = new Set(posts.map((post) => post.id));
+  for (const post of state.bufferedPosts) {
+    if (!backfillIds.has(post.id)) {
+      send(socket, { type: "post", data: post });
+    }
+  }
+
+  state.hydratingBackfill = false;
+  state.bufferedPosts = [];
+  state.bufferedPostIds.clear();
 }
 
 async function removeClient(socket: WebSocket): Promise<void> {
@@ -400,7 +570,13 @@ async function removeClient(socket: WebSocket): Promise<void> {
 }
 
 export function handleXFilteredStreamClient(socket: WebSocket): void {
-  clients.set(socket, { socket, ruleKeys: new Set() });
+  clients.set(socket, {
+    socket,
+    ruleKeys: new Set(),
+    hydratingBackfill: false,
+    bufferedPosts: [],
+    bufferedPostIds: new Set(),
+  });
 
   send(socket, {
     type: "info",

@@ -105,6 +105,19 @@ export type XPaginatedUsersResponse = {
   };
 };
 
+export type XPostLookupResponse = {
+  data?: XPost;
+  includes?: {
+    users?: XUser[];
+  };
+  errors?: Array<{
+    detail?: string;
+    status?: number;
+    title?: string;
+    type?: string;
+  }>;
+};
+
 export type XStreamRule = {
   id?: string;
   value?: string;
@@ -177,6 +190,18 @@ export async function getUserByUsername(username: string): Promise<XUserLookupRe
   });
 
   return requestJson<XUserLookupResponse>(`https://api.x.com/2/users/by/username/${encodeURIComponent(username)}?${params.toString()}`, {
+    headers: getHeaders(),
+  });
+}
+
+export async function getPostById(postId: string): Promise<XPostLookupResponse> {
+  const params = new URLSearchParams({
+    "tweet.fields": "created_at,public_metrics,author_id",
+    expansions: "author_id",
+    "user.fields": "username,name,public_metrics,verified",
+  });
+
+  return requestJson<XPostLookupResponse>(`https://api.x.com/2/tweets/${encodeURIComponent(postId)}?${params.toString()}`, {
     headers: getHeaders(),
   });
 }

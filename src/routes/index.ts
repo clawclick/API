@@ -37,8 +37,8 @@ import { listStrategies, getStrategy } from "#services/strategies";
 import { scanVolatility } from "#services/volatilityScanner";
 import { getPriceHistoryIndicators } from "#services/indicators";
 import { getRateMyEntry } from "#services/rateMyEntry";
-import { getXCountRecent, getXSearch, getXUserByUsernameData, getXUserFollowersData, getXUserLikesData } from "#services/x";
-import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, signalSolChartHealthSchema, signalSolTokenSchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
+import { getXCountRecent, getXKolVolumeData, getXSearch, getXUserByUsernameData, getXUserFollowersData, getXUserLikesData } from "#services/x";
+import { addressRelatedWalletsSchema, approveSchema, apiKeyDeleteSchema, apiKeyGenerateSchema, detailedTokenStatsSchema, filterTokensSchema, fudSearchSchema, gasFeedSchema, getTopEthTokensSchema, holdersSchema, jupiterDcasSchema, marketOverviewSchema, nansenPresetCatalogSchema, newPairsSchema, parseQuery, pnlSchema, priceHistorySchema, priceHistoryIndicatorsSchema, rateMyEntrySchema, signalSolChartHealthSchema, signalSolTokenSchema, smartMoneyNetflowSchema, statsAgentsSchema, statsUserSchema, swapDexesSchema, swapQuoteSchema, swapSchema, tokenHoldersSchema, tokenQuerySchema, tokenScreenerSchema, tokenSearchSchema, topTradersSchema, walletChartSchema, walletReviewSchema, unwrapSchema, volatilityScannerSchema, xCountRecentSchema, xKolVolumeSchema, xSearchSchema, xUserByUsernameSchema, xUserFollowersSchema, xUserLikesSchema } from "#routes/helpers";
 import { recordSwapVolume } from "#services/apiRuntime";
 
 type SignalSolHeaders = Record<string, string | string[] | undefined>;
@@ -191,6 +191,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get("/xUserByUsername", async (request) => getXUserByUsernameData(parseQuery(xUserByUsernameSchema, request.query)));
   app.get("/xUserLikes", async (request) => getXUserLikesData(parseQuery(xUserLikesSchema, request.query)));
   app.get("/xUserFollowers", async (request) => getXUserFollowersData(parseQuery(xUserFollowersSchema, request.query)));
+  app.get("/xKolVolume", async (request) => getXKolVolumeData(parseQuery(xKolVolumeSchema, request.query)));
   app.get("/admin/walletChart", async (request) => getWalletChart(parseQuery(walletChartSchema, request.query)));
   app.get("/walletReview", async (request) => getWalletReview(parseQuery(walletReviewSchema, request.query)));
   app.get("/pnl", async (request) => getPnl(parseQuery(pnlSchema, request.query)));
