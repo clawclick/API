@@ -72,7 +72,17 @@ function clearPingTimer(subscription: ClientSubscription): void {
   }
 }
 
-function cleanupClient(socket: WebSocket): void {
+function hasActiveSubscriptions(): boolean {
+  for (const subscription of clients.values()) {
+    if (subscription.tokenAddresses.size > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function cleanupClient(socket: WebSocket): Promise<void> {
   const subscription = clients.get(socket);
   if (!subscription) {
     return;
@@ -81,6 +91,7 @@ function cleanupClient(socket: WebSocket): void {
   clearRefreshTimer(subscription);
   clearPingTimer(subscription);
   clients.delete(socket);
+  await maybeStopChartHealthSubscriber();
 }
 
 function ensureClientPing(socket: WebSocket, subscription: ClientSubscription): void {
@@ -113,6 +124,16 @@ async function ensureChartHealthSubscriber(): Promise<void> {
   });
 }
 
+async function maybeStopChartHealthSubscriber(): Promise<void> {
+  if (!unsubscribeSignalEvents || hasActiveSubscriptions()) {
+    return;
+  }
+
+  const unsubscribe = unsubscribeSignalEvents;
+  unsubscribeSignalEvents = null;
+  await unsubscribe();
+}
+
 async function refreshChartHealthTokens(tokens: Iterable<string>): Promise<void> {
   await Promise.all(
     [...tokens].map((tokenAddress) => touchChartHealthInterest(tokenAddress, undefined, getChartHealthWsTtlMs())),
@@ -133,6 +154,7 @@ async function setClientSubscription(socket: WebSocket, tokenAddresses: string[]
   clients.set(socket, next);
   ensureClientPing(socket, next);
 
+  await ensureChartHealthSubscriber();
   await refreshChartHealthTokens(next.tokenAddresses);
   next.refreshTimer = setInterval(() => {
     void refreshChartHealthTokens(next.tokenAddresses);
@@ -156,8 +178,6 @@ export async function handleChartHealthStreamClient(socket: WebSocket): Promise<
     socket.close(1011, "redis_not_configured");
     return;
   }
-
-  await ensureChartHealthSubscriber();
 
   const initialSubscription: ClientSubscription = {
     tokenAddresses: new Set(),
@@ -197,10 +217,10 @@ export async function handleChartHealthStreamClient(socket: WebSocket): Promise<
   });
 
   socket.on("close", () => {
-    cleanupClient(socket);
+    void cleanupClient(socket);
   });
 
   socket.on("error", () => {
-    cleanupClient(socket);
+    void cleanupClient(socket);
   });
 }

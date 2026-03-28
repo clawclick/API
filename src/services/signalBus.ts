@@ -49,10 +49,12 @@ const REDIS_URL = getOptionalEnv(
   getOptionalEnv("REDISCLOUD", getOptionalEnv("REDISCLOUD_URL")),
 );
 const SIGNAL_PUBSUB_CHANNEL = "signals:pubsub";
+const GLOBAL_SIGNAL_ACTIVE_SET_KEY = "signals:global:active_streams";
 const CHART_HEALTH_ACTIVE_SET_KEY = "signals:chartHealth:active_tokens";
 const SIGNAL_RECENT_LIMIT = Number(getOptionalEnv("SIGNAL_RECENT_LIMIT", "25"));
 const SIGNAL_STREAM_MAXLEN = Number(getOptionalEnv("SIGNAL_STREAM_MAXLEN", "1000"));
 const CHART_HEALTH_TTL_MS = Number(getOptionalEnv("SIGNAL_CHART_HEALTH_TTL_MS", String(15 * 60 * 1000)));
+const GLOBAL_SIGNAL_WS_TTL_MS = Number(getOptionalEnv("SIGNAL_GLOBAL_WS_TTL_MS", "15000"));
 const CHART_HEALTH_WS_TTL_MS = Number(getOptionalEnv("SIGNAL_CHART_HEALTH_WS_TTL_MS", "15000"));
 
 type RedisConnection = ReturnType<typeof createClient>;
@@ -110,6 +112,10 @@ function buildEmptyState(
 
 function clampRecent<T>(items: T[]): T[] {
   return items.slice(Math.max(0, items.length - SIGNAL_RECENT_LIMIT));
+}
+
+function isGlobalSignalStream(value: string): value is GlobalSignalStream {
+  return (GLOBAL_SIGNAL_STREAMS as readonly string[]).includes(value);
 }
 
 function getLatestKey(stream: SignalStream, scope: SignalScope, tokenAddress?: string): string {
@@ -294,6 +300,10 @@ export function getChartHealthInterestTtlMs(): number {
   return CHART_HEALTH_TTL_MS;
 }
 
+export function getGlobalSignalWsTtlMs(): number {
+  return GLOBAL_SIGNAL_WS_TTL_MS;
+}
+
 export function getChartHealthWsTtlMs(): number {
   return CHART_HEALTH_WS_TTL_MS;
 }
@@ -365,6 +375,37 @@ export async function touchChartHealthInterest(
   };
   await writeLatestState(next);
   return next;
+}
+
+export async function touchGlobalSignalInterest(
+  stream: GlobalSignalStream,
+  ttlMs = GLOBAL_SIGNAL_WS_TTL_MS,
+): Promise<SignalLatestState> {
+  const client = await getCommandClient();
+  const expiresAtMs = Date.now() + ttlMs;
+  await client.zAdd(GLOBAL_SIGNAL_ACTIVE_SET_KEY, [{ score: expiresAtMs, value: stream }]);
+
+  const previous = await getGlobalSignalState(stream);
+  const next: SignalLatestState = {
+    ...previous,
+    stream,
+    scope: "global",
+    updatedAt: previous.updatedAt ?? new Date().toISOString(),
+    meta: {
+      ...previous.meta,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    },
+  };
+  await writeLatestState(next);
+  return next;
+}
+
+export async function getActiveGlobalSignalStreams(nowMs = Date.now()): Promise<GlobalSignalStream[]> {
+  const client = await getCommandClient();
+  await client.zRemRangeByScore(GLOBAL_SIGNAL_ACTIVE_SET_KEY, 0, nowMs);
+
+  const streams = await client.zRangeByScore(GLOBAL_SIGNAL_ACTIVE_SET_KEY, nowMs, "+inf");
+  return streams.filter(isGlobalSignalStream);
 }
 
 export async function getActiveChartHealthTokens(nowMs = Date.now()): Promise<string[]> {

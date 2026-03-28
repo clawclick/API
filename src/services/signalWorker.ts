@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 
 import { runtimeEnv } from "#config/env";
 import {
-  GLOBAL_SIGNAL_STREAMS,
   closeSignalBus,
   getActiveChartHealthTokens,
+  getActiveGlobalSignalStreams,
   isSignalRedisConfigured,
   publishSignalEvent,
   type GlobalSignalStream,
@@ -20,7 +20,7 @@ const SIGNAL_EVENT_PREFIX = "__SIGNAL_SOL_EVENT__";
 const DEFAULT_SIGNAL_SOL_BASE_URL = `http://127.0.0.1:${runtimeEnv.port}`;
 const GLOBAL_RESTART_DELAY_MS = 3_000;
 const CHART_HEALTH_RESTART_DELAY_MS = 5_000;
-const CHART_HEALTH_RECONCILE_INTERVAL_MS = 15_000;
+const WORKER_RECONCILE_INTERVAL_MS = 5_000;
 
 type ManagedChild = {
   key: string;
@@ -39,17 +39,10 @@ const GLOBAL_SCRIPT_CONFIG: Record<GlobalSignalStream, string> = {
   newPump: "newPump.js",
 };
 
-const WORKER_AUTOSTART_STREAMS = [
-  "bottomsUp",
-  "momentumGains",
-  "momentumStart",
-  "newPump",
-] as const;
-
 const globalChildren = new Map<GlobalSignalStream, ManagedChild>();
 const chartHealthChildren = new Map<string, ManagedChild>();
 const chartHealthRestartTimers = new Map<string, NodeJS.Timeout>();
-let chartHealthReconcileTimer: NodeJS.Timeout | null = null;
+let reconcileTimer: NodeJS.Timeout | null = null;
 let shuttingDown = false;
 
 function buildSignalSolEnv(): NodeJS.ProcessEnv {
@@ -179,7 +172,15 @@ function scheduleGlobalRestart(stream: GlobalSignalStream): void {
 
   existing.restartTimer = setTimeout(() => {
     existing.restartTimer = null;
-    void startGlobalChild(stream);
+    void getActiveGlobalSignalStreams()
+      .then(async (activeStreams) => {
+        if (activeStreams.includes(stream)) {
+          await startGlobalChild(stream);
+        }
+      })
+      .catch((error) => {
+        console.error("[signal-worker] Global restart reconcile failed:", error);
+      });
   }, GLOBAL_RESTART_DELAY_MS);
   existing.restartTimer.unref?.();
 }
@@ -244,12 +245,17 @@ function scheduleChartHealthRestart(tokenAddress: string): void {
     return;
   }
 
-  const timer = setTimeout(async () => {
+  const timer = setTimeout(() => {
     chartHealthRestartTimers.delete(tokenAddress);
-    const activeTokens = await getActiveChartHealthTokens();
-    if (activeTokens.includes(tokenAddress)) {
-      await startChartHealthChild(tokenAddress);
-    }
+    void getActiveChartHealthTokens()
+      .then(async (activeTokens) => {
+        if (activeTokens.includes(tokenAddress)) {
+          await startChartHealthChild(tokenAddress);
+        }
+      })
+      .catch((error) => {
+        console.error("[signal-worker] Chart health restart reconcile failed:", error);
+      });
   }, CHART_HEALTH_RESTART_DELAY_MS);
   timer.unref?.();
   chartHealthRestartTimers.set(tokenAddress, timer);
@@ -342,31 +348,51 @@ async function reconcileChartHealthChildren(): Promise<void> {
   }
 }
 
+async function reconcileGlobalChildren(): Promise<void> {
+  const activeStreams = new Set(await getActiveGlobalSignalStreams());
+
+  for (const stream of activeStreams) {
+    if (!globalChildren.has(stream)) {
+      await startGlobalChild(stream);
+    }
+  }
+
+  for (const [stream, childInfo] of globalChildren) {
+    if (activeStreams.has(stream)) {
+      continue;
+    }
+
+    childInfo.stopping = true;
+    childInfo.child.kill("SIGTERM");
+    globalChildren.delete(stream);
+  }
+}
+
 export async function startSignalWorker(): Promise<void> {
   if (!isSignalRedisConfigured()) {
     throw new Error("REDIS_URL is required before starting the signal worker.");
   }
 
-  console.log("[signal-worker] Starting global SIGNAL_SOL workers...");
-  for (const stream of WORKER_AUTOSTART_STREAMS) {
-    await startGlobalChild(stream);
-  }
-
+  console.log("[signal-worker] Starting SIGNAL_SOL worker in listener-driven mode...");
+  await reconcileGlobalChildren();
   await reconcileChartHealthChildren();
-  chartHealthReconcileTimer = setInterval(() => {
-    void reconcileChartHealthChildren().catch((error) => {
-      console.error("[signal-worker] Chart health reconcile failed:", error);
+  reconcileTimer = setInterval(() => {
+    void Promise.all([
+      reconcileGlobalChildren(),
+      reconcileChartHealthChildren(),
+    ]).catch((error) => {
+      console.error("[signal-worker] Reconcile failed:", error);
     });
-  }, CHART_HEALTH_RECONCILE_INTERVAL_MS);
-  chartHealthReconcileTimer.unref?.();
+  }, WORKER_RECONCILE_INTERVAL_MS);
+  reconcileTimer.unref?.();
 }
 
 export async function stopSignalWorker(): Promise<void> {
   shuttingDown = true;
 
-  if (chartHealthReconcileTimer) {
-    clearInterval(chartHealthReconcileTimer);
-    chartHealthReconcileTimer = null;
+  if (reconcileTimer) {
+    clearInterval(reconcileTimer);
+    reconcileTimer = null;
   }
 
   for (const childInfo of globalChildren.values()) {

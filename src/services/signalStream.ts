@@ -3,8 +3,10 @@ import WebSocket from "ws";
 import {
   GLOBAL_SIGNAL_STREAMS,
   getGlobalSignalState,
+  getGlobalSignalWsTtlMs,
   isSignalRedisConfigured,
   subscribeToSignalEvents,
+  touchGlobalSignalInterest,
   type GlobalSignalStream,
   type SignalEvent,
 } from "#services/signalBus";
@@ -12,6 +14,7 @@ import {
 type ClientSubscription = {
   globalStreams: Set<GlobalSignalStream>;
   allGlobals: boolean;
+  refreshTimer: NodeJS.Timeout | null;
   pingTimer: NodeJS.Timeout | null;
 };
 
@@ -21,6 +24,7 @@ type SubscriptionMessage = {
 
 const clients = new Map<WebSocket, ClientSubscription>();
 const CLIENT_PING_INTERVAL_MS = 25 * 1000;
+const GLOBAL_SIGNAL_TOUCH_INTERVAL_MS = Math.max(5_000, Math.floor(getGlobalSignalWsTtlMs() / 2));
 let unsubscribeSignalEvents: (() => Promise<void>) | null = null;
 
 function send(socket: WebSocket, payload: unknown): void {
@@ -78,14 +82,33 @@ function clearPingTimer(subscription: ClientSubscription): void {
   }
 }
 
-function cleanupClient(socket: WebSocket): void {
+function clearRefreshTimer(subscription: ClientSubscription): void {
+  if (subscription.refreshTimer) {
+    clearInterval(subscription.refreshTimer);
+    subscription.refreshTimer = null;
+  }
+}
+
+function hasActiveSubscriptions(): boolean {
+  for (const subscription of clients.values()) {
+    if (subscription.allGlobals || subscription.globalStreams.size > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function cleanupClient(socket: WebSocket): Promise<void> {
   const subscription = clients.get(socket);
   if (!subscription) {
     return;
   }
 
+  clearRefreshTimer(subscription);
   clearPingTimer(subscription);
   clients.delete(socket);
+  await maybeStopSignalSubscriber();
 }
 
 function ensureClientPing(socket: WebSocket, subscription: ClientSubscription): void {
@@ -118,19 +141,46 @@ async function ensureSignalSubscriber(): Promise<void> {
   });
 }
 
+async function maybeStopSignalSubscriber(): Promise<void> {
+  if (!unsubscribeSignalEvents || hasActiveSubscriptions()) {
+    return;
+  }
+
+  const unsubscribe = unsubscribeSignalEvents;
+  unsubscribeSignalEvents = null;
+  await unsubscribe();
+}
+
+async function refreshGlobalSignalStreams(streams: Iterable<GlobalSignalStream>): Promise<void> {
+  await Promise.all(
+    [...streams].map((stream) => touchGlobalSignalInterest(stream, getGlobalSignalWsTtlMs())),
+  );
+}
+
 async function setClientSubscription(
   socket: WebSocket,
   parsed: ReturnType<typeof normalizeSubscriptions>,
 ): Promise<void> {
   const previous = clients.get(socket);
+  if (previous) {
+    clearRefreshTimer(previous);
+  }
 
   const next: ClientSubscription = {
     globalStreams: new Set(parsed.globalStreams),
     allGlobals: parsed.allGlobals,
+    refreshTimer: null,
     pingTimer: previous?.pingTimer ?? null,
   };
   clients.set(socket, next);
   ensureClientPing(socket, next);
+
+  await ensureSignalSubscriber();
+  await refreshGlobalSignalStreams(next.globalStreams);
+  next.refreshTimer = setInterval(() => {
+    void refreshGlobalSignalStreams(next.globalStreams);
+  }, GLOBAL_SIGNAL_TOUCH_INTERVAL_MS);
+  next.refreshTimer.unref?.();
 
   const globalSnapshots = parsed.globalStreams.length > 0
     ? await Promise.all(parsed.globalStreams.map((stream) => getGlobalSignalState(stream)))
@@ -154,11 +204,10 @@ export async function handleSignalStreamClient(socket: WebSocket): Promise<void>
     return;
   }
 
-  await ensureSignalSubscriber();
-
   const initialSubscription: ClientSubscription = {
     globalStreams: new Set(),
     allGlobals: false,
+    refreshTimer: null,
     pingTimer: null,
   };
   clients.set(socket, initialSubscription);
@@ -194,10 +243,10 @@ export async function handleSignalStreamClient(socket: WebSocket): Promise<void>
   });
 
   socket.on("close", () => {
-    cleanupClient(socket);
+    void cleanupClient(socket);
   });
 
   socket.on("error", () => {
-    cleanupClient(socket);
+    void cleanupClient(socket);
   });
 }
