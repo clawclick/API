@@ -3,11 +3,14 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import {
   CODEX_NETWORK_IDS,
-  codexTop10HoldersPercent,
-  isCodexConfigured,
 } from "#providers/market/codex";
 import { getRequiredEnv } from "#config/env";
 import { getSimTokenHolders, isSimConfigured } from "#providers/defi/duneAnalytics";
+import {
+  getTokenHolderStats as getMoralisTokenHolderStats,
+  getTokenOwners as getMoralisTokenOwners,
+  isMoralisConfigured,
+} from "#providers/walletTracking/moralis";
 import { isEvmChain, normalizeChain } from "#providers/shared/chains";
 import type { TokenHoldersQuery } from "#routes/helpers";
 import type { TokenHoldersResponse, TokenHolderItem, ProviderStatus } from "#types/api";
@@ -37,6 +40,41 @@ function formatTokenAmount(raw: bigint, decimals: number): string {
   const whole = decimals > 0 ? padded.slice(0, -decimals) : padded;
   const fraction = decimals > 0 ? padded.slice(-decimals).replace(/0+$/, "") : "";
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
+}
+
+function parseNumber(value: number | string | undefined | null): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function normalizeRatioPercent(value: number | string | undefined | null): number | null {
+  const parsed = parseNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+
+  return parsed >= 0 && parsed <= 1 ? parsed * 100 : parsed;
+}
+
+function sumTopPercent(values: Array<number | string | undefined | null>, limit: number): number | null {
+  const parsed = values
+    .slice(0, limit)
+    .map(normalizeRatioPercent)
+    .filter((value): value is number => value !== null);
+
+  if (parsed.length === 0) {
+    return null;
+  }
+
+  return parsed.reduce((sum, value) => sum + value, 0);
 }
 
 async function getSolanaTokenHolders(tokenAddress: string, limit: number): Promise<{ holderCount: number; top10HoldersPercent: number | null; holders: TokenHolderItem[]; }> {
@@ -163,17 +201,34 @@ export async function getTokenHolders(q: TokenHoldersQuery): Promise<TokenHolder
         : `Unknown network: ${q.network}`,
   );
 
-  const top10 = await runProvider(
+  const moralisHolderStats = await runProvider(
     statuses,
-    "codex:top10HoldersPercent",
-    isEvmChain(chain) && isCodexConfigured() && !!networkId,
-    () => codexTop10HoldersPercent(q.tokenAddress, networkId),
-    !isEvmChain(chain)
-      ? "top10HoldersPercent via Codex is only supported on EVM chains in this endpoint."
-      : networkId
-        ? "CODEX_API_KEY not configured. Get one at https://dashboard.codex.io"
-        : `Unknown network: ${q.network}`,
+    "moralisHolderStats",
+    isEvmChain(chain) && isMoralisConfigured(),
+    () => getMoralisTokenHolderStats(q.tokenAddress, chain),
+    isEvmChain(chain)
+      ? "Moralis API key not configured."
+      : "Moralis holder stats are only supported on EVM chains in this endpoint.",
   );
+
+  let moralisTop10HoldersPercent = normalizeRatioPercent(moralisHolderStats?.holderSupply?.top10?.supplyPercent);
+
+  if (moralisTop10HoldersPercent === null) {
+    const moralisOwners = await runProvider(
+      statuses,
+      "moralisOwners",
+      isEvmChain(chain) && isMoralisConfigured(),
+      () => getMoralisTokenOwners(q.tokenAddress, chain, 10),
+      isEvmChain(chain)
+        ? "Moralis API key not configured."
+        : "Moralis owners are only supported on EVM chains in this endpoint.",
+    );
+
+    moralisTop10HoldersPercent = sumTopPercent(
+      (moralisOwners?.result ?? []).map((owner) => owner.percentage_relative_to_total_supply),
+      10,
+    );
+  }
 
   const holders: TokenHolderItem[] = (result?.holders ?? []).map((item) => ({
     address: item.wallet_address ?? null,
@@ -190,8 +245,8 @@ export async function getTokenHolders(q: TokenHoldersQuery): Promise<TokenHolder
     cached: false,
     tokenAddress: q.tokenAddress,
     network: chain,
-    holderCount: null,
-    top10HoldersPercent: top10?.data?.top10HoldersPercent ?? null,
+    holderCount: moralisHolderStats?.totalHolders ?? null,
+    top10HoldersPercent: moralisTop10HoldersPercent,
     nextOffset: result?.next_offset ?? null,
     holders,
     providers: statuses,
